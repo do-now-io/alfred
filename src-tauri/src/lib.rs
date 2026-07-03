@@ -572,6 +572,7 @@ fn save_secret(account: String, value: String) -> Result<(), String> {
 
 // ─── System commands ──────────────────────────────────────────────────────────
 
+#[cfg(target_os = "macos")]
 #[tauri::command]
 fn get_launch_at_login() -> Result<bool, String> {
     let plist_path = dirs::home_dir()
@@ -580,6 +581,7 @@ fn get_launch_at_login() -> Result<bool, String> {
     Ok(plist_path.exists())
 }
 
+#[cfg(target_os = "macos")]
 #[tauri::command]
 fn set_launch_at_login(enabled: bool) -> Result<(), String> {
     let plist_path = dirs::home_dir()
@@ -620,6 +622,69 @@ fn set_launch_at_login(enabled: bool) -> Result<(), String> {
         }
     }
 
+    Ok(())
+}
+
+/// Windows: launch-at-login is backed by the per-user Run registry key
+/// `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (value name "Alfred").
+/// We shell out to `reg.exe` so no extra crate dependency is needed.
+#[cfg(target_os = "windows")]
+const WIN_RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn get_launch_at_login() -> Result<bool, String> {
+    let output = std::process::Command::new("reg")
+        .args(["query", WIN_RUN_KEY, "/v", "Alfred"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    Ok(output.status.success())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_launch_at_login(enabled: bool) -> Result<(), String> {
+    if enabled {
+        let exe = std::env::current_exe()
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .to_string();
+        let status = std::process::Command::new("reg")
+            .args([
+                "add", WIN_RUN_KEY, "/v", "Alfred", "/t", "REG_SZ", "/d", &exe, "/f",
+            ])
+            .status()
+            .map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err("Failed to write Run registry key".to_string());
+        }
+    } else {
+        // Deleting a value that doesn't exist returns a non-zero status — treat
+        // "already absent" as success by checking first.
+        if get_launch_at_login()? {
+            let status = std::process::Command::new("reg")
+                .args(["delete", WIN_RUN_KEY, "/v", "Alfred", "/f"])
+                .status()
+                .map_err(|e| e.to_string())?;
+            if !status.success() {
+                return Err("Failed to remove Run registry key".to_string());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Other platforms: launch-at-login is not implemented — no-op so the Settings
+/// toggle degrades gracefully instead of erroring.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[tauri::command]
+fn get_launch_at_login() -> Result<bool, String> {
+    Ok(false)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[tauri::command]
+fn set_launch_at_login(_enabled: bool) -> Result<(), String> {
     Ok(())
 }
 

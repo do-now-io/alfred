@@ -1,0 +1,178 @@
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+#[derive(Debug, Serialize, Deserialize, Clone, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct NoteMetadata {
+    pub title: String,
+    pub date: String,
+    pub tags: Vec<String>,
+    #[serde(rename = "type")]
+    pub note_type: String,
+    pub status: String,
+    pub recording_id: Option<String>,
+}
+
+impl NoteMetadata {
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+            tags: vec![],
+            note_type: "note".to_string(),
+            status: "active".to_string(),
+            recording_id: None,
+        }
+    }
+
+    pub fn for_recording(title: &str, recording_id: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+            tags: vec![],
+            note_type: "meeting".to_string(),
+            status: "active".to_string(),
+            recording_id: Some(recording_id.to_string()),
+        }
+    }
+
+    pub fn prop_count(&self) -> usize {
+        let mut count = 2; // title + date always present
+        if !self.tags.is_empty() { count += 1; }
+        if self.note_type != "note" { count += 1; }
+        if self.status != "active" { count += 1; }
+        if self.recording_id.is_some() { count += 1; }
+        count
+    }
+}
+
+/// Parse raw `.md` file content into (NoteMetadata, body).
+/// If no valid frontmatter is found, returns defaults derived from filename.
+pub fn parse(raw: &str, filename_stem: &str) -> (NoteMetadata, String) {
+    let trimmed = raw.trim_start();
+    if !trimmed.starts_with("---") {
+        return (NoteMetadata::new(filename_stem), raw.to_string());
+    }
+
+    // Find closing ---
+    let after_open = &trimmed[3..];
+    // Skip optional newline right after ---
+    let after_open = after_open.strip_prefix('\n').unwrap_or(after_open);
+
+    let close_pos = after_open.find("\n---")
+        .or_else(|| after_open.find("\r\n---"));
+
+    let (fm_block, body) = match close_pos {
+        Some(pos) => {
+            let fm = &after_open[..pos];
+            let rest = &after_open[pos + 4..]; // skip \n---
+            let rest = rest.strip_prefix('\n').unwrap_or(rest);
+            let rest = rest.strip_prefix('\r').unwrap_or(rest);
+            (fm, rest.to_string())
+        }
+        None => return (NoteMetadata::new(filename_stem), raw.to_string()),
+    };
+
+    let mut metadata = NoteMetadata::new(filename_stem);
+
+    for line in fm_block.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+
+        if let Some((key, value)) = line.split_once(':') {
+            let key = key.trim();
+            let value = value.trim();
+
+            match key {
+                "title" => metadata.title = value.trim_matches('"').to_string(),
+                "date"  => metadata.date = value.to_string(),
+                "type"  => metadata.note_type = value.to_string(),
+                "status" => metadata.status = value.to_string(),
+                "recording_id" => {
+                    if !value.is_empty() && value != "null" && value != "~" {
+                        metadata.recording_id = Some(value.to_string());
+                    }
+                }
+                "tags" => {
+                    // Supports: [tag1, tag2] or - tag1 (block list handled below)
+                    let v = value.trim().trim_matches('[').trim_matches(']');
+                    if !v.is_empty() {
+                        metadata.tags = v
+                            .split(',')
+                            .map(|t| t.trim().trim_matches('"').to_string())
+                            .filter(|t| !t.is_empty())
+                            .collect();
+                    }
+                }
+                _ => {} // ignore unknown keys
+            }
+        } else if line.starts_with("- ") && line.len() > 2 {
+            // Block list item — assume it belongs to the last list key (tags)
+            metadata.tags.push(line[2..].trim().to_string());
+        }
+    }
+
+    (metadata, body)
+}
+
+/// Serialize NoteMetadata + body back to a complete `.md` file string.
+pub fn serialize(metadata: &NoteMetadata, body: &str) -> String {
+    let mut out = String::from("---\n");
+
+    out.push_str(&format!("title: {}\n", metadata.title));
+    out.push_str(&format!("date: {}\n", metadata.date));
+
+    if metadata.tags.is_empty() {
+        out.push_str("tags: []\n");
+    } else {
+        let tags_str = metadata.tags
+            .iter()
+            .map(|t| t.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!("tags: [{}]\n", tags_str));
+    }
+
+    out.push_str(&format!("type: {}\n", metadata.note_type));
+    out.push_str(&format!("status: {}\n", metadata.status));
+
+    if let Some(ref rid) = metadata.recording_id {
+        out.push_str(&format!("recording_id: {}\n", rid));
+    }
+
+    out.push_str("---\n\n");
+    out.push_str(body);
+
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn roundtrip() {
+        let meta = NoteMetadata {
+            title: "Test Note".into(),
+            date: "2026-06-11".into(),
+            tags: vec!["work".into(), "test".into()],
+            note_type: "note".into(),
+            status: "active".into(),
+            recording_id: None,
+        };
+        let body = "# Test\n\nHello world.";
+        let raw = serialize(&meta, body);
+        let (parsed_meta, parsed_body) = parse(&raw, "test-note");
+        assert_eq!(parsed_meta.title, "Test Note");
+        assert_eq!(parsed_meta.tags, vec!["work", "test"]);
+        assert_eq!(parsed_body.trim(), body.trim());
+    }
+
+    #[test]
+    fn no_frontmatter() {
+        let raw = "# Just a note\n\nNo frontmatter here.";
+        let (meta, body) = parse(raw, "my-file");
+        assert_eq!(meta.title, "my-file");
+        assert_eq!(body, raw);
+    }
+}

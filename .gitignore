@@ -1,0 +1,6 @@
+target/
+node_modules/
+dist/
+alfred_dev.db
+src-tauri/models/*.bin
+src-tauri/.sqlx

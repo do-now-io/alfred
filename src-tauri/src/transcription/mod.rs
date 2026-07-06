@@ -240,9 +240,10 @@ fn run_whisper(
         params.set_translate(false);
         params.set_n_threads(std::thread::available_parallelism()?.get().min(4) as i32);
 
-        if let Some(lang) = language {
-            params.set_language(Some(lang));
-        }
+        // No forced language → "auto" so Whisper detects the spoken language and
+        // transcribes in it. Without this, whisper.cpp defaults to "en" and treats
+        // all audio as English (see spec/04-transcription.md).
+        params.set_language(Some(language.unwrap_or("auto")));
 
         let ctx = whisper_rs::WhisperContext::new_with_params(
             model_path.to_str().ok_or_else(|| anyhow!("Invalid model path"))?,

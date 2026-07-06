@@ -2,5 +2,7 @@ target/
 node_modules/
 dist/
 alfred_dev.db
+alfred_dev.db-shm
+alfred_dev.db-wal
 src-tauri/models/*.bin
 src-tauri/.sqlx

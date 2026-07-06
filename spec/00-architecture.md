@@ -1,289 +1,161 @@
 # spec/00 — Architecture
 
+> **Cible v1 : application desktop cross-platform (Windows + macOS)** construite
+> avec **Tauri v2**, + un **backend Alfred** (proxy IA + metrics). Voir
+> `spec/README.md` pour le périmètre et le statut.
+
 ## Vue d'ensemble
 
-Alfred est une application desktop macOS construite avec **Tauri v2**. Le backend est en **Rust**, le frontend est une WebView affichant du **React 18 + TypeScript**. La règle de partage des responsabilités est stricte et non négociable :
+Le backend desktop est en **Rust**, le frontend est une WebView affichant du
+**React 18 + TypeScript**. Partage des responsabilités, strict :
 
 | Couche | Responsabilité |
 |---|---|
-| Rust (backend) | Tout ce qui touche l'OS : audio, calendrier, fichiers, SQLite, Keychain, HTTP sortant |
-| Frontend (WebView) | Affichage uniquement — aucune logique métier, aucun état persistant |
+| Rust (backend desktop) | OS + réseau : audio, fichiers/vault, SQLite, secrets, HTTP sortant (Claude ou proxy AlfredIA) |
+| Frontend (WebView) | Affichage + état d'UI uniquement — aucune logique métier, aucun secret, aucun appel API externe |
+| Backend Alfred (serveur) | Proxy Claude (AlfredIA) + collecte des metrics (voir spec/15) |
 
-Le frontend est stateless. Il dérive son état de ce que le backend lui envoie via événements Tauri. Il ne fait aucun appel direct aux APIs externes.
+Le frontend dérive ses **données** du backend (via `invoke` + événements) et
+garde un **état d'UI** local (navigation, sélection) via Zustand + react-router.
 
----
+## Plateformes supportées (v1)
+
+| OS | Version min | WebView | Notes |
+|---|---|---|---|
+| Windows | 10 (1809+) et 11 | **WebView2** | Préinstallé sur Win 11 |
+| macOS | 13 (Ventura) et + | **WebKit** | ≥ 13 couvre ScreenCaptureKit (audio système) |
+
+Identifiant : **`com.alfred.app`**.
 
 ## Stack technique
 
-- **Rust** (edition 2021)
-- **Tauri v2** — framework desktop, WebView macOS = WebKit
-- **React 18** + **TypeScript 5**
-- **Zustand** — state management frontend (léger, sans boilerplate)
-- **Tailwind CSS v4** — styling
-- **CodeMirror 6** — éditeur Markdown dans les notes
-- **SQLite** via `sqlx` (runtime async, feature `sqlite`)
-- **Tokio** — runtime async Rust
+- **Rust** (edition 2021) + **Tokio** ; **Tauri v2** (plugins `shell`, `opener`, `dialog`)
+- **React 18** + **TypeScript 5**, **Zustand**, **react-router-dom**, **Tailwind v4**
+- **CodeMirror 6** + **react-markdown/remark-gfm** (notes), **react-force-graph-2d** (graphe)
+- **SQLite** via `sqlx` — **config / état local uniquement**
+- **whisper-rs** (transcription locale, spec/04) · **reqwest** (HTTP sortant)
 
----
+## Accès IA — deux modes
 
-## Modèle de processus Tauri v2
+- **Clé perso** : l'app appelle `https://api.anthropic.com/v1/messages` avec la clé de l'utilisateur (`secrets.json`).
+- **AlfredIA** : l'app appelle **notre proxy** avec un token AlfredIA ; le proxy détient la vraie clé Anthropic. Corps de requête identique → seuls **l'URL de base + l'en-tête d'auth** changent (voir spec/05 et spec/15).
+
+## Modèle de processus
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   macOS Process                     │
-│                                                     │
-│  ┌──────────────────┐    IPC     ┌───────────────┐  │
-│  │   Rust Backend   │◄──────────►│  WebView (UI) │  │
-│  │                  │   invoke   │               │  │
-│  │  - Calendar sync │   emit     │  React + TS   │  │
-│  │  - Audio capture │            │  Zustand      │  │
-│  │  - Whisper       │            │  Tailwind     │  │
-│  │  - Claude API    │            │               │  │
-│  │  - SQLite        │            │               │  │
-│  │  - Keychain      │            │               │  │
-│  └──────────────────┘            └───────────────┘  │
-└─────────────────────────────────────────────────────┘
+┌──────────────────── Poste utilisateur (Win / macOS) ────────────────────┐
+│  ┌──────────────────┐   IPC    ┌───────────────┐                         │
+│  │   Rust Backend   │◄────────►│  WebView (UI) │                         │
+│  │  audio · Whisper │ invoke   │  React + TS   │                         │
+│  │  vault · SQLite  │ emit     │  Zustand      │                         │
+│  │  secrets.json    │          └───────────────┘                         │
+│  └────────┬─────────┘                                                    │
+└───────────┼──────────────────────────────────────────────────────────────┘
+            │ HTTPS (clé perso → Anthropic  |  AlfredIA → proxy)
+            ▼
+   Anthropic API      ◄──────  Backend Alfred (proxy + metrics, spec/15)
 ```
-
----
 
 ## Convention IPC
 
-### Commandes (frontend → backend)
-
-Nommage : **snake_case, verbe-nom**.
+### Commandes (frontend → backend) — snake_case, `async`
 
 ```typescript
-// Appel depuis le frontend
 import { invoke } from '@tauri-apps/api/core';
-await invoke('get_today_events');
 await invoke('start_recording', { source: 'mic_only' });
-await invoke('create_todo', { title: '...', source: 'manual' });
+await invoke('ask_notes', { question: '…', history: [] });
 ```
 
-Toutes les commandes Rust décorées avec `#[tauri::command]` et `async`.
+Domaines v1 dans `src-tauri/src/lib.rs` : enregistrement, transcription, IA
+(+ ingestion), todos, notes (vault), notes-chat, config & secrets, système.
+*(Le code contient encore calendrier, suggestions et appels — **hors v1**.)*
 
-```rust
-#[tauri::command]
-async fn get_today_events(state: tauri::State<'_, AppState>) -> Result<Vec<CalendarEvent>, String> {
-    // ...
-}
-```
+### Événements (backend → frontend) — kebab-case
 
-### Événements (backend → frontend)
-
-Nommage : **kebab-case**.
-
-| Événement | Payload | Émetteur |
-|---|---|---|
-| `recording-status-changed` | `{ status: string, duration_seconds: number }` | Audio module |
-| `transcription-progress` | `{ recording_id: string, percent: number }` | Transcription |
-| `transcription-complete` | `{ recording_id: string, transcription_id: string }` | Transcription |
-| `download-progress` | `{ percent: number, bytes_downloaded: number, total_bytes: number }` | Model download |
-| `calendar-synced` | `{ event_count: number }` | Calendar |
-| `suggestion-ready` | `{ suggestion_id: string }` | Suggestions |
-
-Émission depuis Rust :
-```rust
-app.emit("recording-status-changed", serde_json::json!({
-    "status": "recording",
-    "duration_seconds": 42
-})).unwrap();
-```
-
----
+| Événement | Payload | v1 |
+|---|---|:--:|
+| `recording-status-changed` | `{ status, duration_seconds, ... }` | ✅ |
+| `transcription-progress` / `-complete` / `-failed` | voir spec/04 | ✅ |
+| `download-progress` | `{ percent, bytes_downloaded, total_bytes }` | ✅ |
+| `ingestion_completed` / état Alfred | voir spec/05, spec/10 | ✅ |
+| `todos-updated` | `{ count }` | ✅ |
+| `suggestion-ready` · `call-*` | voir spec/08–09 | 🕓 |
 
 ## Stockage
 
-### Base de données SQLite
+`$APP_DATA_DIR` : `%APPDATA%\com.alfred.app\` (Windows) ·
+`~/Library/Application Support/com.alfred.app/` (macOS).
 
-- Chemin : `$APP_DATA_DIR/alfred.db`
-- Crate : `sqlx` avec feature `sqlite` + `runtime-tokio`
-- Migrations : macro `sqlx::migrate!("migrations/")` au démarrage de l'app
-- Fichiers de migration : `src-tauri/migrations/001_initial.sql`, `002_...sql` etc.
-- Convention : migrations additive uniquement — jamais `DROP` sans migration de rollback
+| Contenu | Chemin |
+|---|---|
+| Base SQLite (config/état) | `$APP_DATA_DIR/alfred.db` |
+| Secrets | `$APP_DATA_DIR/secrets.json` (0600 sur Unix) |
+| WAV (temporaires) | `$APP_DATA_DIR/recordings/{id}.wav` |
+| Modèles Whisper | `$APP_DATA_DIR/models/ggml-{size}.bin` |
+| Vault de notes | dossier choisi par l'utilisateur (config `notes_vault_path`) |
 
-```rust
-// Dans main.rs, au démarrage
-sqlx::migrate!("migrations/").run(&pool).await?;
-```
+Migrations SQLite : `src-tauri/migrations/NNN_*.sql`, appliquées au démarrage,
+**additives uniquement**.
 
-### Fichiers audio
+## Secrets — `secrets.json`
 
-- Chemin : `$APP_DATA_DIR/recordings/{recording_id}.wav`
-- Supprimés après transcription confirmée en DB
+Fichier JSON local (module `keychain`, nom historique). Inventaire v1 :
 
-### Modèles Whisper
+| Compte | Contenu |
+|---|---|
+| `claude_api_key` | Clé Anthropic (mode « clé perso ») |
+| `alfredia_token` | Token AlfredIA (mode AlfredIA ; obtenu via Stripe + loopback, spec/15) |
 
-- Chemin : `$APP_DATA_DIR/models/ggml-{size}.bin`
-- Téléchargés à la demande, jamais embarqués dans le binaire
+> **Compromis v1 :** secrets en quasi-clair dans un fichier. OK pour un petit
+> groupe sur leurs machines. Chiffrement natif OS → « Plus tard ».
 
----
+## Modèle async & état
 
-## Gestion des secrets — Keychain
+Runtime **Tokio** de Tauri. Tâches longues via `spawn` ; Whisper (C++ bloquant)
+via `spawn_blocking`. État partagé dans `tauri::State<AppState>` (db, handle
+d'enregistrement, `transcription_tx`, `http_client`, `vault_path`, `oauth_port`
+— ce dernier réutilisé pour le loopback AlfredIA).
 
-Tous les secrets passent par le Keychain macOS via le crate `security-framework`. Jamais en SQLite, jamais en fichier de config.
+## Types TypeScript (`ts-rs`)
 
-| Secret | Service | Account |
-|---|---|---|
-| Clé API Claude | `com.alfred.app` | `claude_api_key` |
-| Clé API Vapi | `com.alfred.app` | `vapi_api_key` |
-| OAuth Google access token | `com.alfred.app` | `google_oauth_access_token` |
-| OAuth Google refresh token | `com.alfred.app` | `google_oauth_refresh_token` |
-| Google Client ID | `com.alfred.app` | `google_client_id` |
-| Google Client Secret | `com.alfred.app` | `google_client_secret` |
+Types Rust exposés annotés `#[derive(TS)]` → régénérés par `npm run generate-types`
+(test `export_bindings`). Fichiers générés dans `src/bindings/`, **committés**.
 
-```rust
-use security_framework::passwords::{get_generic_password, set_generic_password};
-
-fn save_secret(account: &str, value: &[u8]) -> Result<()> {
-    set_generic_password("com.alfred.app", account, value)?;
-    Ok(())
-}
-```
-
----
-
-## Modèle async
-
-- Tout le backend tourne dans le runtime **Tokio** fourni par Tauri v2
-- Toutes les commandes Tauri qui font de l'I/O sont `async`
-- Tâches longues (enregistrement audio, transcription) : `tokio::task::spawn` ou `spawn_blocking`
-- Les handles de tâches longues sont stockés dans `Arc<Mutex<Option<JoinHandle<...>>>>` dans `tauri::State`
-
-```rust
-pub struct AppState {
-    pub db: SqlitePool,
-    pub recording_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
-    pub transcription_tx: mpsc::Sender<TranscriptionJob>,
-}
-```
-
----
-
-## Génération des types TypeScript (`ts-rs`)
-
-Les types Rust exposés au frontend sont annotés avec `#[derive(TS)]` du crate `ts-rs`. Cela garantit que les types TypeScript sont toujours en phase avec le backend.
-
-### Workflow
-
-1. Chaque struct/enum exposé dans une commande Tauri dérive `TS` :
-```rust
-#[derive(Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/bindings/")]
-pub struct CalendarEvent {
-    pub id: String,
-    pub title: String,
-    pub start_at: String,
-    // ...
-}
-```
-
-2. Un test dans `src-tauri/src/bindings.rs` exporte tous les types :
-```rust
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn export_bindings() {
-        CalendarEvent::export_all().unwrap();
-        Todo::export_all().unwrap();
-        // ... tous les types
-    }
-}
-```
-
-3. Commande npm pour régénérer :
-```json
-// package.json
-"scripts": {
-  "generate-types": "cd src-tauri && cargo test export_bindings"
-}
-```
-
-4. Les fichiers générés vivent dans `src/bindings/` et sont **committés** dans le repo.
-5. Exécuter `npm run generate-types` après tout changement de type Rust avant de toucher au frontend.
-
----
-
-## Graphe de dépendances entre modules
+## Graphe de dépendances (v1)
 
 ```
-spec/00 Architecture
-    │
-    ▼
-spec/01 Data Model
-    │
-    ├──► spec/02 Calendar (no deps)
-    ├──► spec/03 Audio Recording (no deps)
-    │         │
-    │         ▼
-    │    spec/04 Transcription
-    │         │
-    │         ▼
-    │    spec/05 AI Brain ◄──── spec/02 Calendar
-    │         │
-    │    ┌────┴──────────┐
-    │    ▼               ▼
-    │ spec/06 Todos   spec/08 Suggestions
-    │    │               │
-    │    └───────┬───────┘
-    │            ▼
-    ├──► spec/07 Notes
-    │
-    ├──► spec/09 Phone Calls ◄── spec/08 Suggestions
-    │
-    ├──► spec/10 Dashboard (agrège tout)
-    ├──► spec/11 Settings
-    └──► spec/12 Permissions
-```
+00 Architecture → 01 Data Model
+   ├─ 03 Audio → 04 Transcription → 05 AI + Ingestion
+   │                                   ├─ 06 Todos (vault)
+   │                                   └─ 07 Notes ─ 07b Chat (RAG) · 07c Graphe
+   ├─ 10 Accueil   ├─ 11 Settings   ├─ 12 Permissions
+   ├─ 13 Onboarding └─ 14 Feedback
+   └─ 15 Backend AlfredIA + Metrics
 
----
+(Hors v1 : 02 Calendar · 08 Suggestions · 09 Phone Calls · Ingest CLI)
+```
 
 ## Structure du projet
 
 ```
 alfred/
-├── spec/                         # Ce répertoire — specs
-├── src-tauri/
-│   ├── src/
-│   │   ├── main.rs
-│   │   ├── lib.rs
-│   │   ├── state.rs              # AppState
-│   │   ├── db/
-│   │   │   └── mod.rs
-│   │   ├── calendar/
-│   │   │   └── mod.rs
-│   │   ├── audio/
-│   │   │   └── mod.rs
-│   │   ├── transcription/
-│   │   │   └── mod.rs
-│   │   ├── ai/
-│   │   │   └── mod.rs
-│   │   ├── todos/
-│   │   │   └── mod.rs
-│   │   ├── notes/
-│   │   │   └── mod.rs
-│   │   ├── suggestions/
-│   │   │   └── mod.rs
-│   │   └── phone_calls/
-│   │       └── mod.rs
-│   ├── migrations/
-│   │   └── 001_initial.sql
-│   ├── capabilities/
-│   │   └── default.json          # Tauri v2 capabilities
-│   ├── Cargo.toml
-│   ├── tauri.conf.json
-│   └── Alfred.entitlements
-├── src/
-│   ├── main.tsx
-│   ├── App.tsx
-│   ├── bindings/                 # Types TS générés par ts-rs
-│   ├── components/
-│   ├── screens/
-│   │   ├── Dashboard.tsx
-│   │   ├── Notes.tsx
-│   │   └── Settings.tsx
-│   └── store/                    # Zustand stores
-├── package.json
-└── vite.config.ts
+├── spec/                     # specs + README (index/statut)
+├── src-tauri/src/
+│   ├── lib.rs                # commandes Tauri + builder
+│   ├── state.rs · db/ · keychain.rs (secrets.json)
+│   ├── audio/ · transcription/ · ai/{mod,chat}.rs
+│   ├── todos/ · notes/{mod,vault,frontmatter,graph}.rs
+│   ├── auth/ · calendar/ · suggestions/ · phone_calls/ · ingest.rs   # HORS V1 (à retirer/désactiver)
+│   └── bindings/
+├── src/{screens,components,store,bindings}/
+├── migrations/ · capabilities/ · tauri.conf.json
+└── (backend Alfred = service séparé, spec/15)
 ```
+
+## Hors v1 / plus tard
+
+- **Calendrier + connexion Google / OAuth** : entièrement retiré (spec/02).
+  Modules `auth` et `calendar` à désactiver/retirer.
+- **Suggestions** (08) et **appels Vapi** (09) : code présent, réactivés post-v1.
+- **Ingest CLI** : supprimé, remplacé par l'ingestion API (spec/05).
+- **Chiffrement natif des secrets** (Keychain macOS / DPAPI Windows).

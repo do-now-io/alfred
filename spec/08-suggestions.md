@@ -1,5 +1,9 @@
 # spec/08 — Suggestions Engine
 
+> ⛔ **HORS V1 — reporté.** Le moteur de suggestions proactives est hors
+> périmètre v1 (il dépendait du calendrier, lui-même retiré). Contenu conservé
+> comme référence pour une phase future. Voir `spec/README.md`.
+
 ---
 
 ## Vue d'ensemble

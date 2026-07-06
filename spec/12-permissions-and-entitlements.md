@@ -1,156 +1,58 @@
-# spec/12 — macOS Permissions & Entitlements
+# spec/12 — Permissions & Entitlements (cross-platform)
 
-> **Décision fixée : D3**
-> Distribution directe (pas App Store) pour v1 → sandbox désactivé (`com.apple.security.app-sandbox = false`)
+> **Statut v1 :** réconcilier — Windows + macOS ; micro + **capture audio système** ;
+> retirer apple-events / calendrier.
 
----
+## macOS — `Alfred.entitlements`
 
-## Fichier Alfred.entitlements
+Sandbox **désactivé** (distribution directe hors App Store). Entitlements v1 :
+- `com.apple.security.app-sandbox` = `false`
+- `com.apple.security.device.audio-input` = `true` (micro)
+- `com.apple.security.network.client` = `true` (HTTP : Claude / proxy AlfredIA / HuggingFace)
+- `com.apple.security.files.user-selected.read-write` = `true` (vault choisi par l'utilisateur)
+- **Retirer** `com.apple.security.automation.apple-events` (était pour Calendar AppleScript — hors v1).
 
-Chemin : `src-tauri/Alfred.entitlements`
+## macOS — `Info.plist` (usage descriptions)
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <!-- Hardened Runtime activé pour la signature, sandbox DÉSACTIVÉ -->
-    <key>com.apple.security.app-sandbox</key>
-    <false/>
+- **Garder** `NSMicrophoneUsageDescription`.
+- **Ajouter** `NSScreenCaptureUsageDescription` — l'audio système via ScreenCaptureKit
+  (spec/03) déclenche la permission « Enregistrement de l'écran » (accordée dans
+  Réglages Système → Confidentialité). App non-sandboxée → pas d'entitlement dédié,
+  la usage description suffit à afficher le prompt. Le **helper Swift** doit aussi la porter.
+- **Retirer** `NSAppleEventsUsageDescription` + `NSCalendarsUsageDescription` (calendrier hors v1).
 
-    <!-- Microphone -->
-    <key>com.apple.security.device.audio-input</key>
-    <true/>
+## Windows
 
-    <!-- AppleScript → Calendar.app -->
-    <!-- NOTE: NE PAS utiliser com.apple.security.personal-information.calendars
-         qui est pour EventKit (API Swift). Pour osascript, c'est apple-events. -->
-    <key>com.apple.security.automation.apple-events</key>
-    <true/>
+- Pas d'entitlements. Permissions au runtime :
+  - **Micro** : réglage de confidentialité Windows (Réglages → Confidentialité → Micro) ; capture WASAPI.
+  - **Audio système** : WASAPI **loopback** — pas de permission spécifique.
+- **WebView2 runtime** requis (spec/00).
 
-    <!-- HTTP sortant (Google APIs, Claude API, Vapi, HuggingFace) -->
-    <key>com.apple.security.network.client</key>
-    <true/>
+## Tauri v2 — `capabilities/default.json`
 
-    <!-- ScreenCaptureKit (audio système) — activer si source mixed/system_only implémentée -->
-    <!-- Laisser commenté pour la Phase 1 -->
-    <!-- <key>com.apple.security.screen-capture</key> -->
-    <!-- <true/> -->
-</dict>
-</plist>
-```
-
----
-
-## Info.plist — Usage Descriptions
-
-Ces chaînes apparaissent dans le dialogue de permission macOS présenté à l'utilisateur.
-
-Chemin : `src-tauri/Info.plist` (ou fusionné dans `tauri.conf.json` `bundle.macOS.infoPlist`)
-
-```xml
-<!-- Microphone -->
-<key>NSMicrophoneUsageDescription</key>
-<string>Alfred utilise le microphone pour enregistrer des notes vocales et transcrire vos réunions localement sur votre Mac.</string>
-
-<!-- AppleScript → Calendar -->
-<key>NSAppleEventsUsageDescription</key>
-<string>Alfred accède à votre calendrier pour afficher vos événements de la journée et de la semaine.</string>
-
-<!-- ScreenCaptureKit (audio système) — décommenter en Phase 5 -->
-<!--
-<key>NSScreenCaptureUsageDescription</key>
-<string>Alfred capture l'audio système pour transcrire vos appels et réunions en ligne.</string>
--->
-```
-
----
-
-## Tauri v2 Capabilities
-
-Fichier : `src-tauri/capabilities/default.json`
-
-```json
-{
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Alfred default capabilities",
-  "windows": ["main"],
-  "permissions": [
-    "core:default",
-    "shell:allow-open",
-    "core:path:default",
-    "core:app:default"
-  ]
-}
-```
-
-`shell:allow-open` est requis pour ouvrir l'URL OAuth dans le navigateur système (`tauri::api::shell::open`).
-
----
-
-## Signature et notarisation
-
-Pour la distribution directe (hors App Store), l'app doit être :
-1. **Signée** avec un certificat "Developer ID Application" (Apple Developer Program requis)
-2. **Notarisée** par Apple (upload automatique via `xcrun notarytool`)
-3. **Stapled** (ticket de notarisation attaché au bundle)
-
-Tauri v2 supporte la signature et la notarisation dans son pipeline de build :
-```json
-// tauri.conf.json
-"bundle": {
-  "macOS": {
-    "signingIdentity": "Developer ID Application: Tanguy Charon (XXXXXXXXXX)",
-    "notarizationCredentials": {
-      "appleId": "tanguy.charon@do-now.io",
-      "teamId": "XXXXXXXXXX"
-    }
-  }
-}
-```
-
----
+`core:default`, `shell:allow-open`, `opener:default`, `dialog:allow-open`
+(`dialog` pour le picker de vault ; `shell`/`opener` pour ouvrir les liens externes —
+loopback AlfredIA / Stripe).
 
 ## Permissions demandées au runtime
 
-Les permissions TCC (Transparency, Consent, and Control) sont demandées **à la première utilisation**, pas au lancement.
-
-| Permission | Quand demandée | Si refusée |
+| Permission | Quand | Si refusée |
 |---|---|---|
-| Microphone | Premier clic sur "Enregistrer" | Bouton Enregistrer désactivé avec lien vers Paramètres Système |
-| Accès aux apps (AppleScript Calendar) | Premier sync Apple Calendar | Sync Apple Calendar désactivée |
-| Capture d'écran (ScreenCaptureKit) | Sélection de source "Audio système" | Option désactivée avec message |
+| Micro | 1er enregistrement (test à l'onboarding, spec/13) | Enregistrement désactivé + lien vers Réglages Système |
+| Capture d'écran (macOS, audio système) | 1ère source « audio système » | Option désactivée + message |
 
-En cas de refus, afficher un lien direct vers Paramètres Système :
-```rust
-tauri::api::shell::open(&app, "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone", None)?;
-```
+## Signature & distribution
 
----
+- **macOS** : « Developer ID Application » + **notarisation** + staple (hors App Store).
+- **Windows** : certificat de **signature de code** (Authenticode) pour éviter les
+  avertissements SmartScreen.
 
-## Note de dette technique — App Store
+## Note bug
 
-Si une distribution App Store est envisagée dans une version future :
+Aligner le label du launch-at-login macOS (`io.alfred.app`) sur l'identifiant
+`com.alfred.app` (spec/11).
 
-1. `com.apple.security.app-sandbox` doit être `true`
-2. `osascript` ne fonctionne pas sous sandbox → migrer vers EventKit (API Swift via FFI ou helper)
-3. Le stockage dans `$APP_DATA_DIR` reste valide sous sandbox
-4. Les entitlements sandbox requis : `com.apple.security.files.user-selected.read-write`
+## Hors v1 / plus tard
 
-Cette migration est estimée à ~2 semaines de travail. Ne pas l'engager sans décision business préalable.
-
----
-
-## Checklist de build
-
-Vérifier avant chaque release :
-
-- [ ] `Alfred.entitlements` correspond aux fonctionnalités activées
-- [ ] `NSMicrophoneUsageDescription` défini
-- [ ] `NSAppleEventsUsageDescription` défini
-- [ ] App signée avec "Developer ID Application"
-- [ ] App notarisée et stapled
-- [ ] Test sur machine sans Xcode installé (vérifie les deps dynamiques)
-- [ ] Test sur macOS 13 (version minimale supportée)
+Distribution **App Store** (sandbox `true`, migration EventKit — dette technique
+documentée dans l'ancienne version), entitlements calendrier (Apple/Google).

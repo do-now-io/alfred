@@ -1,5 +1,9 @@
 # spec/09 — Phone Calls (Vapi)
 
+> ⛔ **HORS V1 — reporté.** Les appels téléphoniques automatiques (Vapi) sont
+> hors périmètre v1. Contenu conservé comme référence pour une phase future.
+> Voir `spec/README.md`.
+
 > **Décision fixée : D4**
 > Polling toutes les 10s sur `GET /call/{id}` — pas de webhook (NAT laptop non fiable)
 

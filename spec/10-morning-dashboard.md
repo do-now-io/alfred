@@ -1,223 +1,111 @@
-# spec/10 — Morning Dashboard & UI
+# spec/10 — Accueil « Alfred » & UI
 
-> **Design de référence** : `spec/Images/page-accueil.png`
-
----
-
-## Stack frontend
-
-| Technologie | Usage |
-|---|---|
-| React 18 + TypeScript 5 | Framework UI |
-| Zustand | State management (stores par domaine) |
-| Tailwind CSS v4 | Styling |
-| CodeMirror 6 | Éditeur Markdown dans Notes |
-| `@tauri-apps/api` | IPC avec le backend Rust |
-
----
+> **Statut v1 :** refonte. La home devient la page **« Alfred »**. Réf. visuelle :
+> `spec/Images/page-accueil.png` (thème conservé, structure revue).
 
 ## Layout général
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  ┌──────┬──────────────────────────────────────────────────────────┐ │
-│  │      │  🔍 Rechercher dans mes notes, réunions, tâches...  ⌘K   │ │
-│  │      └─────────────────────────────────────────────────────┬────┘ │
-│  │ Side │                                              🔔  👤 Alfred│ │
-│  │ bar  ├──────────────────────────────┬──────────────────────┤      │
-│  │ 240px│     Contenu principal        │  Panel droit 280px   │      │
-│  │      │                              │                      │      │
-│  └──────┴──────────────────────────────┴──────────────────────┘      │
-└─────────────────────────────────────────────────────────────────────┘
-```
+`[Sidebar 240px] | [Contenu]` — **plus de panneau droit** (calendrier retiré).
+Topbar **sans barre de recherche**.
 
-3 zones :
-- **Sidebar gauche** : 240px fixe, navigation + récents
-- **Contenu principal** : flex 1, scrollable
-- **Panel droit** : 280px fixe, calendrier de la semaine
+## Sidebar
 
-Pas de barre de recording en bas — l'enregistrement est déclenché via la hero card CTA.
+- **Logo Alfred** en haut = **déclencheur d'enregistrement** (anim micro au hover).
+  Clic → `start_recording` + redirection vers la **page de guidage** (spec/03).
+- **Navigation v1** :
 
----
+  | Icône | Label | Route |
+  |---|---|---|
+  | ✦ | **Alfred** | `/` |
+  | ☑️ | Tâches | `/tasks` |
+  | 📝 | Notes | `/notes` |
+  | 🕸 | Graphe | `/graph` |
+  | 💬 | Feedback | `/feedback` |
+  | ⚙️ | Paramètres | `/settings` (épinglé en bas) |
+
+- Section **« Récents »** (5 notes récemment modifiées — inchangé).
+- **Retirés** : « Aujourd'hui » (fusionné dans Alfred), **Réunions**, **Calendrier**,
+  **Actions IA** (suggestions hors v1).
 
 ## Topbar
 
-Barre persistante en haut du contenu (hors sidebar) :
+- **Plus de recherche** (barre + `⌘K` retirés).
+- **Bandeau d'enregistrement** (pendant l'enregistrement, persistant sur toute
+  l'app) : **timer** + **visualisation du volume micro** + bouton **stop**.
+- **Indicateur d'état Alfred** (remplace la cloche) — voir ci-dessous.
+- Avatar + nom **Alfred** (menu profil).
 
-- **Champ de recherche** globale (centré, flex 1) : placeholder "Rechercher dans mes notes, réunions, tâches..." + raccourci `⌘K`
-- **Icône notification** (cloche) à droite
-- **Avatar + nom + chevron** à droite (menu déroulant profil)
+### Indicateur d'état Alfred
 
----
+Ton « majordome », piloté par les événements (`recording-status-changed`,
+`transcription-*`, `ingestion_completed`) ; labels éditables dans l'app :
 
-## Sidebar gauche (240px)
+| État | Label |
+|---|---|
+| repos | À votre service |
+| enregistrement | Tout ouïe… |
+| transcription | Je prends note… |
+| analyse (ingestion) | Je cogite… |
+| création des tâches | Je mets de l'ordre… |
 
-### Logo
-- Portrait circulaire (style gravure dorée sur fond sombre)
-- Texte "**A L F R E D**" en lettres espacées sous le logo
+## Page Alfred (`/`) — trois blocs
 
-### Navigation principale
-Icône + label texte, item actif = fond beige doré (`--active-bg`).
+1. **« Aujourd'hui »** — brief quotidien (spec/05) : titre + texte court Markdown +
+   « Généré le {date} » + bouton **régénérer**. État vide (aucune donnée) : message
+   d'accueil incitant à enregistrer ou écrire.
+2. **Tâches** — bloc **dépliable** : sections Prioritaire / En cours / À faire
+   (depuis `Todo.md`, spec/06), cases à cocher, lien « voir toutes les tâches » → `/tasks`.
+3. **Input Alfred** (chat, spec/07b) — champ de saisie + **exemples cliquables**.
+   La conversation se déroule **sur la page** (fil qui se déploie sous l'input).
 
-| Icône | Label | Route |
-|---|---|---|
-| 🏠 | Aujourd'hui | `/` |
-| ☑️ | Tâches | `/tasks` |
-| 📝 | Notes | `/notes` |
-| 🎙️ | Réunions | `/meetings` |
-| 📅 | Calendrier | `/calendar` |
-| ✦ | Actions IA | `/ai-actions` |
+### Chat — historique & liste des conversations
 
-### Section "RÉCENTS"
-Label "RÉCENTS" en petites majuscules, couleur secondaire.
-Liste des 5 derniers items récemment consultés (notes, réunions, tâches).
-Un item peut avoir un indicateur actif (point orange = en cours).
+- **Historique conservé.** Un **2ᵉ niveau de navigation** sur la page Alfred liste
+  les **conversations passées** (titre auto = 1ʳᵉ question + date) ; sélection →
+  rouvre le fil ; bouton **nouvelle conversation**.
+- Persistance : **local (SQLite)** — les chats sont de l'**état applicatif**, pas
+  du contenu de vault. `À CONFIRMER` : SQLite vs fichiers vault (reco : SQLite).
+- Chaque message via `ask_notes` (spec/07b) ; retour d'état via `chat-progress`
+  (« recherche… » / « lecture… »).
 
-### Bas de sidebar
-- ⚙️ Paramètres (lien, en bas, épinglé)
+### Exemples d'amorces (input Alfred)
 
----
+Nombreux, cliquables (remplissent l'input), groupés par intention :
+- *Résumer* : « Résume mes notes récentes » · « Résume ma dernière réunion »
+- *Retrouver* : « Sur quoi ai-je travaillé cette semaine ? » · « Qu'a-t-on décidé sur [projet] ? »
+- *Tâches* : « Quelles sont mes tâches en retard ? » · « Qui est responsable de quoi sur [projet] ? »
+- *Préparer* : « Prépare-moi un point sur [personne/projet] »
+- *Explorer* : « Quels sujets reviennent souvent dans mes notes ? »
 
-## Dashboard — Contenu principal
+## Déclenchement de l'enregistrement (rappel spec/03)
 
-### 1. Hero card CTA — Enregistrement
+Logo Alfred (hover → micro animé) → `start_recording` → **page de guidage** liée à
+l'enregistrement (conseils de captation + viz volume + timer). Bandeau d'état
+pendant toute la durée.
 
-Card sombre (fond `#1C1C1C`, coins arrondis 16px) pleine largeur :
-- Icône microphone dorée (grand, ~48px) à gauche
-- Texte principal : **"Prendre des notes maintenant"** (doré, `font-size: 20px`, `font-weight: 600`)
-- Sous-texte : "Enregistre, transcrit et extrait les actions" (gris clair)
-- Flèche `→` à droite
-- Clic → déclenche `start_recording()` ou navigue vers la vue enregistrement
+## Design / palette
 
-**États de la hero card :**
-- Idle : affichage normal comme ci-dessus
-- Recording : fond rouge foncé, texte "Enregistrement en cours…", timer, bouton ⏹ Arrêter
-- Processing : "Transcription en cours…" avec spinner
-
-### 2. Section "Ce qui mérite votre attention"
-
-Titre `h2` : **"Ce qui mérite votre attention"**
-
-Liste de tâches prioritaires (max 4 affichées, style liste) :
-
-Chaque ligne :
-```
-[ ] Titre de la tâche          [Tag coloré]    Heure    🚩
-```
-
-- **Checkbox** à gauche (cocher = marquer done)
-- **Titre** (texte normal)
-- **Badge tag** coloré (fond pastel + texte coloré) — catégorie ou contexte
-- **Heure** ou date relative ("Hier", "10:00", etc.)
-- **Icône drapeau** (🚩 = flaggé, outline = non flaggé)
-
-Lien en bas : `Afficher tout (N) →` en couleur accent doré.
-
-### 3. Section "Résumé IA"
-
-En dessous de la liste tâches, carte avec :
-- Icône ✦ + titre **"Résumé IA"**
-- Colonne gauche : résumé textuel court ("Vous avez 4 tâches en attente. 2 réunions prévues aujourd'hui.")
-- Colonne droite : dernière réunion avec ses action items (checklist ✓)
-- Généré automatiquement au lancement, régénérable manuellement
-
----
-
-## Panel droit — "Cette semaine" (280px)
-
-### En-tête
-- Titre **"Cette semaine"** (accent doré)
-- Icône calendrier à droite
-
-### Événements groupés par jour
-
-```
-Aujourd'hui – 21 mai
-  ● 14:00  Réunion client - Acme
-           Salle Meeting Room 2
-
-  ● 16:30  Point équipe produit
-           Visio
-
-Demain – 22 mai
-  ● 09:00  Webinar AWS
-           En ligne
-  ...
-```
-
-- Séparateur de section par jour (texte bold + date)
-- Chaque événement : dot coloré + heure + titre + lieu (grisé en dessous)
-- **Couleur des dots** : orange/ambre = présentiel, violet = en ligne
-- Scroll vertical si débordement
-
-### Pied de panel
-Lien `Afficher le calendrier complet →` en accent doré
-
----
-
-## Design language & palette
-
+Thème doré existant conservé :
 ```css
-/* Couleurs principales */
---accent: #C8914A;          /* Doré/ambre — logo, liens, icônes actives */
---accent-hover: #B07D3A;
---active-bg: #F5EDD8;       /* Fond item nav actif — beige chaud */
---bg: #F7F7F5;              /* Fond général — blanc cassé */
---card-bg: #FFFFFF;         /* Fond des cartes */
---sidebar-bg: #FFFFFF;      /* Fond sidebar */
---dark-card: #1C1C1C;       /* Hero card sombre */
---text-primary: #1A1A1A;
---text-secondary: #6B6B6B;
---text-muted: #9B9B9B;
---border: #E8E8E6;
-
-/* Tags / badges */
---tag-red-bg: #FEE8E8;    --tag-red-text: #C0392B;   /* Priorité haute */
---tag-blue-bg: #E8F0FE;   --tag-blue-text: #1A56DB;  /* Contexte bleu */
---tag-orange-bg: #FEF3E2; --tag-orange-text: #D97706; /* Finance */
---tag-green-bg: #E8F5E9;  --tag-green-text: #2E7D32; /* Contexte vert */
-
-/* Dots calendrier */
---dot-orange: #F59E0B;   /* Présentiel */
---dot-purple: #7C3AED;   /* En ligne */
-
-/* Police */
-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+--accent:#C8914A; --accent-hover:#B07D3A; --active-bg:#F5EDD8;
+--bg:#F7F7F5; --card-bg:#FFFFFF; --sidebar-bg:#FFFFFF; --dark-card:#1C1C1C;
+--text-primary:#1A1A1A; --text-secondary:#6B6B6B; --text-muted:#9B9B9B; --border:#E8E8E6;
 ```
 
----
+## Routes v1
 
-## Stores Zustand
+`/` Alfred · `/tasks` · `/notes` · `/graph` · `/feedback` · `/settings`.
+**Supprimer** `/meetings`, `/calendar`, `/ai-actions`.
 
-```typescript
-// Inchangés par rapport à spec/00 + ajouts :
+## Abonnements aux événements (App.tsx)
 
-// stores/uiStore.ts
-interface UiStore {
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
-  recentItems: RecentItem[];  // { id, title, type, route }
-}
-```
+- `recording-status-changed` → bandeau + indicateur d'état
+- `transcription-*` → indicateur + rafraîchir
+- `ingestion_completed` → indicateur + rafraîchir todos/notes
+- `notes-updated` → Récents
+- `chat-progress` → état du chat
 
----
+## Hors v1 / plus tard
 
-## Abonnements aux événements Tauri
-
-Initialisés au montage de `App.tsx` :
-- `recording-status-changed` → met à jour l'état de la hero card
-- `transcription-complete` → rafraîchit todos + résumé IA
-- `calendar-synced` → rafraîchit le panel droit
-
----
-
-## Écrans secondaires (à designer)
-
-| Route | Écran | Statut |
-|---|---|---|
-| `/tasks` | Tâches | À designer |
-| `/notes` | Notes (CodeMirror) | Implémenté v1, à restyler |
-| `/meetings` | Réunions + transcriptions | À designer |
-| `/calendar` | Vue calendrier complète | À designer |
-| `/ai-actions` | Actions IA / suggestions | À designer |
-| `/settings` | Paramètres | Implémenté v1, à restyler |
+Panneau calendrier, recherche globale `⌘K`, recherche vectorielle, chats stockés
+dans le vault.

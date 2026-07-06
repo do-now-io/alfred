@@ -1,181 +1,57 @@
-# spec/11 — Settings
+# spec/11 — Paramètres
 
----
+> **Statut v1 :** refonte — retirer Vapi / Google Places / calendrier ; remplacer
+> l'étape « clé Claude » par le **choix d'accès IA** ; accueillir Whisper (déplacé
+> de l'onboarding).
 
-## Écran Settings — Layout
+## Modèle technique
 
-L'écran Settings est divisé en sections. Chaque section est un groupe de paramètres liés.
+Pas de `get_settings` / `update_setting` : chaque réglage passe par
+`get_config` / `set_config`, `get_secret` / `save_secret`,
+`get_launch_at_login` / `set_launch_at_login`, `test_api_key`,
+`get_vault_path` / `set_vault_path` / `pick_vault_folder`, `download_model`.
 
-```
-┌──────────────────────────────────────────────────────┐
-│  ⚙️ Paramètres                                        │
-│                                                      │
-│  ── APIs ─────────────────────────────────────────── │
-│  Clé API Claude         [••••••••••] [Tester]        │
-│  Clé API Vapi           [••••••••••] [Tester]        │
-│  ID numéro Vapi         [phone_num_id_xxx]           │
-│  Clé Google Places      [••••••••••]                 │
-│                                                      │
-│  ── Calendrier ───────────────────────────────────── │
-│  Google Calendar        [Connecté ✓] [Déconnecter]  │
-│                          ou [Connecter Google]       │
-│  Apple Calendar         [Disponible ✓]               │
-│  Intervalle de sync     [15] minutes                 │
-│                                                      │
-│  ── Transcription ────────────────────────────────── │
-│  Modèle Whisper         [small ▾]                    │
-│  Langue                 [Auto-détection ▾]           │
-│                                                      │
-│  ── Enregistrement ───────────────────────────────── │
-│  Source audio           [Microphone uniquement ▾]    │
-│                                                      │
-│  ── Système ──────────────────────────────────────── │
-│  Lancer au démarrage    [☐]                          │
-│                                                      │
-└──────────────────────────────────────────────────────┘
-```
+## Sections v1
 
----
+**Accès IA** (remplace « APIs ») — mode **clé perso** ou **AlfredIA** :
+- *Clé perso* : saisir `claude_api_key` + **Tester** (`test_api_key`).
+- *AlfredIA* : **statut** de l'abonnement (actif / essai / inactif) + bouton
+  **S'abonner** (loopback, spec/15) ; token `alfredia_token`. Gérer l'abonnement
+  (portail Stripe) = plus tard.
+- Basculer de mode **à tout moment**.
 
-## Tableau des paramètres
+**Transcription** (déplacé de l'onboarding) : modèle Whisper (`small` embarqué ;
+modèles plus gros **téléchargeables** → `download_model`, `download-progress`) +
+langue (`language_hint`).
 
-| Clé | Label UI | Défaut | Stockage | Validation |
-|---|---|---|---|---|
-| `claude_api_key` | Clé API Claude | — | Keychain | Non-vide, test avec appel `/v1/messages` minimal |
-| `vapi_api_key` | Clé API Vapi | — | Keychain | Non-vide |
-| `vapi_phone_number_id` | ID numéro Vapi | — | SQLite config | Non-vide |
-| `google_places_api_key` | Clé Google Places | — | Keychain | Non-vide |
-| `google_oauth_access_token` | *(interne)* | — | Keychain | Géré par flow OAuth |
-| `google_oauth_refresh_token` | *(interne)* | — | Keychain | Géré par flow OAuth |
-| `whisper_model` | Modèle Whisper | `small` | SQLite config | Enum: `tiny`, `base`, `small`, `medium` |
-| `language_hint` | Langue | `auto` | SQLite config | Enum: `auto`, `fr`, `en`, `es`, `de` |
-| `recording_source` | Source audio | `mic_only` | SQLite config | Enum: `mic_only`, `system_only`, `mixed` |
-| `calendar_sync_interval_min` | Intervalle sync | `15` | SQLite config | Integer, 5–60 |
-| `launch_at_login` | Lancer au démarrage | `false` | LaunchAgent plist | Boolean |
-| `vapi_phone_number_id` | ID numéro Vapi | — | SQLite config | Non-vide |
+**Enregistrement** : source audio (`mic_only` / `system_only` / `mixed`) ; dossier
+d'enregistrement (défaut **`alfred-raw`**).
 
----
+**Notes** : dossier vault (`get/set_vault_path`, `pick_vault_folder`).
 
-## Validation des clés API
+**Tâches** : fichier `Todo.md` (défaut **`alfred-intelligence/Todo.md`**).
 
-### Claude API
+**Système** : lancer au démarrage (`get/set_launch_at_login` — LaunchAgent macOS /
+clé de registre Windows) ; **« Revoir l'introduction »** (rejoue l'onboarding).
 
-Tester avec un appel minimal au clic sur [Tester] :
+## Retiré (hors v1)
 
-```rust
-async fn test_claude_api_key(key: &str) -> Result<(), String> {
-    let response = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&serde_json::json!({
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "Hi"}]
-        }))
-        .send()
-        .await?;
+- Clés **Vapi** + **ID numéro Vapi** + **Google Places**.
+- Section **« Calendrier & compte »** (connexion Google + intervalle de sync).
+- Éditeur de **prompt d'ingestion CLI** (l'ingestion est API — spec/05 ; un éditeur
+  de prompt d'ingestion API pourra revenir plus tard).
 
-    if response.status() == 401 {
-        Err("Clé API invalide".to_string())
-    } else {
-        Ok(())
-    }
-}
-```
+## Défauts à mettre à jour (Rust)
 
-### Vapi API
+- `DEFAULT_RECORDING_FOLDER` : `raw/audios` → **`alfred-raw`**.
+- `DEFAULT_TODO_FILE` : `wiki/Todo.md` → **`alfred-intelligence/Todo.md`**.
 
-```rust
-async fn test_vapi_api_key(key: &str) -> Result<(), String> {
-    let response = client
-        .get("https://api.vapi.ai/phone-number")
-        .bearer_auth(key)
-        .send()
-        .await?;
+## Note bug
 
-    if response.status() == 401 {
-        Err("Clé API Vapi invalide".to_string())
-    } else {
-        Ok(())
-    }
-}
-```
+Le launch-at-login macOS utilise le label `io.alfred.app` alors que l'identifiant
+de l'app est `com.alfred.app` → à aligner (spec/12).
 
----
+## Hors v1 / plus tard
 
-## Lancer au démarrage — LaunchAgent
-
-Sur macOS, "lancer au démarrage" est géré via un fichier plist dans `~/Library/LaunchAgents/` :
-
-```xml
-<!-- ~/Library/LaunchAgents/io.alfred.app.plist -->
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" ...>
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>io.alfred.app</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/Applications/Alfred.app/Contents/MacOS/alfred</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>
-```
-
-Activer :
-```rust
-std::fs::write(&plist_path, PLIST_CONTENT)?;
-std::process::Command::new("launchctl")
-    .args(["load", plist_path.to_str().unwrap()])
-    .output()?;
-```
-
-Désactiver :
-```rust
-std::process::Command::new("launchctl")
-    .args(["unload", plist_path.to_str().unwrap()])
-    .output()?;
-std::fs::remove_file(&plist_path)?;
-```
-
----
-
-## Changement de modèle Whisper
-
-Quand l'utilisateur change le modèle Whisper dans les Settings :
-1. Sauvegarder la nouvelle valeur dans `config.whisper_model`
-2. Vérifier si le fichier `ggml-{nouveau_modèle}.bin` existe dans `$APP_DATA_DIR/models/`
-3. Si non → déclencher automatiquement le téléchargement (voir spec/04)
-4. Afficher un indicateur de téléchargement dans les Settings pendant le download
-
----
-
-## Commandes Tauri
-
-```rust
-#[tauri::command]
-async fn get_settings(state: State<AppState>) -> Result<Settings, String>
-
-#[tauri::command]
-async fn update_setting(
-    key: String,
-    value: String,
-    state: State<AppState>,
-) -> Result<(), String>
-
-#[tauri::command]
-async fn test_api_key(
-    service: String,  // "claude" | "vapi"
-    state: State<AppState>,
-) -> Result<(), String>
-
-#[tauri::command]
-async fn set_launch_at_login(enabled: bool) -> Result<(), String>
-
-#[tauri::command]
-async fn get_launch_at_login() -> Result<bool, String>
-```
+Gestion Vapi / Places / Google, intervalle de sync calendrier, portail de gestion
+d'abonnement Stripe, éditeur de prompt d'ingestion API.

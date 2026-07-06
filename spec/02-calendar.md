@@ -1,5 +1,9 @@
 # spec/02 — Calendar Integration
 
+> ⛔ **HORS V1 — retiré.** Le calendrier (et toute la connexion Google / OAuth)
+> est hors périmètre v1. Contenu conservé comme référence pour une phase future.
+> Voir `spec/README.md`.
+
 > **Décision fixée : D5**
 > Port OAuth local → port aléatoire (0) assigné par l'OS, stocké dans `Mutex<u16>`
 

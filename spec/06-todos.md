@@ -1,118 +1,71 @@
 # spec/06 — Todos
 
----
+> **Statut v1 :** refonte — la source de vérité passe de SQLite au **vault**.
 
-## Sources
+## Principe
 
-Tout todo a une source tracée. L'attribut `source_id` lie le todo à son origine :
+La **source de vérité des todos = un fichier Markdown du vault** :
+`alfred-intelligence/Todo.md` (chemin en config `todo_file_path` ; défaut
+historique `wiki/Todo.md` → à migrer vers `alfred-intelligence/Todo.md`).
 
-| `source` | `source_id` pointe vers |
-|---|---|
-| `transcription` | `transcriptions.id` |
-| `suggestion` | `suggestions.id` |
-| `manual` | NULL |
+La **table SQLite `todos` est abandonnée**. Les commandes actuelles écrivent en
+SQLite → à refondre pour lire/écrire le fichier. Pas de migration de données
+(aucun utilisateur en prod).
 
----
+## Format du fichier
+
+Compatible Obsidian (cases à cocher standard), regroupé par sections qui
+correspondent à l'accueil, **sans frontmatter** :
+
+```markdown
+## Prioritaire
+- [ ] Rappeler le client Acme — @Jean — 📅 2026-07-10
+
+## En cours
+- [ ] Préparer la démo
+
+## À faire
+- [ ] Relire le contrat
+
+## Archivé
+- [ ] Ancienne tâche mise de côté
+```
+
+- `[x]` = tâche **faite** (reste en place, cochée).
+- Responsable (`@Prénom`) et échéance (`📅 YYYY-MM-DD`) optionnels.
+- Les tâches **extraites par l'IA** arrivent dans `## À faire` ; c'est
+  l'utilisateur qui les remonte en « En cours » / « Prioritaire ».
+
+## Provenance
+
+- **Extraction IA** (depuis une transcription, spec 05) : ajoute les tâches
+  détectées au fichier, en rappelant le prénom du responsable quand c'est possible.
+- **Création manuelle** depuis l'UI (onglet Tâches / accueil).
+- **Édition directe** du fichier dans Obsidian — Alfred relit le fichier.
 
 ## Déduplication
 
-Avant chaque insertion d'un todo issu d'une transcription ou suggestion, vérifier l'unicité par `(source, source_id, title_hash)` :
-
-```sql
-SELECT id FROM todos
-WHERE source = ? AND source_id = ? AND title_hash = ?
-LIMIT 1;
-```
-
-`title_hash` = SHA-256 du titre en minuscules, sans espaces en tête/fin (32 chars hex).
-
-Si le record existe déjà (peu importe son status), ne pas insérer de doublon. Si l'utilisateur a dismissé un todo et que la même transcription est re-traitée, le doublon n'est pas recréé.
-
----
+Par **titre normalisé** (minuscules, espaces réduits), sur **tout le fichier** :
+on ne ré-ajoute pas une tâche déjà présente. *(L'ancienne dédup SQLite par
+`title_hash` était du code mort.)*
 
 ## Cycle de vie
 
-```
-pending ──── complete() ──► done
-   │
-   └───────── dismiss() ──► dismissed
-```
+- Cocher `[x]` = **fait** (la ligne reste en place, cochée).
+- **Archiver** (ex-« ignorer ») : la tâche est **déplacée** vers la section
+  `## Archivé` en bas du fichier — **rien n'est supprimé**.
 
-- `done` : la tâche est accomplie
-- `dismissed` : l'utilisateur ne veut plus voir ce todo (suppression douce)
-- Aucun des deux états n'est définitif — un todo peut être rouvert :
-  - `done` → `pending` via `reopen_todo`
-  - `dismissed` → non (un todo dismissé reste dismissé — pas de "unarchive" en v1)
+## Affichage
 
----
+- **Onglet Tâches** : liste éditable.
+- **Accueil « Alfred »** : bloc dépliable Prioritaire / En cours / À faire (spec 10).
 
-## Filtres d'affichage
+## Commandes Tauri (à refondre vers le fichier)
 
-La liste principale affiche uniquement `status = pending`.
+`get_todos`, `create_todo`, `complete_todo`, `dismiss_todo`, `update_todo`
+opèrent désormais sur `Todo.md` (parse Markdown ↔ structure) au lieu de la table
+SQLite. `get_todo_file()` retourne le chemin du fichier.
 
-Les todos `done` sont accessibles via un filtre "Complétés" dans l'interface.
-Les todos `dismissed` ne sont pas affichés (seulement accessibles via DB pour audit).
+## Hors v1 / plus tard
 
----
-
-## Tri
-
-Par défaut : `due_date ASC NULLS LAST, created_at ASC`.
-
-Les todos sans due_date apparaissent après ceux avec une date.
-
----
-
-## Commandes Tauri
-
-```rust
-#[tauri::command]
-async fn list_todos(
-    filter: TodoFilter,  // { status: "pending" | "done" | "all" }
-    state: State<AppState>,
-) -> Result<Vec<Todo>, String>
-
-#[tauri::command]
-async fn create_todo(
-    input: CreateTodoInput,
-    // { title, description?, due_date?, source: "manual" }
-    state: State<AppState>,
-) -> Result<Todo, String>
-
-#[tauri::command]
-async fn update_todo(
-    id: String,
-    patch: TodoPatch,
-    // { title?, description?, due_date? }
-    state: State<AppState>,
-) -> Result<Todo, String>
-
-#[tauri::command]
-async fn complete_todo(id: String, state: State<AppState>) -> Result<Todo, String>
-
-#[tauri::command]
-async fn reopen_todo(id: String, state: State<AppState>) -> Result<Todo, String>
-
-#[tauri::command]
-async fn dismiss_todo(id: String, state: State<AppState>) -> Result<Todo, String>
-```
-
----
-
-## Struct Rust exposée au frontend
-
-```rust
-#[derive(Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/bindings/")]
-pub struct Todo {
-    pub id: String,
-    pub title: String,
-    pub description: Option<String>,
-    pub source: String,
-    pub source_id: Option<String>,
-    pub status: String,
-    pub due_date: Option<String>,  // YYYY-MM-DD
-    pub created_at: String,
-    pub updated_at: String,
-}
-```
+Sous-tâches, récurrence, rappels / notifications.

@@ -20,7 +20,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 
 | | Tâche | Qui |
 |---|---|---|
-| [ ] | Service Rust/axum + déploiement **AWS App Runner** (eu-west-3) + domaine `api.alfred.do-now.io` | |
+| [~] | Service Rust/axum + déploiement **AWS App Runner** (eu-west-3) + domaine `api.alfred.do-now.io` | UC |
 | [ ] | **Proxy** `POST /v1/messages` : lookup token, abo actif, allowlist modèles, forward + retry | |
 | [ ] | **Stripe** : produit AlfredIA 15 €/mois + essai 1 mois ; Checkout ; webhook (émission/révocation token) | |
 | [ ] | **Souscription loopback** : `/subscribe` + `/subscribe/complete` (nonce/port → token) | |

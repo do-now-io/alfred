@@ -41,7 +41,13 @@ base64 = "0.22"
 dirs = "5"
 urlencoding = "2"
 url = "2"
+# Whisper: Metal acceleration is macOS-only. On other platforms whisper-rs is
+# pulled in without Metal (CPU backend). Enable transcription with `--features whisper`.
+[target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { git = "https://github.com/tazz4843/whisper-rs", features = ["metal"], optional = true }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+whisper-rs = { git = "https://github.com/tazz4843/whisper-rs", optional = true }
 
 [features]
 default = []

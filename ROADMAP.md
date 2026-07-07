@@ -21,7 +21,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | | Tâche | Qui |
 |---|---|---|
 | [x] | Service Rust/axum + déploiement **Coolify** (Docker depuis Git) + domaine `api.alfred.do-now.io` (Traefik/Let's Encrypt) | UC |
-| [~] | **Proxy** `POST /v1/messages` : lookup token, abo actif, allowlist modèles, forward + retry (+ tables `tokens`/`metrics`) | UC |
+| [x] | **Proxy** `POST /v1/messages` : lookup token, abo actif, allowlist modèles, forward + retry (+ tables `tokens`/`metrics`) | UC |
 | [ ] | **Stripe** : produit AlfredIA 15 €/mois + essai 1 mois ; Checkout ; webhook (émission/révocation token) | |
 | [ ] | **Souscription loopback** : `/subscribe` + `/subscribe/complete` (nonce/port → token) | |
 | [ ] | **PostgreSQL** (Coolify) : tables `tokens` + `metrics` ; endpoint `POST /metrics` | |

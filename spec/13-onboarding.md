@@ -23,7 +23,7 @@ onboardé). Rejouable via « Revoir l'introduction » (Paramètres). À la fin :
      **Aucun** fichier `.claude` / skill écrit (spec/07).
 5. **Accès IA** — les **deux** options présentées (modifiables ensuite dans Paramètres) :
    - **Ma clé Claude** → coller la clé (`save_secret('claude_api_key')` + `test_api_key`).
-   - **Abonnement AlfredIA** — 15 €/mois, **1er mois offert** → bouton « S'abonner »
+   - **Abonnement AlfredIA** — 20 €/mois (ou annuel), **sans essai** → bouton « S'abonner »
      → Stripe + loopback (spec/15) → `alfredia_token` récupéré automatiquement.
      Mensuel, se termine à la fin du mois si payé (facturation : spec/15).
 6. **Micro** — test de permission (`test_microphone` ; déclenche le prompt macOS ;

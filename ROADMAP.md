@@ -37,7 +37,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [ ] | **Feedback live** d'enregistrement : volume (RMS) + timer dans `recording-status-changed` | |
 | [ ] | ⚠️ **Whisper** : activer la feature par défaut + **embarquer le modèle `small`** + packaging Windows | |
 | [ ] | Transcription : **stocker la langue** détectée (bug) ; écrire dans `alfred-raw/` avec frontmatter (`for_recording`) | |
-| [ ] | IA : passer aux modèles **Sonnet 5 / Haiku 4.5** ; **sorties structurées** ; **routage 2 modes** ; thinking off | |
+| [~] | IA : passer aux modèles **Sonnet 5 / Haiku 4.5** ; **sorties structurées** ; **routage 2 modes** ; thinking off | UC |
 | [ ] | **Ingestion** (fusionnée) : 1 appel → compte-rendu (`alfred-intelligence/`) + tâches (`Todo.md`) | |
 | [ ] | **Todos → vault** : lire/écrire `Todo.md` (sections + Archivé) ; supprimer la table SQLite | |
 | [ ] | Notes : frontmatter **`project` + `participants`** ; structure `alfred-raw`/`alfred-intelligence` ; regroupement par projet ; **plus de `.claude`/skills** dans le vault | |

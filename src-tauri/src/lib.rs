@@ -8,6 +8,7 @@ pub mod keychain;
 pub mod notes;
 pub mod phone_calls;
 pub mod state;
+pub mod subscription;
 pub mod suggestions;
 pub mod todos;
 pub mod transcription;
@@ -191,6 +192,17 @@ async fn test_api_key(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     ai::test_api_key(&service, &state.http_client)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn subscribe_alfredia(
+    plan: Option<String>,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    subscription::subscribe(plan.as_deref().unwrap_or("monthly"), &state.db, &app)
         .await
         .map_err(|e| e.to_string())
 }
@@ -804,6 +816,7 @@ pub fn run() {
             generate_event_briefing,
             test_api_key,
             ask_notes,
+            subscribe_alfredia,
             // Todos
             get_todos,
             create_todo,

@@ -203,7 +203,7 @@ async fn ask_notes(
     app: tauri::AppHandle,
 ) -> Result<ai::chat::ChatResponse, String> {
     let vault_root = state.vault_path.lock().unwrap().clone();
-    ai::chat::answer_question(question, history, vault_root, &app)
+    ai::chat::answer_question(question, history, vault_root, &state.db, &app)
         .await
         .map_err(|e| e.to_string())
 }

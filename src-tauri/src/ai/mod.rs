@@ -7,8 +7,65 @@ use crate::keychain;
 
 pub mod chat;
 
-const MODEL: &str = "claude-sonnet-4-6";
-const ANTHROPIC_API: &str = "https://api.anthropic.com/v1/messages";
+const MODEL: &str = "claude-sonnet-5";
+const ANTHROPIC_BASE: &str = "https://api.anthropic.com";
+const ALFREDIA_BASE: &str = "https://api.alfred.do-now.io";
+
+/// Resolved AI access: which endpoint + auth header to use for Claude calls.
+pub struct AiAccess {
+    base_url: &'static str,
+    auth_name: &'static str,
+    auth_value: String,
+}
+
+/// Pick the AI access mode from config (`ai_mode` = "alfredia" | "byo"), falling
+/// back to whichever secret is present. Personal key → api.anthropic.com
+/// (`x-api-key`); AlfredIA token → our proxy (`Authorization: Bearer`). The
+/// request body is identical either way (Anthropic Messages API).
+pub async fn resolve_access(db: &SqlitePool) -> Result<AiAccess> {
+    let mode: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = 'ai_mode'")
+        .fetch_optional(db)
+        .await
+        .unwrap_or(None);
+
+    let alfredia = || {
+        keychain::get_secret("alfredia_token")
+            .ok()
+            .flatten()
+            .filter(|t| !t.is_empty())
+    };
+    let personal = || {
+        keychain::get_secret("claude_api_key")
+            .ok()
+            .flatten()
+            .filter(|k| !k.is_empty())
+    };
+
+    let bearer = |token: String| AiAccess {
+        base_url: ALFREDIA_BASE,
+        auth_name: "authorization",
+        auth_value: format!("Bearer {token}"),
+    };
+    let x_api_key = |key: String| AiAccess {
+        base_url: ANTHROPIC_BASE,
+        auth_name: "x-api-key",
+        auth_value: key,
+    };
+
+    match mode.as_deref() {
+        Some("alfredia") => alfredia()
+            .map(bearer)
+            .ok_or_else(|| anyhow!("Abonnement AlfredIA non configuré. Réglages → IA.")),
+        Some("byo") => personal()
+            .map(x_api_key)
+            .ok_or_else(|| anyhow!("Clé API Claude non configurée. Réglages → IA.")),
+        // No explicit choice: prefer an AlfredIA token, else the personal key.
+        _ => alfredia()
+            .map(bearer)
+            .or_else(|| personal().map(x_api_key))
+            .ok_or_else(|| anyhow!("Aucun accès IA configuré (clé perso ou abonnement AlfredIA). Réglages → IA.")),
+    }
+}
 
 const TODO_EXTRACTION_SYSTEM: &str = r#"Tu es un assistant qui extrait des tâches à faire depuis des transcriptions.
 Tu dois retourner UNIQUEMENT un tableau JSON valide, rien d'autre.
@@ -21,9 +78,7 @@ pub async fn extract_todos_from_transcription(
     db: &SqlitePool,
     app_handle: &tauri::AppHandle,
 ) -> Result<Vec<crate::todos::Todo>> {
-    let api_key = keychain::get_secret("claude_api_key")?
-        .filter(|k| !k.is_empty())
-        .ok_or_else(|| anyhow!("Claude API key not configured"))?;
+    let access = resolve_access(db).await?;
 
     let row = sqlx::query!(
         "SELECT raw_text, recording_id FROM transcriptions WHERE id = ?",
@@ -53,7 +108,7 @@ pub async fn extract_todos_from_transcription(
         }]
     });
 
-    let resp = call_claude_with_retry(&client, &api_key, &body).await?;
+    let resp = call_claude_with_retry(&client, &access, &body).await?;
 
     let content = resp["content"][0]["text"]
         .as_str()
@@ -102,9 +157,7 @@ pub async fn extract_todos_from_transcription(
 }
 
 pub async fn generate_weekly_synthesis(db: &SqlitePool) -> Result<String> {
-    let api_key = keychain::get_secret("claude_api_key")?
-        .filter(|k| !k.is_empty())
-        .ok_or_else(|| anyhow!("Claude API key not configured"))?;
+    let access = resolve_access(db).await?;
 
     // Gather week events
     let events = crate::calendar::get_week_events(db).await?;
@@ -150,7 +203,7 @@ pub async fn generate_weekly_synthesis(db: &SqlitePool) -> Result<String> {
         "messages": [{"role": "user", "content": prompt}]
     });
 
-    let resp = call_claude_with_retry(&client, &api_key, &body).await?;
+    let resp = call_claude_with_retry(&client, &access, &body).await?;
 
     let synthesis = resp["content"][0]["text"]
         .as_str()
@@ -194,9 +247,7 @@ pub async fn generate_event_briefing(
     db: &SqlitePool,
     vault_root: Option<std::path::PathBuf>,
 ) -> Result<String> {
-    let api_key = keychain::get_secret("claude_api_key")?
-        .filter(|k| !k.is_empty())
-        .ok_or_else(|| anyhow!("Clé API Claude non configurée. Ajoutez-la dans Réglages → IA."))?;
+    let access = resolve_access(db).await?;
 
     let event = sqlx::query!(
         r#"SELECT title as "title!", start_at as "start_at!", end_at as "end_at!",
@@ -271,7 +322,7 @@ pub async fn generate_event_briefing(
         "messages": [{"role": "user", "content": prompt}]
     });
 
-    let resp = call_claude_with_retry(&client, &api_key, &body).await?;
+    let resp = call_claude_with_retry(&client, &access, &body).await?;
 
     resp["content"][0]["text"]
         .as_str()
@@ -353,9 +404,10 @@ fn find_relevant_notes(root: &std::path::Path, keywords: &[String]) -> Vec<(Stri
 
 async fn call_claude_with_retry(
     client: &reqwest::Client,
-    api_key: &str,
+    access: &AiAccess,
     body: &serde_json::Value,
 ) -> Result<serde_json::Value> {
+    let url = format!("{}/v1/messages", access.base_url);
     let mut last_err = anyhow!("No attempts made");
 
     for attempt in 0..3 {
@@ -364,10 +416,9 @@ async fn call_claude_with_retry(
         }
 
         let result = client
-            .post(ANTHROPIC_API)
-            .header("x-api-key", api_key)
+            .post(&url)
+            .header(access.auth_name, access.auth_value.as_str())
             .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", "prompt-caching-2024-07-31")
             .json(body)
             .send()
             .await;
@@ -438,6 +489,29 @@ pub async fn test_api_key(service: &str, client: &reqwest::Client) -> Result<()>
                 Err(anyhow!("Clé API Vapi invalide"))
             } else {
                 Ok(())
+            }
+        }
+        "alfredia" => {
+            let token = keychain::get_secret("alfredia_token")?
+                .filter(|t| !t.is_empty())
+                .ok_or_else(|| anyhow!("Aucun abonnement AlfredIA configuré"))?;
+
+            let resp = client
+                .post(format!("{}/v1/messages", ALFREDIA_BASE))
+                .header("authorization", format!("Bearer {token}"))
+                .header("anthropic-version", "2023-06-01")
+                .json(&json!({
+                    "model": "claude-haiku-4-5",
+                    "max_tokens": 1,
+                    "messages": [{"role": "user", "content": "Hi"}]
+                }))
+                .send()
+                .await?;
+
+            match resp.status().as_u16() {
+                401 => Err(anyhow!("Token AlfredIA invalide")),
+                402 => Err(anyhow!("Abonnement AlfredIA inactif")),
+                _ => Ok(()),
             }
         }
         _ => Err(anyhow!("Unknown service: {}", service)),

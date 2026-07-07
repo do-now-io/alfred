@@ -10,8 +10,6 @@ use std::path::{Path, PathBuf};
 use tauri::Emitter;
 use ts_rs::TS;
 
-use crate::keychain;
-
 /// Cap on agentic rounds, to bound latency/cost.
 const MAX_TOOL_ITERATIONS: usize = 6;
 const SEARCH_RESULTS: usize = 6;
@@ -210,11 +208,10 @@ pub async fn answer_question(
     question: String,
     history: Vec<ChatMessage>,
     vault_root: Option<PathBuf>,
+    db: &sqlx::SqlitePool,
     app: &tauri::AppHandle,
 ) -> Result<ChatResponse> {
-    let api_key = keychain::get_secret("claude_api_key")?
-        .filter(|k| !k.is_empty())
-        .ok_or_else(|| anyhow!("Clé API Claude non configurée. Ajoutez-la dans Réglages → IA."))?;
+    let access = super::resolve_access(db).await?;
 
     let root = vault_root
         .ok_or_else(|| anyhow!("Aucun coffre de notes configuré. Choisissez-en un dans Réglages → Notes."))?;
@@ -244,7 +241,7 @@ pub async fn answer_question(
             "messages": messages,
         });
 
-        let resp = super::call_claude_with_retry(&client, &api_key, &body).await?;
+        let resp = super::call_claude_with_retry(&client, &access, &body).await?;
 
         let content = resp["content"].as_array().cloned().unwrap_or_default();
         let stop_reason = resp["stop_reason"].as_str().unwrap_or("");
@@ -325,7 +322,7 @@ pub async fn answer_question(
         "system": CHAT_SYSTEM,
         "messages": messages,
     });
-    let resp = super::call_claude_with_retry(&client, &api_key, &body).await?;
+    let resp = super::call_claude_with_retry(&client, &access, &body).await?;
     let content = resp["content"].as_array().cloned().unwrap_or_default();
     let answer = extract_text(&content);
     Ok(ChatResponse {

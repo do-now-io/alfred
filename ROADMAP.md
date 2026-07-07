@@ -25,7 +25,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | **Stripe** : produit AlfredIA 20 €/mois (+ annuel), sans essai ; Checkout ; webhook (émission/révocation token) | UC |
 | [x] | **Souscription loopback** : `/subscribe` + `/subscribe/complete` (nonce/port → token) | UC |
 | [x] | **PostgreSQL** (Coolify) : tables `tokens` + `metrics` ; endpoint `POST /metrics` | UC |
-| [ ] | **`POST /feedback`** → stockage objet S3-compat (images) + **SMTP** (email équipe) | |
+| [~] | **`POST /feedback`** → tout en **Postgres** (texte + images BYTEA, consultation SQL ; email/S3 hors v1) | UC |
 | [ ] | **Secrets** : variables d'env Coolify (clé Anthropic + clés Stripe, chiffrées) | |
 
 ## Phase B — Desktop, moteur

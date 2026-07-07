@@ -43,7 +43,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [ ] | Notes : frontmatter **`project` + `participants`** ; structure `alfred-raw`/`alfred-intelligence` ; regroupement par projet ; **plus de `.claude`/skills** dans le vault | |
 | [ ] | **Brief quotidien** (`generate/get_daily_brief`) | |
 | [ ] | **Chat** : historique multi-conversations + liste (persistance SQLite) | |
-| [ ] | **Metrics** : `install_id` anonyme + envoi des événements | |
+| [~] | **Metrics** : `install_id` anonyme + envoi des événements | UC |
 
 ## Phase C — Desktop, UX & écrans
 
@@ -54,7 +54,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [ ] | Déclenchement via **logo** (hover micro) + **page de guidage** d'enregistrement | |
 | [ ] | **Nav** : retirer Réunions / Calendrier / Actions IA + barre de recherche ; ajouter **Feedback** | |
 | [ ] | **Onboarding** refonte (2 slides, détection vault + scaffolding dossiers, choix accès IA, test micro) | |
-| [ ] | **Settings** refonte (accès IA, Whisper ici, retirer Vapi/Google/Places/calendrier/ingest CLI ; défauts `alfred-*`) | |
+| [~] | **Settings** refonte (accès IA ✓, Whisper ici, retirer Vapi/Google/Places/calendrier/ingest CLI ; défauts `alfred-*`) | UC |
 | [ ] | **Onglet Feedback** (formulaire + `submit_feedback`) | |
 
 ## Phase D — Nettoyage (retrait hors-v1)

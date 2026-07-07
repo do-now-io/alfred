@@ -196,6 +196,133 @@ function SecretInput({
   );
 }
 
+// ─── AI access section (personal key / AlfredIA subscription) ──────────────────
+// Two modes (spec/05, spec/15): "byo" = user's own Anthropic key, "alfredia" =
+// our subscription proxy. Subscribing opens Stripe Checkout in the browser; the
+// token comes back via loopback (subscribe_alfredia) — zero copy-paste.
+
+function AiAccessSection() {
+  const [mode, setMode] = useState<string>("byo");
+  const [subStatus, setSubStatus] = useState<"unknown" | "none" | "active" | "error">("unknown");
+  const [subscribing, setSubscribing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refreshSub = useCallback(() => {
+    invoke<string | null>("get_secret", { account: "alfredia_token" }).then((t) => {
+      if (!t) {
+        setSubStatus("none");
+        return;
+      }
+      invoke("test_api_key", { service: "alfredia" })
+        .then(() => setSubStatus("active"))
+        .catch(() => setSubStatus("error"));
+    });
+  }, []);
+
+  useEffect(() => {
+    invoke<string | null>("get_config", { key: "ai_mode" }).then((v) => v && setMode(v));
+    refreshSub();
+    let unsub: (() => void) | undefined;
+    listen("alfredia-subscribed", () => {
+      setSubscribing(false);
+      setMode("alfredia");
+      refreshSub();
+    }).then((fn) => (unsub = fn));
+    return () => unsub?.();
+  }, [refreshSub]);
+
+  const changeMode = async (m: string) => {
+    setMode(m);
+    await invoke("set_config", { key: "ai_mode", value: m });
+  };
+
+  const handleSubscribe = async (plan: "monthly" | "yearly") => {
+    setError(null);
+    setSubscribing(true);
+    try {
+      await invoke("subscribe_alfredia", { plan });
+      // Success path also handled by the "alfredia-subscribed" event.
+      setSubscribing(false);
+      refreshSub();
+    } catch (e) {
+      setError(String(e));
+      setSubscribing(false);
+    }
+  };
+
+  const radio = (value: string, label: string) => (
+    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, color: "var(--text-primary)", cursor: "pointer" }}>
+      <input type="radio" name="ai_mode" checked={mode === value} onChange={() => changeMode(value)} />
+      {label}
+    </label>
+  );
+
+  return (
+    <>
+      <div style={{ display: "flex", gap: 20, marginBottom: 14 }}>
+        {radio("byo", "Ma clé Claude")}
+        {radio("alfredia", "Abonnement AlfredIA")}
+      </div>
+
+      {mode === "byo" && (
+        <SettingRow label="Clé API Claude">
+          <SecretInput
+            account="claude_api_key"
+            label="sk-ant-..."
+            onTest={() => invoke("test_api_key", { service: "claude" })}
+          />
+        </SettingRow>
+      )}
+
+      {mode === "alfredia" && (
+        <SettingRow label="Abonnement">
+          {subStatus === "active" ? (
+            <span style={{ fontSize: 13, color: "#34C759" }}>✓ Actif</span>
+          ) : (
+            <>
+              {subStatus === "error" && (
+                <span style={{ fontSize: 12, color: "var(--danger)" }}>Abonnement inactif</span>
+              )}
+              <button
+                onClick={() => handleSubscribe("monthly")}
+                disabled={subscribing}
+                style={{
+                  background: "var(--accent)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "5px 12px",
+                  cursor: subscribing ? "not-allowed" : "pointer",
+                  fontSize: 13,
+                }}
+              >
+                {subscribing ? "En attente du paiement…" : "S'abonner — 20 €/mois"}
+              </button>
+              {!subscribing && (
+                <button
+                  onClick={() => handleSubscribe("yearly")}
+                  style={{
+                    background: "transparent",
+                    color: "var(--accent)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    padding: "5px 12px",
+                    cursor: "pointer",
+                    fontSize: 13,
+                  }}
+                >
+                  Annuel
+                </button>
+              )}
+            </>
+          )}
+        </SettingRow>
+      )}
+      {error && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 4 }}>{error}</div>}
+    </>
+  );
+}
+
 // ─── Account section (Google sign-in) ──────────────────────────────────────────
 // Credentials are shipped with the app, so connecting is a single click — no
 // client id/secret to paste. Microsoft is planned for a later phase.
@@ -336,14 +463,11 @@ export default function Settings() {
         Paramètres
       </h1>
 
+      <Section title="Accès IA">
+        <AiAccessSection />
+      </Section>
+
       <Section title="APIs">
-        <SettingRow label="Clé API Claude">
-          <SecretInput
-            account="claude_api_key"
-            label="sk-ant-..."
-            onTest={() => invoke("test_api_key", { service: "claude" })}
-          />
-        </SettingRow>
         <SettingRow label="Clé API Vapi">
           <SecretInput
             account="vapi_api_key"

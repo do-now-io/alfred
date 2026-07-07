@@ -16,6 +16,8 @@ pub struct AiAccess {
     base_url: &'static str,
     auth_name: &'static str,
     auth_value: String,
+    /// "byo" (personal key) or "alfredia" (proxy) — for metrics.
+    mode: &'static str,
 }
 
 /// Pick the AI access mode from config (`ai_mode` = "alfredia" | "byo"), falling
@@ -45,11 +47,13 @@ pub async fn resolve_access(db: &SqlitePool) -> Result<AiAccess> {
         base_url: ALFREDIA_BASE,
         auth_name: "authorization",
         auth_value: format!("Bearer {token}"),
+        mode: "alfredia",
     };
     let x_api_key = |key: String| AiAccess {
         base_url: ANTHROPIC_BASE,
         auth_name: "x-api-key",
         auth_value: key,
+        mode: "byo",
     };
 
     match mode.as_deref() {
@@ -428,6 +432,14 @@ async fn call_claude_with_retry(
                 let status = resp.status();
                 let json = resp.json::<serde_json::Value>().await?;
                 if status.is_success() {
+                    // AlfredIA requests are counted server-side by the proxy;
+                    // only personal-key usage is reported from the app.
+                    if access.mode == "byo" {
+                        crate::metrics::send(
+                            "ai_request",
+                            serde_json::json!({ "kind": "messages", "ai_mode": "byo" }),
+                        );
+                    }
                     return Ok(json);
                 }
                 // Don't retry 4xx (except 429)

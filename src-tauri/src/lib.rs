@@ -5,6 +5,7 @@ pub mod calendar;
 pub mod db;
 pub mod ingest;
 pub mod keychain;
+pub mod metrics;
 pub mod notes;
 pub mod phone_calls;
 pub mod state;
@@ -120,7 +121,7 @@ async fn stop_recording(
         .map_err(|e| e.to_string())?;
 
     let vault_path = state.vault_path.lock().unwrap().clone();
-    audio::stop_recording(
+    let recording_id = audio::stop_recording(
         &data_dir,
         state.resource_dir.clone(),
         vault_path,
@@ -132,7 +133,20 @@ async fn stop_recording(
         app,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    let source: Option<String> = sqlx::query_scalar("SELECT source FROM recordings WHERE id = ?")
+        .bind(&recording_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
+    metrics::send(
+        "recording_completed",
+        serde_json::json!({ "source": source.unwrap_or_else(|| "mic_only".into()) }),
+    );
+
+    Ok(recording_id)
 }
 
 #[tauri::command]
@@ -737,6 +751,11 @@ pub fn run() {
             });
             eprintln!("[setup] vault_path = {:?}", vault_path);
 
+            let http_client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .expect("Cannot build HTTP client");
+
             let state = AppState {
                 db: db.clone(),
                 recording_handle: Arc::new(Mutex::new(None)),
@@ -744,15 +763,21 @@ pub fn run() {
                 recording_stop_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 transcription_tx,
                 oauth_port: Arc::new(Mutex::new(None)),
-                http_client: reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(30))
-                    .build()
-                    .expect("Cannot build HTTP client"),
+                http_client: http_client.clone(),
                 resource_dir,
                 vault_path: Arc::new(StdMutex::new(vault_path.clone())),
             };
 
             app.manage(state);
+
+            // Anonymous usage metrics (spec/15): install_id + install_created/app_launched.
+            {
+                let db_metrics = db.clone();
+                let app_version = app.package_info().version.to_string();
+                tauri::async_runtime::spawn(async move {
+                    metrics::init(&db_metrics, http_client, &app_version).await;
+                });
+            }
 
             // Migrate old SQLite notes to vault (if vault configured)
             if let Some(ref vp) = vault_path {

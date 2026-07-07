@@ -2,14 +2,22 @@ use anyhow::{anyhow, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hound::{WavSpec, WavWriter};
 use sqlx::SqlitePool;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
 use tauri::Emitter;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::transcription::{TranscriptionJob, TranscriptionSender};
+
+#[cfg(target_os = "windows")]
+pub mod wasapi_loopback;
+
+/// Common rate for `mixed` output — Whisper's native rate (see spec/04).
+const MIX_SAMPLE_RATE: u32 = 16_000;
+
+type WriterHandle = Arc<StdMutex<Option<WavWriter<std::io::BufWriter<std::fs::File>>>>>;
 
 pub async fn start_recording(
     source: &str,
@@ -21,6 +29,14 @@ pub async fn start_recording(
     stop_flag: Arc<AtomicBool>,
     transcription_tx: TranscriptionSender,
 ) -> Result<()> {
+    // System audio is Windows-only for now (macOS ScreenCaptureKit helper: later).
+    #[cfg(not(target_os = "windows"))]
+    if source != "mic_only" {
+        return Err(anyhow!(
+            "L'audio système n'est pas encore disponible sur macOS — choisis « Microphone uniquement » dans les Réglages."
+        ));
+    }
+
     // Reset stop flag
     stop_flag.store(false, Ordering::SeqCst);
 
@@ -43,18 +59,24 @@ pub async fn start_recording(
     let app = app_handle.clone();
     let file_path_clone = file_path.clone();
     let stop_flag_clone = stop_flag.clone();
+    let source_owned = source.to_string();
 
-    // spawn_blocking runs the synchronous cpal capture off the async executor
+    // spawn_blocking runs the synchronous capture off the async executor
     let handle = tauri::async_runtime::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
-            record_audio(file_path_clone, stop_flag_clone, app.clone())
+            run_capture(&source_owned, file_path_clone, stop_flag_clone)
         })
         .await;
 
         match result {
-            Ok(Ok(())) => {}
+            Ok(Ok(())) => {
+                let _ = app.emit(
+                    "recording-status-changed",
+                    serde_json::json!({ "status": "processing", "duration_seconds": 0 }),
+                );
+            }
             Ok(Err(e)) => eprintln!("Recording error: {}", e),
-            Err(e)     => eprintln!("Recording task panicked: {:?}", e),
+            Err(e) => eprintln!("Recording task panicked: {:?}", e),
         }
     });
 
@@ -68,25 +90,102 @@ pub async fn start_recording(
     Ok(())
 }
 
-fn record_audio(
-    file_path: PathBuf,
-    stop_flag: Arc<AtomicBool>,
-    app_handle: tauri::AppHandle,
-) -> Result<()> {
+/// Blocking dispatch by recording source. Produces the final WAV at `final_path`.
+fn run_capture(source: &str, final_path: PathBuf, stop_flag: Arc<AtomicBool>) -> Result<()> {
+    match source {
+        "system_only" => {
+            #[cfg(target_os = "windows")]
+            {
+                wasapi_loopback::record_system_audio(final_path, stop_flag)
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                Err(anyhow!("Audio système non disponible sur cette plateforme"))
+            }
+        }
+        "mixed" => {
+            #[cfg(target_os = "windows")]
+            {
+                record_mixed(final_path, stop_flag)
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                Err(anyhow!("Audio système non disponible sur cette plateforme"))
+            }
+        }
+        // "mic_only" and anything unknown: microphone.
+        _ => record_microphone(final_path, stop_flag),
+    }
+}
+
+/// Windows `mixed`: mic and system are captured to two temp WAVs in parallel,
+/// then mixed into `final_path` at stop. Offline mixing avoids realtime
+/// clock-sync issues between the two streams. If one capture fails, the other
+/// is salvaged as-is.
+#[cfg(target_os = "windows")]
+fn record_mixed(final_path: PathBuf, stop_flag: Arc<AtomicBool>) -> Result<()> {
+    let mic_path = final_path.with_extension("mic.wav");
+    let sys_path = final_path.with_extension("sys.wav");
+
+    let sys_flag = stop_flag.clone();
+    let sys_path_thread = sys_path.clone();
+    let sys_thread = std::thread::spawn(move || {
+        wasapi_loopback::record_system_audio(sys_path_thread, sys_flag)
+    });
+
+    let mic_result = record_microphone(mic_path.clone(), stop_flag);
+    let sys_result = sys_thread
+        .join()
+        .map_err(|_| anyhow!("System capture thread panicked"))?;
+
+    let outcome = match (&mic_result, &sys_result) {
+        (Ok(()), Ok(())) => {
+            mix_wavs(&mic_path, &sys_path, &final_path)?;
+            Ok(())
+        }
+        (Ok(()), Err(e)) => {
+            eprintln!("[audio/mixed] system capture failed ({}), keeping mic only", e);
+            std::fs::rename(&mic_path, &final_path)?;
+            Ok(())
+        }
+        (Err(e), Ok(())) => {
+            eprintln!("[audio/mixed] mic capture failed ({}), keeping system only", e);
+            std::fs::rename(&sys_path, &final_path)?;
+            Ok(())
+        }
+        (Err(e_mic), Err(e_sys)) => Err(anyhow!("mic: {} / system: {}", e_mic, e_sys)),
+    };
+
+    let _ = std::fs::remove_file(&mic_path);
+    let _ = std::fs::remove_file(&sys_path);
+    outcome
+}
+
+/// Capture the default input device into a mono PCM16 WAV at the device's
+/// native rate. Handles f32 / i16 / u16 devices (some WASAPI inputs are i16 —
+/// the old f32-only callback failed at runtime on those).
+fn record_microphone(file_path: PathBuf, stop_flag: Arc<AtomicBool>) -> Result<()> {
     let host = cpal::default_host();
     let device = host
         .default_input_device()
         .ok_or_else(|| anyhow!("No input device found"))?;
 
     // Use the device's native config — avoids "sample rate out of range" panic
-    let config = device.default_input_config()
+    let config = device
+        .default_input_config()
         .map_err(|e| anyhow!("Cannot get input config: {}", e))?;
 
     let sample_rate = config.sample_rate().0;
-    let channels   = config.channels() as usize;
+    let channels = config.channels() as usize;
+    let sample_format = config.sample_format();
 
-    eprintln!("[audio] device={:?} sample_rate={} channels={}",
-        device.name().unwrap_or_default(), sample_rate, channels);
+    eprintln!(
+        "[audio] device={:?} sample_rate={} channels={} format={:?}",
+        device.name().unwrap_or_default(),
+        sample_rate,
+        channels,
+        sample_format
+    );
 
     // Write WAV at the native sample rate; transcription module resamples to 16 kHz
     let spec = WavSpec {
@@ -96,38 +195,50 @@ fn record_audio(
         sample_format: hound::SampleFormat::Int,
     };
 
-    let writer = Arc::new(StdMutex::new(Some(
+    let writer: WriterHandle = Arc::new(StdMutex::new(Some(
         WavWriter::create(&file_path, spec).map_err(|e| anyhow!("WavWriter: {}", e))?,
     )));
-    let writer_clone = writer.clone();
-    let stop_clone   = stop_flag.clone();
 
     let err_fn = |err| eprintln!("[audio] stream error: {}", err);
+    let stream_config: cpal::StreamConfig = config.into();
 
-    let stream = device.build_input_stream(
-        &config.into(),
-        move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            if stop_clone.load(Ordering::Relaxed) {
-                return;
-            }
-            let mut guard = writer_clone.lock().unwrap();
-            if let Some(ref mut w) = *guard {
-                // Mix down to mono
-                let mono = if channels == 1 {
-                    data.iter().copied().collect::<Vec<_>>()
-                } else {
-                    data.chunks(channels)
-                        .map(|ch| ch.iter().sum::<f32>() / channels as f32)
-                        .collect()
-                };
-                for s in mono {
-                    let _ = w.write_sample((s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16);
-                }
-            }
-        },
-        err_fn,
-        None,
-    ).map_err(|e| anyhow!("build_input_stream: {}", e))?;
+    let stream = match sample_format {
+        cpal::SampleFormat::F32 => {
+            let (w, s) = (writer.clone(), stop_flag.clone());
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    write_frames(&w, &s, channels, data.iter().copied());
+                },
+                err_fn,
+                None,
+            )
+        }
+        cpal::SampleFormat::I16 => {
+            let (w, s) = (writer.clone(), stop_flag.clone());
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                    write_frames(&w, &s, channels, data.iter().map(|v| *v as f32 / i16::MAX as f32));
+                },
+                err_fn,
+                None,
+            )
+        }
+        cpal::SampleFormat::U16 => {
+            let (w, s) = (writer.clone(), stop_flag.clone());
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[u16], _: &cpal::InputCallbackInfo| {
+                    write_frames(&w, &s, channels, data.iter().map(|v| (*v as f32 / u16::MAX as f32) * 2.0 - 1.0));
+                },
+                err_fn,
+                None,
+            )
+        }
+        other => return Err(anyhow!("Unsupported input sample format: {:?}", other)),
+    }
+    .map_err(|e| anyhow!("build_input_stream: {}", e))?;
 
     stream.play().map_err(|e| anyhow!("stream.play: {}", e))?;
     eprintln!("[audio] recording started");
@@ -146,12 +257,100 @@ fn record_audio(
     }
 
     eprintln!("[audio] WAV written to {:?}", file_path);
+    Ok(())
+}
 
-    app_handle.emit("recording-status-changed", serde_json::json!({
-        "status": "processing",
-        "duration_seconds": 0
-    }))?;
+/// Downmix interleaved f32 frames to mono and append them as PCM16.
+fn write_frames(
+    writer: &WriterHandle,
+    stop_flag: &Arc<AtomicBool>,
+    channels: usize,
+    samples: impl Iterator<Item = f32>,
+) {
+    if stop_flag.load(Ordering::Relaxed) {
+        return;
+    }
+    let data: Vec<f32> = samples.collect();
+    let mut guard = writer.lock().unwrap();
+    if let Some(ref mut w) = *guard {
+        let mono: Vec<f32> = if channels <= 1 {
+            data
+        } else {
+            data.chunks(channels)
+                .map(|ch| ch.iter().sum::<f32>() / channels as f32)
+                .collect()
+        };
+        for s in mono {
+            let _ = w.write_sample((s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16);
+        }
+    }
+}
 
+// ─── Offline mixing (Windows `mixed` mode) ─────────────────────────────────────
+
+/// Read a mono WAV into f32 samples (+ its sample rate).
+#[cfg(target_os = "windows")]
+fn read_wav_mono_f32(path: &Path) -> Result<(u32, Vec<f32>)> {
+    let mut reader = hound::WavReader::open(path).map_err(|e| anyhow!("open {:?}: {}", path, e))?;
+    let spec = reader.spec();
+    let samples: Vec<f32> = match spec.sample_format {
+        hound::SampleFormat::Int => reader
+            .samples::<i16>()
+            .filter_map(|s| s.ok())
+            .map(|s| s as f32 / i16::MAX as f32)
+            .collect(),
+        hound::SampleFormat::Float => reader.samples::<f32>().filter_map(|s| s.ok()).collect(),
+    };
+    Ok((spec.sample_rate, samples))
+}
+
+/// Linear-interpolation resampler — plenty for voice mixing (Whisper eats 16 kHz anyway).
+#[cfg(target_os = "windows")]
+fn resample_linear(input: &[f32], from: u32, to: u32) -> Vec<f32> {
+    if from == to || input.is_empty() {
+        return input.to_vec();
+    }
+    let ratio = from as f64 / to as f64;
+    let out_len = (input.len() as f64 / ratio).round() as usize;
+    (0..out_len)
+        .map(|i| {
+            let pos = i as f64 * ratio;
+            let idx = pos as usize;
+            let frac = (pos - idx as f64) as f32;
+            let a = input[idx.min(input.len() - 1)];
+            let b = input[(idx + 1).min(input.len() - 1)];
+            a + (b - a) * frac
+        })
+        .collect()
+}
+
+/// Sum mic + system into one mono PCM16 WAV at `MIX_SAMPLE_RATE`.
+#[cfg(target_os = "windows")]
+fn mix_wavs(mic: &Path, sys: &Path, out: &Path) -> Result<()> {
+    let (mic_rate, mic_samples) = read_wav_mono_f32(mic)?;
+    let (sys_rate, sys_samples) = read_wav_mono_f32(sys)?;
+
+    let mic16 = resample_linear(&mic_samples, mic_rate, MIX_SAMPLE_RATE);
+    let sys16 = resample_linear(&sys_samples, sys_rate, MIX_SAMPLE_RATE);
+
+    let spec = WavSpec {
+        channels: 1,
+        sample_rate: MIX_SAMPLE_RATE,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = WavWriter::create(out, spec).map_err(|e| anyhow!("WavWriter mix: {}", e))?;
+
+    let len = mic16.len().max(sys16.len());
+    for i in 0..len {
+        let m = mic16.get(i).copied().unwrap_or(0.0);
+        let s = sys16.get(i).copied().unwrap_or(0.0);
+        let mixed = (m + s).clamp(-1.0, 1.0);
+        let _ = writer.write_sample((mixed * i16::MAX as f32) as i16);
+    }
+    writer.finalize().map_err(|e| anyhow!("mix finalize: {}", e))?;
+
+    eprintln!("[audio/mixed] mixed WAV written to {:?}", out);
     Ok(())
 }
 
@@ -170,7 +369,7 @@ pub async fn stop_recording(
         .lock().unwrap().take()
         .ok_or_else(|| anyhow!("No active recording"))?;
 
-    // Signal the recording thread to stop
+    // Signal the recording thread(s) to stop
     stop_flag.store(true, Ordering::SeqCst);
 
     // Wait for the recording task to finish writing the WAV

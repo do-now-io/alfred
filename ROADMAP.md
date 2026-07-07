@@ -32,8 +32,8 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 
 | | Tâche | Qui |
 |---|---|---|
-| [ ] | ⚠️ **Audio système** : Windows WASAPI loopback + macOS helper Swift (ScreenCaptureKit) | |
-| [ ] | Durcir la **capture micro** (gérer `i16`/`f32` selon le device) | |
+| [~] | ⚠️ **Audio système** : Windows ✅ (WASAPI loopback, `system_only` + `mixed`, testé) — reste macOS helper Swift (Tanguy) | UC/T |
+| [x] | Durcir la **capture micro** (gérer `i16`/`f32`/`u16` selon le device) | UC |
 | [ ] | **Feedback live** d'enregistrement : volume (RMS) + timer dans `recording-status-changed` | |
 | [ ] | ⚠️ **Whisper** : activer la feature par défaut + **embarquer le modèle `small`** + packaging Windows | |
 | [ ] | Transcription : **stocker la langue** détectée (bug) ; écrire dans `alfred-raw/` avec frontmatter (`for_recording`) | |

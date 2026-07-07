@@ -11,13 +11,14 @@ transcription au `stop`.
 
 ## Sources
 
-| Source | Statut |
-|---|---|
-| `mic_only` | ✅ fait |
-| `system_only` (audio système) | 🚧 à coder |
-| `mixed` (micro + système) | 🚧 à coder |
+| Source | Windows | macOS |
+|---|---|---|
+| `mic_only` | ✅ fait | ✅ fait |
+| `system_only` (audio système) | ✅ fait (WASAPI loopback) | 🚧 helper Swift à coder |
+| `mixed` (micro + système) | ✅ fait (mix au stop) | 🚧 helper Swift à coder |
 
-(La table `recordings.source` accepte déjà les trois valeurs.)
+(La table `recordings.source` accepte les trois valeurs. Sur macOS,
+`start_recording` refuse `system_only`/`mixed` avec un message clair.)
 
 ## Capture micro — état réel (cpal)
 
@@ -27,18 +28,30 @@ transcription au `stop`.
 - Le resampling à **16 kHz** (requis par Whisper) est fait **côté transcription**
   (spec 04), pas ici.
 - Fichier : `$APP_DATA_DIR/recordings/{recording_id}.wav`.
-- ⚠️ **Bug connu :** le callback suppose des échantillons `f32` ; certains
-  devices WASAPI (Windows) fournissent du `i16` → échec au runtime. À durcir en
-  gérant le `SampleFormat` réel du device.
+- ✅ Le callback gère les formats **`f32` / `i16` / `u16`** selon le device
+  (l'ancien bug « f32 supposé » sur certains devices WASAPI est corrigé).
 
-## Audio système — À CONSTRUIRE
+## Audio système
 
-Rien n'est implémenté aujourd'hui (seul le micro est capté).
+### Windows — ✅ fait (crate `wasapi`)
 
-- **Windows :** WASAPI **loopback** (via `cpal` en mode loopback, ou la crate `wasapi`).
-- **macOS :** ScreenCaptureKit (≥ 12.3) via un **helper Swift** séparé (approche
-  retenue — la plus robuste).
-- `mixed` = micro + système mixés en un flux mono.
+- **Loopback** sur le **device de rendu par défaut** (`Direction::Render` ouvert
+  en capture), mode partagé événementiel, **autoconvert → 16 kHz mono f32**
+  (AUTOCONVERTPCM + SRC) → WAV **PCM16 16 kHz mono**.
+- Le loopback ne produit des paquets que si quelque chose joue : les timeouts
+  d'attente (100 ms) sont **comblés par du silence** pour rester aligné sur
+  l'horloge murale.
+- **`mixed`** : micro (`{id}.mic.wav`, format natif) + système (`{id}.sys.wav`)
+  capturés en parallèle, puis **mixés au stop** (resample linéaire → 16 kHz,
+  somme clampée) → `{id}.wav`. Si une des deux captures échoue, l'autre est
+  conservée telle quelle. Pas de mixage temps réel (pas de course d'horloges).
+- Module : `src-tauri/src/audio/wasapi_loopback.rs` (+ test d'intégration réel
+  `captures_system_audio_wav`, 2 s de capture).
+
+### macOS — 🚧 à construire
+
+- ScreenCaptureKit (≥ 12.3) via un **helper Swift** séparé (approche retenue —
+  la plus robuste). En attendant, `system_only`/`mixed` renvoient une erreur.
 - Permissions : voir spec 12 (capture d'écran sur macOS ; rien de spécial Windows).
 
 ## Segmentation

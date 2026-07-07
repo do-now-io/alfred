@@ -41,6 +41,10 @@ base64 = "0.22"
 dirs = "5"
 urlencoding = "2"
 url = "2"
+# WASAPI loopback (system audio capture) — Windows only. See spec/03.
+[target.'cfg(target_os = "windows")'.dependencies]
+wasapi = "0.19"
+
 # Whisper: Metal acceleration is macOS-only. On other platforms whisper-rs is
 # pulled in without Metal (CPU backend). Enable transcription with `--features whisper`.
 [target.'cfg(target_os = "macos")'.dependencies]

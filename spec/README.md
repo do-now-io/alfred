@@ -60,7 +60,7 @@ par nous).
 | 12  | Permissions                 | 🚧 | **Spec faite.** Cross-platform ; micro + capture système ; retirer apple-events/calendrier ; signature macOS/Windows |
 | 13  | Onboarding                  | 🚧 | **Spec faite.** Intro (2 slides) ; détection/intégration vault + création dossiers ; choix clé perso / AlfredIA ; test micro ; Whisper → Paramètres |
 | 14  | Feedback                    | 🚧 | **Spec faite.** Onglet texte + images + email de contact ; catégories bug/feature/praise ; stockage Postgres via backend (consultation SQL) |
-| 15  | Backend AlfredIA + Metrics  | 🚧 | **Spec faite**, en construction. Rust/axum, **Coolify** (self-hosted), `api.alfred.do-now.io`, **Postgres**, Stripe 20€/mois (+ annuel) |
+| 15  | Backend AlfredIA + Metrics  | ✅ | **Construit + validé en prod.** Rust/axum, **Coolify** (self-hosted), `api.alfred.do-now.io`, **Postgres**, Stripe 20€/mois (+ annuel) ; proxy, loopback, metrics, feedback |
 | —   | Ingest « run Claude » (CLI) | ❌ | **Supprimé** — remplacé par l'ingestion API (spec 05) |
 
 ## Deux modes d'accès à l'IA

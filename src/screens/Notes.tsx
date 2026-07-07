@@ -5,8 +5,7 @@ import { useNotesStore, findNodeByRef } from "../store/notesStore";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
 import FileTree from "../components/notes/FileTree";
 import PropertiesPanel from "../components/notes/PropertiesPanel";
-import NotePreview, { type NotePreviewHandle } from "../components/notes/NotePreview";
-import NoteEditor from "../components/notes/NoteEditor";
+import NoteEditor, { type NoteEditorHandle } from "../components/notes/NoteEditor";
 import NoteFooter from "../components/notes/NoteFooter";
 import NoteBreadcrumb from "../components/notes/NoteBreadcrumb";
 
@@ -28,10 +27,9 @@ export default function Notes() {
     fetchVaultPath, setVaultPath, pickVaultFolder,
   } = useNotesStore();
 
-  const [editMode, setEditMode] = useState(false);
   const [localMetadata, setLocalMetadata] = useState<NoteMetadata | null>(null);
   const [localBody, setLocalBody] = useState("");
-  const previewRef = useRef<NotePreviewHandle>(null);
+  const editorRef = useRef<NoteEditorHandle>(null);
   const [allCollapsed, setAllCollapsed] = useState(false);
 
   useEffect(() => {
@@ -49,13 +47,12 @@ export default function Notes() {
     if (selectedFile) {
       setLocalMetadata(selectedFile.metadata);
       setLocalBody(selectedFile.body);
-      setEditMode(false);
       setAllCollapsed(false);
     }
   }, [selectedFile?.path]);
 
   const handleToggleCollapseAll = useCallback(() => {
-    setAllCollapsed(previewRef.current?.toggleAll() ?? false);
+    setAllCollapsed(editorRef.current?.toggleAll() ?? false);
   }, []);
 
   const debouncedSave = useDebounce(
@@ -79,25 +76,6 @@ export default function Notes() {
     const picked = await pickVaultFolder();
     if (picked) await setVaultPath(picked);
   };
-
-  const handleToggleCheckbox = useCallback((idx: number) => {
-    if (!selectedFile || !localMetadata) return;
-    let count = 0;
-    const updated = localBody.split("\n").map(line => {
-      if (/^(\s*[-*+] )\[ \]/.test(line) || /^(\s*[-*+] )\[x\]/i.test(line)) {
-        if (count === idx) {
-          count++;
-          return /\[ \]/.test(line)
-            ? line.replace("[ ]", "[x]")
-            : line.replace(/\[x\]/i, "[ ]");
-        }
-        count++;
-      }
-      return line;
-    }).join("\n");
-    setLocalBody(updated);
-    debouncedSave(selectedFile.path, localMetadata, updated);
-  }, [selectedFile, localMetadata, localBody, debouncedSave]);
 
   const handleWikilink = useCallback((ref: string) => {
     console.log(`[wikilink] Notes: handleWikilink ref="${ref}", tree ${tree ? "loaded" : "NOT loaded"}`);
@@ -175,30 +153,19 @@ export default function Notes() {
             <PropertiesPanel metadata={localMetadata} onChange={handleMetadataChange} />
 
             <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-              {editMode ? (
-                <NoteEditor
-                  body={localBody}
-                  noteKey={selectedFile.path}
-                  onChange={handleBodyChange}
-                />
-              ) : (
-                <div style={{ flex: 1, overflowY: "auto" }}>
-                  <NotePreview
-                    ref={previewRef}
-                    body={localBody}
-                    onWikilink={handleWikilink}
-                    onToggleCheckbox={handleToggleCheckbox}
-                  />
-                </div>
-              )}
+              <NoteEditor
+                ref={editorRef}
+                body={localBody}
+                noteKey={selectedFile.path}
+                onChange={handleBodyChange}
+                onWikilink={handleWikilink}
+              />
             </div>
 
             <NoteFooter
               wordCount={selectedFile.word_count}
               charCount={selectedFile.char_count}
               propCount={selectedFile.prop_count}
-              editMode={editMode}
-              onToggleEdit={() => setEditMode(m => !m)}
               allCollapsed={allCollapsed}
               onToggleCollapseAll={handleToggleCollapseAll}
             />

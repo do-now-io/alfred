@@ -2,11 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { MdCheckBox, MdFolderOff, MdUnfoldLess, MdUnfoldMore, MdEdit, MdVisibility } from "react-icons/md";
-import NotePreview, { type NotePreviewHandle } from "../components/notes/NotePreview";
-import NoteEditor from "../components/notes/NoteEditor";
+import { MdCheckBox, MdFolderOff, MdUnfoldLess, MdUnfoldMore } from "react-icons/md";
+import NoteEditor, { type NoteEditorHandle } from "../components/notes/NoteEditor";
 import { useNotesStore } from "../store/notesStore";
-import { toggleChecked, toggleImportant } from "../utils/todoTasks";
 
 const btnStyle = (active: boolean): React.CSSProperties => ({
   background: active ? "var(--active-bg)" : "none",
@@ -33,10 +31,9 @@ export default function Tasks() {
   const [loaded, setLoaded] = useState(false);
   const [missing, setMissing] = useState(false);
   const [allCollapsed, setAllCollapsed] = useState(false);
-  const [editMode, setEditMode] = useState(false);
   const metadataRef = useRef<NoteMetadata | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
-  const previewRef = useRef<NotePreviewHandle>(null);
+  const editorRef = useRef<NoteEditorHandle>(null);
 
   const relLabel = todoRel ?? DEFAULT_TODO_RELATIVE;
   const path = vaultPath && todoRel ? `${vaultPath}/${todoRel}` : null;
@@ -84,18 +81,6 @@ export default function Tasks() {
     }, 800);
   }, [path, fetchRecents]);
 
-  const handleToggleCheckbox = useCallback((idx: number) => {
-    const updated = toggleChecked(body, idx);
-    setBody(updated);
-    save(updated);
-  }, [body, save]);
-
-  const handleToggleImportant = useCallback((idx: number) => {
-    const updated = toggleImportant(body, idx);
-    setBody(updated);
-    save(updated);
-  }, [body, save]);
-
   // Open wikilinks in the Notes screen.
   const handleWikilink = useCallback(async (ref: string) => {
     const ok = await openNoteByRef(ref);
@@ -103,7 +88,7 @@ export default function Tasks() {
   }, [openNoteByRef, navigate]);
 
   const handleToggleCollapseAll = useCallback(() => {
-    setAllCollapsed(previewRef.current?.toggleAll() ?? false);
+    setAllCollapsed(editorRef.current?.toggleAll() ?? false);
   }, []);
 
   const handleBodyChange = useCallback((newBody: string) => {
@@ -122,7 +107,7 @@ export default function Tasks() {
         <MdCheckBox style={{ color: "var(--accent)", fontSize: 18 }} />
         <h1 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--text-primary)" }}>Tâches</h1>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          {showContent && !editMode && (
+          {showContent && (
             <button
               onClick={handleToggleCollapseAll}
               title={allCollapsed ? "Tout déplier" : "Tout replier"}
@@ -132,18 +117,6 @@ export default function Tasks() {
                 ? <MdUnfoldMore style={{ verticalAlign: "middle", marginRight: 4 }} />
                 : <MdUnfoldLess style={{ verticalAlign: "middle", marginRight: 4 }} />}
               {allCollapsed ? "Tout déplier" : "Tout replier"}
-            </button>
-          )}
-          {showContent && (
-            <button
-              onClick={() => setEditMode(m => !m)}
-              title={editMode ? "Mode lecture" : "Mode édition"}
-              style={btnStyle(editMode)}
-            >
-              {editMode
-                ? <MdVisibility style={{ verticalAlign: "middle", marginRight: 4 }} />
-                : <MdEdit style={{ verticalAlign: "middle", marginRight: 4 }} />}
-              {editMode ? "Lecture" : "Éditer"}
             </button>
           )}
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{relLabel}</span>
@@ -161,19 +134,14 @@ export default function Tasks() {
               {!vaultPath ? "Aucun dossier Notes configuré" : `Aucun fichier ${relLabel} dans le vault`}
             </div>
           </div>
-        ) : editMode ? (
+        ) : (
           <NoteEditor
+            ref={editorRef}
             body={body}
             noteKey={path ?? "todo"}
             onChange={handleBodyChange}
-          />
-        ) : (
-          <NotePreview
-            ref={previewRef}
-            body={body}
             onWikilink={handleWikilink}
-            onToggleCheckbox={handleToggleCheckbox}
-            onToggleImportant={handleToggleImportant}
+            importantToggles
           />
         )}
       </div>

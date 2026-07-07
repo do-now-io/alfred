@@ -1,11 +1,9 @@
-import { MdEdit, MdVisibility, MdUnfoldLess, MdUnfoldMore } from "react-icons/md";
+import { MdUnfoldLess, MdUnfoldMore } from "react-icons/md";
 
 interface Props {
   wordCount: number;
   charCount: number;
   propCount: number;
-  editMode: boolean;
-  onToggleEdit: () => void;
   allCollapsed?: boolean;
   onToggleCollapseAll?: () => void;
 }
@@ -21,7 +19,7 @@ const btnStyle = (active: boolean): React.CSSProperties => ({
 });
 
 export default function NoteFooter({
-  wordCount, charCount, propCount, editMode, onToggleEdit,
+  wordCount, charCount, propCount,
   allCollapsed = false, onToggleCollapseAll,
 }: Props) {
   return (
@@ -36,28 +34,18 @@ export default function NoteFooter({
       <span>
         {wordCount.toLocaleString()} mots · {charCount.toLocaleString()} caractères · {propCount} propriétés
       </span>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {!editMode && onToggleCollapseAll && (
-          <button
-            onClick={onToggleCollapseAll}
-            title={allCollapsed ? "Tout déplier" : "Tout replier"}
-            style={btnStyle(allCollapsed)}
-          >
-            {allCollapsed
-              ? <MdUnfoldMore style={{ verticalAlign: "middle", marginRight: 4 }} />
-              : <MdUnfoldLess style={{ verticalAlign: "middle", marginRight: 4 }} />}
-            {allCollapsed ? "Tout déplier" : "Tout replier"}
-          </button>
-        )}
+      {onToggleCollapseAll && (
         <button
-          onClick={onToggleEdit}
-          title={editMode ? "Mode lecture" : "Mode édition"}
-          style={btnStyle(editMode)}
+          onClick={onToggleCollapseAll}
+          title={allCollapsed ? "Tout déplier" : "Tout replier"}
+          style={btnStyle(allCollapsed)}
         >
-          {editMode ? <MdVisibility style={{ verticalAlign: "middle", marginRight: 4 }} /> : <MdEdit style={{ verticalAlign: "middle", marginRight: 4 }} />}
-          {editMode ? "Lecture" : "Éditer"}
+          {allCollapsed
+            ? <MdUnfoldMore style={{ verticalAlign: "middle", marginRight: 4 }} />
+            : <MdUnfoldLess style={{ verticalAlign: "middle", marginRight: 4 }} />}
+          {allCollapsed ? "Tout déplier" : "Tout replier"}
         </button>
-      </div>
+      )}
     </div>
   );
 }

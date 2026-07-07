@@ -20,13 +20,13 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 
 | | Tâche | Qui |
 |---|---|---|
-| [~] | Service Rust/axum + déploiement **AWS App Runner** (eu-west-3) + domaine `api.alfred.do-now.io` | UC |
+| [~] | Service Rust/axum + déploiement **Coolify** (Docker depuis Git) + domaine `api.alfred.do-now.io` (Traefik/Let's Encrypt) | UC |
 | [ ] | **Proxy** `POST /v1/messages` : lookup token, abo actif, allowlist modèles, forward + retry | |
 | [ ] | **Stripe** : produit AlfredIA 15 €/mois + essai 1 mois ; Checkout ; webhook (émission/révocation token) | |
 | [ ] | **Souscription loopback** : `/subscribe` + `/subscribe/complete` (nonce/port → token) | |
-| [ ] | **DynamoDB** : `tokens` + `metrics` ; endpoint `POST /metrics` | |
-| [ ] | **`POST /feedback`** → S3 (images) + **SES** (email équipe) | |
-| [ ] | **Secrets Manager** : clé Anthropic + clés Stripe | |
+| [ ] | **PostgreSQL** (Coolify) : tables `tokens` + `metrics` ; endpoint `POST /metrics` | |
+| [ ] | **`POST /feedback`** → stockage objet S3-compat (images) + **SMTP** (email équipe) | |
+| [ ] | **Secrets** : variables d'env Coolify (clé Anthropic + clés Stripe, chiffrées) | |
 
 ## Phase B — Desktop, moteur
 

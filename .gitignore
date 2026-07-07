@@ -6,10 +6,3 @@ alfred_dev.db-shm
 alfred_dev.db-wal
 src-tauri/models/*.bin
 src-tauri/.sqlx
-
-# terraform
-.terraform/
-*.tfstate
-*.tfstate.*
-terraform.tfvars
-crash.log

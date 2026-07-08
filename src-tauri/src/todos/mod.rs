@@ -1,31 +1,37 @@
-use anyhow::Result;
+//! Todos (spec/06) — the vault's `Todo.md` file IS the source of truth.
+//!
+//! The old SQLite `todos` table is gone (migration 007). All operations here
+//! read/mutate the Markdown file via `notes::todo_md`. Task identity = the
+//! normalized title (unique file-wide by the dedup rule).
+
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use std::path::{Path, PathBuf};
 use ts_rs::TS;
-use uuid::Uuid;
+
+use crate::notes::todo_md::{self, IngestTask};
 
 #[derive(Debug, Serialize, Deserialize, Clone, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct Todo {
+    /// Normalized title — the task's identity in `Todo.md` (no stored ids).
     pub id: String,
     pub title: String,
-    pub description: Option<String>,
-    pub source: String,
-    pub source_id: Option<String>,
-    pub status: String,
-    pub due_date: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub responsable: Option<String>,
+    /// YYYY-MM-DD, when present on the line (`📅`).
+    pub echeance: Option<String>,
+    /// Which `## Section` the task sits under (Prioritaire / En cours / À faire / Archivé).
+    pub section: String,
+    pub checked: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct CreateTodoInput {
     pub title: String,
-    pub description: Option<String>,
-    pub source: String,
-    pub source_id: Option<String>,
-    pub due_date: Option<String>,
+    pub responsable: Option<String>,
+    pub echeance: Option<String>,
 }
 
 /// Vault-relative path of the shared to-do list (spec/06). Configurable via
@@ -45,144 +51,110 @@ pub async fn todo_file_path(db: &SqlitePool) -> String {
         .unwrap_or_else(|| DEFAULT_TODO_FILE.to_string())
 }
 
-pub async fn get_todos(db: &SqlitePool) -> Result<Vec<Todo>> {
-    let rows = sqlx::query!(
-        r#"SELECT id as "id!", title as "title!", description, source as "source!",
-           source_id, status as "status!", due_date, created_at as "created_at!", updated_at as "updated_at!"
-           FROM todos WHERE status = 'pending'
-           ORDER BY CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, created_at ASC"#
-    )
-    .fetch_all(db)
-    .await?;
+async fn resolve_path(db: &SqlitePool, vault_root: Option<&Path>) -> Result<PathBuf> {
+    let root = vault_root.ok_or_else(|| anyhow!("Aucun dossier Notes (vault) configuré. Réglages → Notes."))?;
+    Ok(root.join(todo_file_path(db).await))
+}
 
-    Ok(rows
+async fn read_file(path: &Path) -> Option<String> {
+    tokio::fs::read_to_string(path).await.ok()
+}
+
+async fn write_file(path: &Path, content: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    tokio::fs::write(path, content).await?;
+    Ok(())
+}
+
+fn to_todo(t: todo_md::ParsedTask) -> Todo {
+    Todo {
+        id: todo_md::normalize_title(&t.titre),
+        title: t.titre,
+        responsable: t.responsable,
+        echeance: t.echeance,
+        section: t.section,
+        checked: t.checked,
+    }
+}
+
+/// Pending tasks: unchecked and not archived, in file order.
+pub async fn get_todos(db: &SqlitePool, vault_root: Option<&Path>) -> Result<Vec<Todo>> {
+    let path = resolve_path(db, vault_root).await?;
+    let Some(content) = read_file(&path).await else {
+        return Ok(vec![]); // no Todo.md yet = no tasks
+    };
+    Ok(todo_md::parse_all(&content)
         .into_iter()
-        .map(|r| Todo {
-            id: r.id,
-            title: r.title,
-            description: r.description,
-            source: r.source,
-            source_id: r.source_id,
-            status: r.status,
-            due_date: r.due_date,
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-        })
+        .filter(|t| !t.checked && t.section != "Archivé")
+        .map(to_todo)
         .collect())
 }
 
-pub async fn create_todo_internal(
-    title: &str,
-    description: Option<&str>,
-    source: &str,
-    source_id: Option<&str>,
-    due_date: Option<&str>,
-    db: &SqlitePool,
-) -> Result<Todo> {
-    // Deduplication: check (source, source_id, title_hash)
-    if let Some(sid) = source_id {
-        let title_hash = compute_title_hash(title);
-        let existing = sqlx::query_scalar!(
-            "SELECT id FROM todos WHERE source = ? AND source_id = ? AND title = ?",
-            source,
-            sid,
-            title
-        )
-        .fetch_optional(db)
-        .await?;
-
-        if let Some(Some(id)) = existing {
-            let _ = title_hash; // suppress unused warning
-            return get_todo_by_id(&id, db).await;
-        }
+/// Add a task to `## À faire` (deduped by normalized title, spec/06).
+pub async fn create_todo(input: &CreateTodoInput, db: &SqlitePool, vault_root: Option<&Path>) -> Result<Todo> {
+    let title = input.title.trim();
+    if title.is_empty() {
+        return Err(anyhow!("Le titre de la tâche est vide"));
     }
 
-    let id = Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
-
-    sqlx::query!(
-        r#"INSERT INTO todos (id, title, description, source, source_id, due_date, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)"#,
-        id,
-        title,
-        description,
-        source,
-        source_id,
-        due_date,
-        now,
-        now
-    )
-    .execute(db)
-    .await?;
-
-    get_todo_by_id(&id, db).await
-}
-
-async fn get_todo_by_id(id: &str, db: &SqlitePool) -> Result<Todo> {
-    let r = sqlx::query!(
-        r#"SELECT id as "id!", title as "title!", description, source as "source!",
-           source_id, status as "status!", due_date, created_at as "created_at!", updated_at as "updated_at!"
-           FROM todos WHERE id = ?"#,
-        id
-    )
-    .fetch_one(db)
-    .await?;
+    let root = vault_root.ok_or_else(|| anyhow!("Aucun dossier Notes (vault) configuré. Réglages → Notes."))?;
+    let rel = todo_file_path(db).await;
+    let task = IngestTask {
+        titre: title.to_string(),
+        responsable: input.responsable.clone().filter(|s| !s.trim().is_empty()),
+        echeance: input.echeance.clone().filter(|s| !s.trim().is_empty()),
+    };
+    todo_md::append_tasks(root, &rel, std::slice::from_ref(&task)).await?;
 
     Ok(Todo {
-        id: r.id,
-        title: r.title,
-        description: r.description,
-        source: r.source,
-        source_id: r.source_id,
-        status: r.status,
-        due_date: r.due_date,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
+        id: todo_md::normalize_title(title),
+        title: title.to_string(),
+        responsable: task.responsable,
+        echeance: task.echeance,
+        section: "À faire".to_string(),
+        checked: false,
     })
 }
 
-fn compute_title_hash(title: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(title.to_lowercase().trim().as_bytes());
-    hex::encode(hasher.finalize())
+/// Toggle done: check/uncheck in place (spec/06 — the line never moves).
+pub async fn set_todo_checked(id: &str, checked: bool, db: &SqlitePool, vault_root: Option<&Path>) -> Result<()> {
+    let path = resolve_path(db, vault_root).await?;
+    let content = read_file(&path).await.ok_or_else(|| anyhow!("Todo.md introuvable"))?;
+    let new_content = todo_md::set_checked(&content, id, checked)?;
+    write_file(&path, &new_content).await
 }
 
-pub async fn complete_todo(id: &str, db: &SqlitePool) -> Result<()> {
-    let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query!(
-        "UPDATE todos SET status = 'done', updated_at = ? WHERE id = ?",
-        now,
-        id
-    )
-    .execute(db)
-    .await?;
-    Ok(())
+/// Archive (ex-« ignorer ») : move the task to `## Archivé` — nothing is deleted.
+pub async fn archive_todo(id: &str, db: &SqlitePool, vault_root: Option<&Path>) -> Result<()> {
+    let path = resolve_path(db, vault_root).await?;
+    let content = read_file(&path).await.ok_or_else(|| anyhow!("Todo.md introuvable"))?;
+    let new_content = todo_md::archive_task(&content, id)?;
+    write_file(&path, &new_content).await
 }
 
-pub async fn dismiss_todo(id: &str, db: &SqlitePool) -> Result<()> {
-    let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query!(
-        "UPDATE todos SET status = 'dismissed', updated_at = ? WHERE id = ?",
-        now,
-        id
-    )
-    .execute(db)
-    .await?;
-    Ok(())
-}
+/// Rewrite a task's title / responsable / échéance in place.
+pub async fn update_todo(id: &str, input: &CreateTodoInput, db: &SqlitePool, vault_root: Option<&Path>) -> Result<Todo> {
+    let title = input.title.trim();
+    if title.is_empty() {
+        return Err(anyhow!("Le titre de la tâche est vide"));
+    }
 
-pub async fn update_todo(id: &str, input: &CreateTodoInput, db: &SqlitePool) -> Result<Todo> {
-    let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query!(
-        "UPDATE todos SET title = ?, description = ?, due_date = ?, updated_at = ? WHERE id = ?",
-        input.title,
-        input.description,
-        input.due_date,
-        now,
-        id
-    )
-    .execute(db)
-    .await?;
-    get_todo_by_id(id, db).await
+    let path = resolve_path(db, vault_root).await?;
+    let content = read_file(&path).await.ok_or_else(|| anyhow!("Todo.md introuvable"))?;
+    let task = IngestTask {
+        titre: title.to_string(),
+        responsable: input.responsable.clone().filter(|s| !s.trim().is_empty()),
+        echeance: input.echeance.clone().filter(|s| !s.trim().is_empty()),
+    };
+    let new_content = todo_md::edit_task(&content, id, &task)?;
+    write_file(&path, &new_content).await?;
+
+    // Re-read to return the task's actual state (section + checked preserved).
+    let updated = todo_md::parse_all(&new_content)
+        .into_iter()
+        .find(|t| todo_md::normalize_title(&t.titre) == todo_md::normalize_title(title))
+        .ok_or_else(|| anyhow!("Tâche modifiée mais introuvable à la relecture"))?;
+    Ok(to_todo(updated))
 }

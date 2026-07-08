@@ -245,7 +245,7 @@ async fn run_ingestion_core(
             Err(e) => eprintln!("[ingestion] failed to write compte-rendu: {}", e),
         }
 
-        // 2. Tâches → Todo.md (spec/06 target format), deduped.
+        // 2. Tâches → Todo.md (spec/06 — the todos source of truth), deduped.
         if !output.taches.is_empty() {
             let todo_rel_path = crate::todos::todo_file_path(db).await;
             let tasks: Vec<IngestTask> = output
@@ -258,7 +258,12 @@ async fn run_ingestion_core(
                 })
                 .collect();
             match crate::notes::todo_md::append_tasks(vault_root, &todo_rel_path, &tasks).await {
-                Ok(n) => eprintln!("[ingestion] {} task(s) added to {}", n, todo_rel_path),
+                Ok(n) => {
+                    eprintln!("[ingestion] {} task(s) added to {}", n, todo_rel_path);
+                    if n > 0 {
+                        let _ = app_handle.emit("todos-updated", json!({ "count": n }));
+                    }
+                }
                 Err(e) => eprintln!("[ingestion] failed to update Todo.md: {}", e),
             }
         }
@@ -266,23 +271,6 @@ async fn run_ingestion_core(
         let _ = app_handle.emit("notes-updated", json!({}));
     } else {
         eprintln!("[ingestion] vault not configured, skipping note/Todo.md writes");
-    }
-
-    // 3. Dual-write to SQLite (Tâches screen still reads this — spec/06 not done yet).
-    let source_id = recording_id.unwrap_or(note_title);
-    let mut created = 0;
-    for t in &output.taches {
-        let title = t.titre.trim();
-        if title.is_empty() {
-            continue;
-        }
-        match crate::todos::create_todo_internal(title, None, "transcription", Some(source_id), t.echeance.as_deref(), db).await {
-            Ok(_) => created += 1,
-            Err(e) => eprintln!("[ingestion] failed to create SQLite todo: {}", e),
-        }
-    }
-    if created > 0 {
-        let _ = app_handle.emit("todos-updated", json!({ "count": created }));
     }
 
     crate::metrics::send("ingestion_completed", json!({ "ai_mode": ai_mode }));
@@ -358,7 +346,7 @@ pub async fn generate_event_briefing(
 
     let keywords = extract_keywords(&event.title, event.attendees.as_deref());
 
-    let notes = match vault_root {
+    let notes = match vault_root.clone() {
         Some(root) => {
             let kw = keywords.clone();
             tokio::task::spawn_blocking(move || find_relevant_notes(&root, &kw)).await?
@@ -376,7 +364,7 @@ pub async fn generate_event_briefing(
             .join("\n\n")
     };
 
-    let todos = crate::todos::get_todos(db).await?;
+    let todos = crate::todos::get_todos(db, vault_root.as_deref()).await.unwrap_or_default();
     let todos_text = if todos.is_empty() {
         "Aucune tâche en cours.".to_string()
     } else {
@@ -386,8 +374,8 @@ pub async fn generate_event_briefing(
                 format!(
                     "- {}{}{}",
                     t.title,
-                    t.description.as_deref().map(|d| format!(" — {}", d)).unwrap_or_default(),
-                    t.due_date.as_deref().map(|d| format!(" (échéance: {})", d)).unwrap_or_default()
+                    t.responsable.as_deref().map(|r| format!(" (@{})", r)).unwrap_or_default(),
+                    t.echeance.as_deref().map(|d| format!(" (échéance: {})", d)).unwrap_or_default()
                 )
             })
             .collect::<Vec<_>>()
@@ -563,7 +551,7 @@ const DAILY_BRIEF_SYSTEM: &str = r#"Tu es Alfred, un assistant personnel. À par
 pub async fn generate_daily_brief(db: &SqlitePool, vault_root: Option<&Path>) -> Result<String> {
     let access = resolve_access(db).await?;
 
-    let todos = crate::todos::get_todos(db).await.unwrap_or_default();
+    let todos = crate::todos::get_todos(db, vault_root).await.unwrap_or_default();
     let todos_text = if todos.is_empty() {
         "Aucune tâche en attente.".to_string()
     } else {
@@ -574,7 +562,7 @@ pub async fn generate_daily_brief(db: &SqlitePool, vault_root: Option<&Path>) ->
                 format!(
                     "- {}{}",
                     t.title,
-                    t.due_date.as_deref().map(|d| format!(" (échéance {})", d)).unwrap_or_default()
+                    t.echeance.as_deref().map(|d| format!(" (échéance {})", d)).unwrap_or_default()
                 )
             })
             .collect::<Vec<_>>()

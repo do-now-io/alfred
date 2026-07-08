@@ -339,11 +339,14 @@ async fn delete_chat_conversation(
         .map_err(|e| e.to_string())
 }
 
-// ─── Todo commands ─────────────────────────────────────────────────────────────
+// ─── Todo commands (file-based — Todo.md is the source of truth, spec/06) ──────
 
 #[tauri::command]
 async fn get_todos(state: tauri::State<'_, AppState>) -> Result<Vec<todos::Todo>, String> {
-    todos::get_todos(&state.db).await.map_err(|e| e.to_string())
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    todos::get_todos(&state.db, vault_root.as_deref())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -351,34 +354,33 @@ async fn create_todo(
     input: todos::CreateTodoInput,
     state: tauri::State<'_, AppState>,
 ) -> Result<todos::Todo, String> {
-    todos::create_todo_internal(
-        &input.title,
-        input.description.as_deref(),
-        &input.source,
-        input.source_id.as_deref(),
-        input.due_date.as_deref(),
-        &state.db,
-    )
-    .await
-    .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn complete_todo(
-    id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    todos::complete_todo(&id, &state.db)
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    todos::create_todo(&input, &state.db, vault_root.as_deref())
         .await
         .map_err(|e| e.to_string())
 }
 
+/// Toggle done — checks/unchecks the line in place (spec/06).
+#[tauri::command]
+async fn complete_todo(
+    id: String,
+    checked: Option<bool>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    todos::set_todo_checked(&id, checked.unwrap_or(true), &state.db, vault_root.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Archive (ex-« ignorer ») — moves the task to `## Archivé`, never deletes.
 #[tauri::command]
 async fn dismiss_todo(
     id: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    todos::dismiss_todo(&id, &state.db)
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    todos::archive_todo(&id, &state.db, vault_root.as_deref())
         .await
         .map_err(|e| e.to_string())
 }
@@ -389,7 +391,8 @@ async fn update_todo(
     input: todos::CreateTodoInput,
     state: tauri::State<'_, AppState>,
 ) -> Result<todos::Todo, String> {
-    todos::update_todo(&id, &input, &state.db)
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    todos::update_todo(&id, &input, &state.db, vault_root.as_deref())
         .await
         .map_err(|e| e.to_string())
 }

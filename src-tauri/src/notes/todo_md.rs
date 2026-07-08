@@ -1,11 +1,15 @@
-//! `Todo.md` reader/writer (spec/06) — used by the merged ingestion (spec/05) to
-//! append AI-extracted tasks to the vault's to-do file.
+//! `Todo.md` reader/writer (spec/06) — THE todos source of truth.
 //!
-//! This is intentionally narrow: it only *appends deduped tasks to `## À faire`*.
-//! It does not implement the full spec/06 refonte (the Tâches screen still reads
-//! SQLite today — ingestion dual-writes to both, see ai::run_ingestion_core).
+//! Two layers:
+//! - append/merge used by the merged ingestion (spec/05): deduped tasks into
+//!   `## À faire`;
+//! - full parse + line mutations (check, archive, edit) used by the `todos`
+//!   module now that the SQLite table is gone.
+//!
+//! Tasks have no stored id: identity is the **normalized title** (spec/06 dedups
+//! on it file-wide, so it's unique by construction).
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::path::Path;
 
 /// One task extracted by the ingestion AI call (spec/05's `taches[]`).
@@ -136,6 +140,147 @@ pub async fn append_tasks(vault_root: &Path, todo_rel_path: &str, tasks: &[Inges
     Ok(added)
 }
 
+// ─── Full parse + line mutations (spec/06 lifecycle) ────────────────────────────
+
+/// One parsed task line, with enough context to display and to mutate it.
+#[derive(Debug, Clone)]
+pub struct ParsedTask {
+    pub section: String,
+    pub titre: String,
+    pub responsable: Option<String>,
+    pub echeance: Option<String>,
+    pub checked: bool,
+}
+
+fn parse_line(line: &str) -> Option<(bool, IngestTask)> {
+    let trimmed = line.trim_start();
+    let (checked, rest) = if let Some(r) = trimmed.strip_prefix("- [ ]") {
+        (false, r)
+    } else if let Some(r) = trimmed.strip_prefix("- [x]").or_else(|| trimmed.strip_prefix("- [X]")) {
+        (true, r)
+    } else {
+        return None;
+    };
+
+    let mut titre = rest.trim().to_string();
+    let mut responsable = None;
+    let mut echeance = None;
+    // Fields are " — "-separated: `Titre — @Resp — 📅 date` (render_line's format).
+    let parts: Vec<&str> = rest.split(" — ").map(|p| p.trim()).collect();
+    if parts.len() > 1 {
+        titre = parts[0].to_string();
+        for part in &parts[1..] {
+            if let Some(r) = part.strip_prefix('@') {
+                responsable = Some(r.trim().to_string());
+            } else if let Some(d) = part.strip_prefix("📅") {
+                echeance = Some(d.trim().to_string());
+            }
+        }
+    }
+
+    if titre.is_empty() {
+        return None;
+    }
+    Some((checked, IngestTask { titre, responsable, echeance }))
+}
+
+/// Every task in the file, in order, tagged with the `## Section` it sits under.
+pub fn parse_all(content: &str) -> Vec<ParsedTask> {
+    let mut section = String::new();
+    let mut out = Vec::new();
+    for line in content.lines() {
+        if let Some(name) = line.trim().strip_prefix("## ") {
+            section = name.trim().to_string();
+            continue;
+        }
+        if let Some((checked, task)) = parse_line(line) {
+            out.push(ParsedTask {
+                section: section.clone(),
+                titre: task.titre,
+                responsable: task.responsable,
+                echeance: task.echeance,
+                checked,
+            });
+        }
+    }
+    out
+}
+
+/// Apply `f` to the single task line whose normalized title matches `id`.
+/// Returns the new content, or an error if no such task exists.
+fn map_task_line(content: &str, id: &str, mut f: impl FnMut(&str, bool, &IngestTask) -> Option<String>) -> Result<String> {
+    let mut lines: Vec<Option<String>> = content.lines().map(|l| Some(l.to_string())).collect();
+    let mut found = false;
+
+    for slot in lines.iter_mut() {
+        let line = slot.as_ref().unwrap().clone();
+        if let Some((checked, task)) = parse_line(&line) {
+            if normalize_title(&task.titre) == id {
+                *slot = f(&line, checked, &task);
+                found = true;
+                break;
+            }
+        }
+    }
+
+    if !found {
+        return Err(anyhow!("Tâche introuvable dans Todo.md : {id}"));
+    }
+
+    let mut out = String::new();
+    for slot in lines.into_iter().flatten() {
+        out.push_str(&slot);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+/// Check / uncheck a task in place (spec/06: done stays where it is).
+pub fn set_checked(content: &str, id: &str, checked: bool) -> Result<String> {
+    map_task_line(content, id, |_, _, task| {
+        let rendered = render_line(task);
+        Some(if checked {
+            rendered.replacen("- [ ]", "- [x]", 1)
+        } else {
+            rendered
+        })
+    })
+}
+
+/// Move a task to `## Archivé` (spec/06 "archiver" — nothing is ever deleted).
+pub fn archive_task(content: &str, id: &str) -> Result<String> {
+    let mut archived_line: Option<(bool, IngestTask)> = None;
+    let without = map_task_line(content, id, |_, checked, task| {
+        archived_line = Some((checked, task.clone()));
+        None // drop the line from its current section
+    })?;
+
+    let (checked, task) = archived_line.expect("map_task_line found the task");
+    let mut line = render_line(&task);
+    if checked {
+        line = line.replacen("- [ ]", "- [x]", 1);
+    }
+
+    // Re-parse sections and append to Archivé (created by merge_tasks if absent).
+    let (mut out, _) = merge_tasks(Some(&without), &[]);
+    if let Some(pos) = out.find("## Archivé") {
+        let insert_at = out[pos..].find('\n').map(|i| pos + i + 1).unwrap_or(out.len());
+        out.insert_str(insert_at, &format!("{}\n", line));
+    }
+    Ok(out)
+}
+
+/// Rewrite a task's title / responsable / échéance (keeps its checked state + place).
+pub fn edit_task(content: &str, id: &str, new_task: &IngestTask) -> Result<String> {
+    map_task_line(content, id, |_, checked, _| {
+        let mut line = render_line(new_task);
+        if checked {
+            line = line.replacen("- [ ]", "- [x]", 1);
+        }
+        Some(line)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,6 +309,57 @@ mod tests {
         let (out, added) = merge_tasks(Some(existing), &[task("relire le contrat", None, None)]);
         assert_eq!(added, 0);
         assert_eq!(out.matches("relire le contrat").count() + out.matches("Relire   le contrat").count(), 1);
+    }
+
+    #[test]
+    fn parses_fields_and_sections() {
+        let content = "## Prioritaire\n- [ ] Relire le contrat — @Jean — 📅 2026-07-10\n\n## À faire\n- [x] Vieille tâche\n";
+        let tasks = parse_all(content);
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].section, "Prioritaire");
+        assert_eq!(tasks[0].titre, "Relire le contrat");
+        assert_eq!(tasks[0].responsable.as_deref(), Some("Jean"));
+        assert_eq!(tasks[0].echeance.as_deref(), Some("2026-07-10"));
+        assert!(!tasks[0].checked);
+        assert!(tasks[1].checked);
+    }
+
+    #[test]
+    fn checks_and_unchecks_in_place() {
+        let content = "## À faire\n- [ ] Relire le contrat — @Jean\n";
+        let done = set_checked(content, &normalize_title("Relire le contrat"), true).unwrap();
+        assert!(done.contains("- [x] Relire le contrat — @Jean"));
+        let undone = set_checked(&done, &normalize_title("Relire le contrat"), false).unwrap();
+        assert!(undone.contains("- [ ] Relire le contrat — @Jean"));
+    }
+
+    #[test]
+    fn archives_to_archive_section() {
+        let content = "## Prioritaire\n- [ ] Relire le contrat\n\n## Archivé\n- [ ] Déjà là\n";
+        let out = archive_task(content, &normalize_title("Relire le contrat")).unwrap();
+        let archive_pos = out.find("## Archivé").unwrap();
+        let task_pos = out.find("- [ ] Relire le contrat").unwrap();
+        assert!(task_pos > archive_pos, "task should now live under Archivé:\n{out}");
+        assert!(out.contains("- [ ] Déjà là"));
+    }
+
+    #[test]
+    fn edits_title_and_fields() {
+        let content = "## À faire\n- [x] Vieille formulation — @Jean\n";
+        let out = edit_task(
+            content,
+            &normalize_title("Vieille formulation"),
+            &task("Nouvelle formulation", None, Some("2026-08-01")),
+        )
+        .unwrap();
+        assert!(out.contains("- [x] Nouvelle formulation — 📅 2026-08-01"));
+        assert!(!out.contains("Vieille formulation"));
+    }
+
+    #[test]
+    fn unknown_id_errors() {
+        let content = "## À faire\n- [ ] Une tâche\n";
+        assert!(set_checked(content, "inexistante", true).is_err());
     }
 
     #[test]

@@ -1,12 +1,12 @@
 # spec/06 — Todos
 
-> **Statut v1 :** refonte — la source de vérité passe de SQLite au **vault**.
-> **Écriture dans Todo.md déjà faite côté ingestion** (spec/05, écriture double
-> transitoire) ; **la lecture reste SQLite** — les commandes `get_todos` /
-> `create_todo` / `complete_todo` / `dismiss_todo` / `update_todo` et l'écran
-> Tâches n'ont pas encore basculé sur le fichier (cf. « Commandes Tauri »
-> ci-dessous). Voir aussi [`../src-tauri/src/notes/todo_md.rs`](../src-tauri/src/notes/todo_md.rs)
-> (parsing/merge du fichier, déjà écrit et testé).
+> **Statut v1 :** ✅ fait — `Todo.md` est la **seule** source de vérité. La table
+> SQLite `todos` est **supprimée** (migration `007_drop_todos`), la double
+> écriture de l'ingestion retirée. Toutes les commandes opèrent sur le fichier
+> ([`../src-tauri/src/notes/todo_md.rs`](../src-tauri/src/notes/todo_md.rs) pour
+> le parsing/mutations, [`../src-tauri/src/todos/mod.rs`](../src-tauri/src/todos/mod.rs)
+> pour l'orchestration). Identité d'une tâche = **titre normalisé** (unique dans
+> le fichier par la règle de dédup — pas d'id stocké).
 
 ## Principe
 
@@ -66,11 +66,16 @@ on ne ré-ajoute pas une tâche déjà présente. *(L'ancienne dédup SQLite par
 - **Onglet Tâches** : liste éditable.
 - **Accueil « Alfred »** : bloc dépliable Prioritaire / En cours / À faire (spec 10).
 
-## Commandes Tauri (à refondre vers le fichier)
+## Commandes Tauri — ✅ refondues vers le fichier
 
-`get_todos`, `create_todo`, `complete_todo`, `dismiss_todo`, `update_todo`
-opèrent désormais sur `Todo.md` (parse Markdown ↔ structure) au lieu de la table
-SQLite. `get_todo_file()` retourne le chemin du fichier.
+`get_todos` (non cochées hors Archivé), `create_todo` (ajout dédupliqué dans
+`## À faire`), `complete_todo(id, checked?)` (coche/décoche **en place**),
+`dismiss_todo` (déplace vers `## Archivé`), `update_todo` (réécrit
+titre/@responsable/📅échéance en gardant place et état) — toutes sur `Todo.md`.
+`get_todo_file()` retourne le chemin du fichier. `id` = titre normalisé.
+Note : l'écran Tâches et le bloc Accueil éditent déjà le fichier directement
+(NoteEditor / update_note_file) — ces commandes servent l'IA (brief, briefing
+d'événement) et tout futur usage programmatique.
 
 ## Hors v1 / plus tard
 

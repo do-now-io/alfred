@@ -49,7 +49,7 @@ par nous).
 | 03  | Audio Recording             | 🚧 | Micro + **audio système Windows** (WASAPI loopback + mixed) faits ; macOS système à coder ; trigger logo/bandeau ; page de guidage ; feedback live (volume, timer) |
 | 04  | Transcription               | ✅ | Whisper **par défaut** (Windows + macOS), modèle `small` **embarqué** au build |
 | 05  | AI Brain + Ingestion        | 🚧 | **Ingestion fusionnée** ✅ (compte-rendu + tâches, tool-use structuré) ; **chat (RAG)** ✅ ; **brief quotidien** ❌ pas commencé ; 2 modes d'accès |
-| 06  | Todos                       | 🚧 | Écriture dans `Todo.md` déjà faite (via l'ingestion, spec/05) ; lecture/écran Tâches encore SQLite — cutover restant |
+| 06  | Todos                       | ✅ | `Todo.md` = source unique ; table SQLite supprimée (migration 007) ; commandes refondues sur le fichier |
 | 07  | Notes (vault)               | 🚧 | Structure `alfred-*` ; supprimer skills/`.claude` ; regroupement par `project` (dossiers virtuels) |
 | 07b | Notes — Chat (RAG)          | ✅ | Construit (`ask_notes`) + spec faite |
 | 07c | Notes — Graphe              | ✅ | Construit (`get_vault_graph`) + spec faite |

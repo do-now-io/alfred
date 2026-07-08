@@ -59,7 +59,7 @@ par nous).
 | 11  | Settings                    | 🚧 | **Spec faite.** Accès IA (clé perso / AlfredIA) ; Whisper ; enregistrement ; vault ; Todo ; retirer Vapi/Google/Places/calendrier/ingest CLI |
 | 12  | Permissions                 | 🚧 | **Spec faite.** Cross-platform ; micro + capture système ; retirer apple-events/calendrier ; signature macOS/Windows |
 | 13  | Onboarding                  | 🚧 | **Spec faite.** Intro (2 slides) ; détection/intégration vault + création dossiers ; choix clé perso / AlfredIA ; test micro ; Whisper → Paramètres |
-| 14  | Feedback                    | 🚧 | **Spec faite.** Onglet texte + images + email de contact ; catégories bug/feature/praise ; stockage Postgres via backend (consultation SQL) |
+| 14  | Feedback                    | ✅ | **Construit.** Onglet texte + images (collage) + email de contact ; catégories bug/feature/praise ; stockage Postgres via backend (consultation SQL) |
 | 15  | Backend AlfredIA + Metrics  | ✅ | **Construit + validé en prod.** Rust/axum, **Coolify** (self-hosted), `api.alfred.do-now.io`, **Postgres**, Stripe 20€/mois (+ annuel) ; proxy, loopback, metrics, feedback |
 | —   | Ingest « run Claude » (CLI) | ❌ | **Supprimé** — remplacé par l'ingestion API (spec 05) |
 

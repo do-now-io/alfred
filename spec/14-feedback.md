@@ -1,42 +1,53 @@
 # spec/14 — Feedback
 
-> **Statut v1 :** nouveau. Onglet pour recueillir les retours (texte + images),
-> **envoyés par email** à l'équipe.
+> **Statut v1 :** ✅ fait. Onglet pour recueillir les retours (texte + images),
+> **stockés en Postgres** côté backend (consultation par SQL — pas d'email en v1,
+> voir spec/15 §E).
 
-## Onglet Feedback (`/feedback`)
+## Onglet Feedback (`/feedback`) — ✅ fait
 
-Formulaire :
+Formulaire (`screens/Feedback.tsx`) :
 - **Catégorie** : Bug · Suggestion (feature request) · Compliment (praise).
 - **Texte** (obligatoire).
-- **Images** (facultatif) : capture(s) d'écran — coller ou glisser-déposer.
+- **Images** (facultatif) : coller une capture d'écran (Ctrl/Cmd+V) directement
+  dans le champ texte, jusqu'à 5. *(Glisser-déposer et pièce-jointe via
+  sélecteur de fichier : pas encore faits — le collage couvre le cas d'usage
+  principal des captures d'écran.)*
 - **Email de contact** (facultatif) — pour pouvoir recontacter l'utilisateur.
 - Bouton **Envoyer**.
 
 ## Envoi
 
-Destination : **email de l'équipe**. Transport via le backend (spec/15),
-`POST /feedback` :
-- Corps : `{ category, text, contact_email?, install_id (anonyme), app_version, os, images[] }`.
-- Le backend **uploade les images en S3** puis envoie un **email** (AWS SES) à
-  l'équipe, avec le contenu + liens / pièces jointes.
-- **Pourquoi via le backend et pas un simple `mailto:`** : `mailto:` ne gère pas
-  les pièces jointes images ; le backend permet texte + images sans secret côté client.
+Destination : **Postgres** (backend, spec/15 §E) — pas d'email en v1. Transport
+via le backend, `POST /feedback` :
+- Corps : `{ category, text, contact_email?, install_id (anonyme), app_version, os, images[] }`
+  (images en base64).
+- Le backend écrit directement en base (table `feedback` + `feedback_images` en
+  `BYTEA`) — l'équipe consulte par SQL. Email/S3 : hors v1, pourront être ajoutés
+  sans changer le contrat de la commande.
+- **Pourquoi via le backend et pas un appel direct depuis le frontend** :
+  principe d'architecture verrouillé — le backend Rust possède tout l'I/O réseau
+  (`feedback.rs` + commande `submit_feedback`), le frontend ne fait que l'UI.
 
-## Confirmation & erreurs
+## Confirmation & erreurs — ✅ fait
 
-- Toast de confirmation à l'envoi.
-- Échec réseau → message + **réessayer**, sans perdre le texte saisi.
+- Confirmation inline à l'envoi (« Merci, c'est envoyé ! »).
+- Échec réseau → message + le formulaire **garde** le texte/images/catégorie saisis
+  (pas de reset), l'utilisateur relance avec le même bouton **Envoyer**.
 
 ## Données
 
-- `install_id` **anonyme** (corrélation avec les metrics, spec/15).
+- `install_id` **anonyme** (corrélation avec les metrics, spec/15) — lu depuis la
+  config locale (le même que celui utilisé par `metrics.rs`).
 - `contact_email` **optionnel** — seule PII, saisie volontairement par l'utilisateur.
 
 ## Commande Tauri
 
-`submit_feedback(category, text, contact_email?, images[])` → `POST /feedback`.
+`submit_feedback(category, text, contact_email?, images[]) -> Result<(), String>`
+→ `POST /feedback` (backend).
 
 ## Hors v1 / plus tard
 
-Tableau de bord des retours (v1 = email), captures d'écran automatiques, réponses
+Email de notification à l'équipe + upload S3 (contrat déjà prêt côté backend),
+tableau de bord des retours, glisser-déposer / pièce-jointe fichier, réponses
 in-app.

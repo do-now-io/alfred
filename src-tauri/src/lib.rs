@@ -3,6 +3,7 @@ pub mod audio;
 pub mod auth;
 pub mod calendar;
 pub mod db;
+pub mod feedback;
 pub mod keychain;
 pub mod metrics;
 pub mod notes;
@@ -218,6 +219,44 @@ async fn get_daily_brief(
         .await
         .map(|opt| opt.map(|(text, generated_at)| serde_json::json!({ "text": text, "generated_at": generated_at })))
         .map_err(|e| e.to_string())
+}
+
+#[derive(serde::Deserialize)]
+struct FeedbackImageInput {
+    filename: Option<String>,
+    content_type: Option<String>,
+    data: String,
+}
+
+#[tauri::command]
+async fn submit_feedback(
+    category: String,
+    text: String,
+    contact_email: Option<String>,
+    images: Vec<FeedbackImageInput>,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let images = images
+        .into_iter()
+        .map(|i| feedback::FeedbackImage {
+            filename: i.filename,
+            content_type: i.content_type,
+            data: i.data,
+        })
+        .collect();
+
+    feedback::submit_feedback(
+        &category,
+        &text,
+        contact_email.as_deref(),
+        images,
+        &app.package_info().version.to_string(),
+        &state.db,
+        &state.http_client,
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -845,6 +884,7 @@ pub fn run() {
             ask_notes,
             generate_daily_brief,
             get_daily_brief,
+            submit_feedback,
             subscribe_alfredia,
             // Todos
             get_todos,

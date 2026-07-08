@@ -14,24 +14,32 @@ Topbar **sans barre de recherche**.
   Clic → `start_recording` + redirection vers la **page de guidage** (`/recording`,
   spec/03). La carte d'enregistrement de l'accueil fait de même (second point
   d'entrée équivalent, cf spec/03).
-- **Navigation v1** :
+- **Navigation v1** — ✅ fait (`App.tsx`) :
 
   | Icône | Label | Route |
   |---|---|---|
-  | ✦ | **Alfred** | `/` |
+  | 🏠 | Aujourd'hui | `/` |
   | ☑️ | Tâches | `/tasks` |
   | 📝 | Notes | `/notes` |
   | 🕸 | Graphe | `/graph` |
+  | ✦ | Alfred | `/ai-actions` |
   | 💬 | Feedback | `/feedback` |
   | ⚙️ | Paramètres | `/settings` (épinglé en bas) |
 
+  **Écart assumé** : la cible ci-dessus fusionnait « Alfred » sur `/` (chat
+  intégré à l'accueil). Tant que l'historique/liste de conversations (item
+  séparé de la ROADMAP) n'est pas fait, **`/ai-actions` reste une route à part**
+  pour porter la conversation complète — le teaser de chat de l'accueil y renvoie
+  (spec/10 §Page Alfred). Fusion à faire quand l'historique atterrira.
 - Section **« Récents »** (5 notes récemment modifiées — inchangé).
-- **Retirés** : « Aujourd'hui » (fusionné dans Alfred), **Réunions**, **Calendrier**,
-  **Actions IA** (suggestions hors v1).
+- ✅ **Retirés** : `/meetings`, `/calendar` (routes mortes, aucun lien nav ne les
+  atteignait déjà — supprimées avec `Placeholder.tsx`). Pas de « Actions IA »
+  distinct trouvé dans le code actuel (le nav « Alfred » d'aujourd'hui est déjà le
+  chat, pas les suggestions hors v1 — rien à retirer de plus ici).
 
 ## Topbar
 
-- **Plus de recherche** (barre + `⌘K` retirés).
+- ✅ **Plus de recherche** (barre + `⌘K` retirés).
 - **Bandeau d'enregistrement** (pendant l'enregistrement, persistant sur toute
   l'app) : **timer** + **visualisation du volume micro** + bouton **stop**.
 - **Indicateur d'état Alfred** (remplace la cloche) — voir ci-dessous.

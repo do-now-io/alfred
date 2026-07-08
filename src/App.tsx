@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
   MdHome, MdCheckBox, MdStickyNote2,
-  MdAutoAwesome, MdSettings, MdSearch, MdHub, MdMic,
+  MdAutoAwesome, MdSettings, MdHub, MdMic, MdOutlineFeedback,
 } from "react-icons/md";
 import alfredLogo from "./assets/alfred-logo.png";
 import Dashboard from "./screens/Dashboard";
@@ -14,7 +14,7 @@ import Graph from "./screens/Graph";
 import Settings from "./screens/Settings";
 import AIActions from "./screens/AIActions";
 import RecordingGuide from "./screens/RecordingGuide";
-import Placeholder from "./screens/Placeholder";
+import Feedback from "./screens/Feedback";
 import Onboarding from "./screens/Onboarding";
 import { useRecordingStore } from "./store/recordingStore";
 import { useNotesStore } from "./store/notesStore";
@@ -173,6 +173,7 @@ function Sidebar() {
         <NavItem to="/notes" icon={<MdStickyNote2 />} label="Notes" />
         <NavItem to="/graph" icon={<MdHub />} label="Graphe" />
         <NavItem to="/ai-actions" icon={<MdAutoAwesome />} label="Alfred" />
+        <NavItem to="/feedback" icon={<MdOutlineFeedback />} label="Feedback" />
 
         <div style={{ height: 1, background: "var(--border)", margin: "12px 16px" }} />
         <Recents />
@@ -218,8 +219,6 @@ function AlfredStatusIndicator() {
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
 function Topbar() {
-  const [query, setQuery] = useState("");
-
   return (
     <div style={{
       height: 52, display: "flex", alignItems: "center", gap: 16,
@@ -228,25 +227,8 @@ function Topbar() {
       background: "var(--card-bg)",
       flexShrink: 0,
     }}>
-      <div style={{
-        flex: 1, display: "flex", alignItems: "center", gap: 8,
-        background: "var(--bg)", border: "1px solid var(--border)",
-        borderRadius: 8, padding: "6px 12px",
-      }}>
-        <MdSearch style={{ color: "var(--text-muted)", fontSize: 16, flexShrink: 0 }} />
-        <input
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder="Rechercher dans mes notes, réunions, tâches..."
-          style={{
-            flex: 1, border: "none", outline: "none", background: "transparent",
-            fontSize: 13, color: "var(--text-primary)",
-          }}
-        />
-        <span style={{ fontSize: 11, color: "var(--text-muted)", background: "var(--border)", padding: "2px 6px", borderRadius: 4 }}>
-          ⌘K
-        </span>
-      </div>
+      {/* No global search in v1 (spec/10) — spacer keeps the right-side cluster pinned right. */}
+      <div style={{ flex: 1 }} />
 
       <RecordingBar />
 
@@ -308,9 +290,8 @@ function AppInner() {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/notes" element={<Notes />} />
             <Route path="/graph" element={<Graph />} />
-            <Route path="/meetings" element={<Placeholder title="Réunions" />} />
-            <Route path="/calendar" element={<Placeholder title="Calendrier" />} />
             <Route path="/ai-actions" element={<AIActions />} />
+            <Route path="/feedback" element={<Feedback />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>

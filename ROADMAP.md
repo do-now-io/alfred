@@ -52,10 +52,10 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [~] | **Accueil « Alfred »** : brief ✅ + bloc tâches dépliable (par sections Prioritaire/En cours/À faire) ✅ + input chat + exemples ✅ (teaser qui envoie vers `/ai-actions` ; **historique/liste de conversations sur la page** reste à faire, cf tâche Chat) | UC |
 | [x] | **Indicateur d'état** (topbar, labels majordome) + **bandeau d'enregistrement** (timer + volume live + stop) | UC |
 | [x] | Déclenchement via **logo** (hover micro) + **page de guidage** d'enregistrement (`/recording`, conseils de captation éditables) | UC |
-| [ ] | **Nav** : retirer Réunions / Calendrier / Actions IA + barre de recherche ; ajouter **Feedback** | |
+| [x] | **Nav** : retirer routes mortes Réunions / Calendrier + barre de recherche ; ajouter **Feedback**. `/ai-actions` gardée à part (écart documenté spec/10 — historique chat pas encore fait) | UC |
 | [~] | **Onboarding** refonte (2 slides, détection vault + scaffolding dossiers, choix accès IA, test micro) + **tournée guidée** post-onboarding (vrai enregistrement → transcription → ingestion → tâches/notes → question à Alfred) | UC |
 | [~] | **Settings** refonte (accès IA ✓, Whisper ici, retirer Vapi/Google/Places/calendrier/ingest CLI ; défauts `alfred-*`) | UC |
-| [ ] | **Onglet Feedback** (formulaire + `submit_feedback`) | |
+| [x] | **Onglet Feedback** (formulaire + `submit_feedback`) | UC |
 
 ## Phase D — Nettoyage (retrait hors-v1)
 

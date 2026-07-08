@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { MdAdd, MdDeleteOutline, MdChatBubbleOutline } from "react-icons/md";
 import { useChatStore, type ChatTurn } from "../../store/chatStore";
 import { useNotesStore } from "../../store/notesStore";
 import { useTourTarget } from "../../store/tourStore";
@@ -15,6 +16,97 @@ const SUGGESTIONS = [
 ];
 
 const COLUMN_MAX = 760;
+
+// Second-level nav (spec/10): past conversations, newest activity first.
+function ConversationList() {
+  const conversations = useChatStore(s => s.conversations);
+  const conversationId = useChatStore(s => s.conversationId);
+  const loading = useChatStore(s => s.loading);
+  const fetchConversations = useChatStore(s => s.fetchConversations);
+  const openConversation = useChatStore(s => s.openConversation);
+  const deleteConversation = useChatStore(s => s.deleteConversation);
+  const clear = useChatStore(s => s.clear);
+
+  useEffect(() => { fetchConversations(); }, [fetchConversations]);
+
+  const dateLabel = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    } catch {
+      return "";
+    }
+  };
+
+  return (
+    <aside style={{
+      width: 220, minWidth: 220, borderRight: "1px solid var(--border)",
+      display: "flex", flexDirection: "column", overflow: "hidden",
+      background: "var(--sidebar-bg)",
+    }}>
+      <div style={{ padding: "12px 12px 8px" }}>
+        <button
+          onClick={clear}
+          disabled={loading}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            background: "var(--accent)", color: "#fff", border: "none", borderRadius: 8,
+            padding: "7px 0", cursor: loading ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 500,
+          }}
+        >
+          <MdAdd size={16} /> Nouvelle conversation
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 6px 8px" }}>
+        {conversations.length === 0 && (
+          <div style={{ padding: "18px 12px", fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.6 }}>
+            Vos conversations passées apparaîtront ici.
+          </div>
+        )}
+        {conversations.map(c => {
+          const active = c.id === conversationId;
+          return (
+            <div
+              key={c.id}
+              onClick={() => { if (!loading) openConversation(c.id); }}
+              title={c.title}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "8px 10px", margin: "1px 2px", borderRadius: 8,
+                cursor: loading ? "default" : "pointer",
+                background: active ? "var(--active-bg)" : "transparent",
+                color: active ? "var(--accent)" : "var(--text-secondary)",
+              }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.background = "var(--active-bg)"; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}
+            >
+              <MdChatBubbleOutline size={14} style={{ flexShrink: 0, opacity: 0.7 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: active ? 500 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.title}
+                </div>
+                <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{dateLabel(c.updated_at)}</div>
+              </div>
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  if (window.confirm(`Supprimer « ${c.title} » ?`)) deleteConversation(c.id);
+                }}
+                title="Supprimer"
+                style={{
+                  background: "none", border: "none", cursor: "pointer", padding: 2,
+                  color: "var(--text-muted)", display: "flex", alignItems: "center", flexShrink: 0,
+                }}
+              >
+                <MdDeleteOutline size={14} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}
 
 export default function ChatPanel() {
   const { messages, loading, progress, error, send, clear } = useChatStore();
@@ -50,7 +142,10 @@ export default function ChatPanel() {
   const isEmpty = messages.length === 0 && !loading;
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ height: "100%", display: "flex", overflow: "hidden" }}>
+      <ConversationList />
+
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Header */}
       <div style={{
         flexShrink: 0, padding: "16px 24px",
@@ -127,6 +222,7 @@ export default function ChatPanel() {
             {loading ? "⏳" : "Envoyer"}
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

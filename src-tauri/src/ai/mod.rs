@@ -9,6 +9,7 @@ use crate::keychain;
 use crate::notes::todo_md::IngestTask;
 
 pub mod chat;
+pub mod chat_history;
 
 const MODEL: &str = "claude-sonnet-5";
 const ANTHROPIC_BASE: &str = "https://api.anthropic.com";

@@ -23,7 +23,7 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-#[derive(Debug, Serialize, Clone, TS)]
+#[derive(Debug, Serialize, Deserialize, Clone, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct ChatSource {
     /// File stem — also the citation key used in [[wikilinks]].

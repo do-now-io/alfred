@@ -77,15 +77,23 @@ sans événement réel derrière. Labels codés en dur pour l'instant (pas encor
    la conversation **sur la page** — l'historique/liste de conversations (section
    suivante) n'est pas fait, donc la conversation inline reste à construire avec.
 
-### Chat — historique & liste des conversations
+### Chat — historique & liste des conversations — ✅ fait
 
-- **Historique conservé.** Un **2ᵉ niveau de navigation** sur la page Alfred liste
-  les **conversations passées** (titre auto = 1ʳᵉ question + date) ; sélection →
-  rouvre le fil ; bouton **nouvelle conversation**.
-- Persistance : **local (SQLite)** — les chats sont de l'**état applicatif**, pas
-  du contenu de vault. `À CONFIRMER` : SQLite vs fichiers vault (reco : SQLite).
-- Chaque message via `ask_notes` (spec/07b) ; retour d'état via `chat-progress`
-  (« recherche… » / « lecture… »).
+- **Historique conservé.** Un **2ᵉ niveau de navigation** (colonne gauche de la
+  page chat, `ConversationList` dans `ChatPanel.tsx`) liste les **conversations
+  passées** (titre auto = 1ʳᵉ question tronquée à 60 caractères, + date) ;
+  sélection → rouvre le fil ; bouton **Nouvelle conversation** ; suppression
+  par conversation (poubelle + confirmation).
+- Persistance : **SQLite confirmé** (migration `006_chat_history` — tables
+  `chat_conversations` + `chat_messages`, sources citées conservées en JSON).
+  Les chats sont de l'état applicatif, pas du contenu de vault.
+- Chaque message via `ask_notes` (spec/07b) — la commande prend désormais un
+  `conversation_id` optionnel, **enregistre l'échange** (question + réponse +
+  sources) et renvoie l'id de conversation (créée au 1ᵉʳ échange). L'écriture
+  d'historique est *best-effort* : un échec de persistance ne perd jamais la
+  réponse. Retour d'état via `chat-progress` (« recherche… » / « lecture… »).
+- L'input de l'accueil (`ChatTeaser`) démarre toujours une **nouvelle**
+  conversation avant d'envoyer.
 
 ### Exemples d'amorces (input Alfred)
 

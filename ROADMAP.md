@@ -42,7 +42,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [ ] | **Todos → vault** : lire/écrire `Todo.md` (sections + Archivé) ; supprimer la table SQLite ; migrer `get_todos`/`create_todo`/`complete_todo`/`dismiss_todo`/`update_todo` + écran Tâches. Le **writer** (`notes/todo_md.rs`) existe déjà et est utilisé par l'ingestion — reste le cutover lecture/UI. | |
 | [ ] | Notes : frontmatter **`project` + `participants`** ; structure `alfred-raw`/`alfred-intelligence` ; regroupement par projet ; **plus de `.claude`/skills** dans le vault | |
 | [x] | **Brief quotidien** (`generate/get_daily_brief`) | UC |
-| [ ] | **Chat** : historique multi-conversations + liste (persistance SQLite) | |
+| [x] | **Chat** : historique multi-conversations + liste (persistance SQLite, migration 006 ; liste/reprise/suppression dans le panneau chat) | UC |
 | [~] | **Metrics** : `install_id` anonyme + envoi des événements | UC |
 
 ## Phase C — Desktop, UX & écrans

@@ -448,11 +448,13 @@ function ChatTeaser() {
   const [text, setText] = useState("");
   const navigate = useNavigate();
   const send = useChatStore(s => s.send);
+  const clear = useChatStore(s => s.clear);
 
   const submit = (question: string) => {
     const q = question.trim();
     if (!q) return;
     setText("");
+    clear(); // the home input always starts a fresh conversation (spec/10)
     send(q);
     navigate("/ai-actions");
   };

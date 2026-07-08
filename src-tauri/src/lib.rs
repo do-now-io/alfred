@@ -270,15 +270,71 @@ async fn subscribe_alfredia(
         .map_err(|e| e.to_string())
 }
 
+/// Answers a question over the vault AND records the exchange in the chat
+/// history (spec/10) — creating a new conversation when `conversation_id` is
+/// absent. Persistence is best-effort: a history write failure never loses the
+/// answer the user is waiting on.
 #[tauri::command]
 async fn ask_notes(
     question: String,
     history: Vec<ai::chat::ChatMessage>,
+    conversation_id: Option<String>,
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
-) -> Result<ai::chat::ChatResponse, String> {
+) -> Result<ai::chat_history::ChatExchangeResult, String> {
     let vault_root = state.vault_path.lock().unwrap().clone();
-    ai::chat::answer_question(question, history, vault_root, &state.db, &app)
+    let response = ai::chat::answer_question(question.clone(), history, vault_root, &state.db, &app)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let conv_id = match ai::chat_history::record_exchange(
+        &state.db,
+        conversation_id.as_deref(),
+        &question,
+        &response.answer,
+        &response.sources,
+    )
+    .await
+    {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("[chat] failed to record exchange: {}", e);
+            conversation_id.unwrap_or_default()
+        }
+    };
+
+    Ok(ai::chat_history::ChatExchangeResult {
+        answer: response.answer,
+        sources: response.sources,
+        conversation_id: conv_id,
+    })
+}
+
+#[tauri::command]
+async fn list_chat_conversations(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<ai::chat_history::ChatConversation>, String> {
+    ai::chat_history::list_conversations(&state.db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_chat_messages(
+    conversation_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<ai::chat_history::StoredChatMessage>, String> {
+    ai::chat_history::get_messages(&state.db, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_chat_conversation(
+    conversation_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    ai::chat_history::delete_conversation(&state.db, &conversation_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -882,6 +938,9 @@ pub fn run() {
             generate_event_briefing,
             test_api_key,
             ask_notes,
+            list_chat_conversations,
+            get_chat_messages,
+            delete_chat_conversation,
             generate_daily_brief,
             get_daily_brief,
             submit_feedback,

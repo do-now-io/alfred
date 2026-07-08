@@ -79,7 +79,7 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
     let language = job.language.clone();
 
     // Run Whisper inference in a blocking thread (CPU-bound)
-    let (raw_text, segments) = tokio::task::spawn_blocking(move || {
+    let (raw_text, segments, detected_language) = tokio::task::spawn_blocking(move || {
         run_whisper(&file_path, &model_path_clone, language.as_deref())
     })
     .await??;
@@ -91,12 +91,13 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
 
     sqlx::query!(
         r#"INSERT INTO transcriptions
-           (id, recording_id, raw_text, segments_json, whisper_model, processed_at)
-           VALUES (?, ?, ?, ?, ?, ?)"#,
+           (id, recording_id, raw_text, segments_json, language, whisper_model, processed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)"#,
         transcription_id,
         recording_id,
         raw_text,
         segments_json,
+        detected_language,
         model_size,
         now
     )
@@ -206,11 +207,13 @@ fn format_note_title() -> String {
     )
 }
 
+/// Returns (full text, segments, language) — the language is the user-forced
+/// hint when set, else the one Whisper detected (spec/04's `transcriptions.language`).
 fn run_whisper(
     file_path: &PathBuf,
     model_path: &PathBuf,
     language: Option<&str>,
-) -> Result<(String, Vec<WhisperSegment>)> {
+) -> Result<(String, Vec<WhisperSegment>, Option<String>)> {
     // Read WAV file
     let reader = hound::WavReader::open(file_path)?;
     let spec = reader.spec();
@@ -275,7 +278,17 @@ fn run_whisper(
             });
         }
 
-        return Ok((raw_parts.join(" "), segments));
+        // Language: the forced hint when set, else Whisper's detection (spec/04 bug fix).
+        let detected = match language {
+            Some(l) if l != "auto" => Some(l.to_string()),
+            _ => state
+                .full_lang_id_from_state()
+                .ok()
+                .and_then(whisper_rs::get_lang_str)
+                .map(|s| s.to_string()),
+        };
+
+        return Ok((raw_parts.join(" "), segments, detected));
     }
 
     // Stub when whisper feature is disabled

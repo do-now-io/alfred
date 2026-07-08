@@ -46,8 +46,9 @@ spec 05).
   via `rubato` si nécessaire.
 - Langue : `auto` par défaut, forçable via config `language_hint`.
 - Threads : `min(cœurs, 4)`.
-- ⚠️ **Bug** : la langue détectée n'est **pas** écrite dans
-  `transcriptions.language` (colonne toujours NULL) — à corriger.
+- ✅ La langue est écrite dans `transcriptions.language` : le hint forcé s'il est
+  défini, sinon la langue **détectée** par Whisper (`full_lang_id_from_state` +
+  `get_lang_str`). *(Ancien bug « colonne toujours NULL » corrigé.)*
 
 ## Progression
 
@@ -60,10 +61,12 @@ spec 05).
 1. **Déplacement du WAV** dans le vault — cible **`alfred-raw/`** (même dossier
    que la note d'enregistrement). **Le WAV est toujours conservé dans
    `alfred-raw/`, jamais supprimé** (ré-écoute / ré-ingestion).
-2. **Note d'enregistrement** (titre `YYYY-MM-DD HHhMM`). ⚠️ Aujourd'hui contenu
-   brut « # Contexte / # Transcription » **sans frontmatter**. Cible (spec 07) :
-   frontmatter `type: meeting`, `date`, `recording_id`, `participants`, `project`.
-   Le constructeur `NoteMetadata::for_recording` existe déjà mais n'est pas utilisé.
+2. **Note d'enregistrement** (titre `YYYY-MM-DD HHhMM`). ✅ Écrite **avec
+   frontmatter** (`NoteMetadata::for_recording` : `type: meeting`, `date`,
+   `recording_id`) + corps `# Transcription`. `participants`/`project` restent
+   vides sur la note brute (peuplés par l'IA plus tard — spec/07). Le
+   `recording_id` du frontmatter est ce qui relie « ré-ingérer » (spec/05) à
+   l'enregistrement d'origine.
 3. Émet `notes-updated`.
 4. Déclenche l'**extraction de todos** puis l'**ingestion** (compte-rendu dans
    `alfred-intelligence/`) — spec 05.

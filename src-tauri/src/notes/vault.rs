@@ -220,7 +220,7 @@ pub async fn create_note_file(folder: &Path, title: &str) -> Result<NoteFile> {
 pub async fn create_recording_note(
     folder: &Path,
     title: &str,
-    _recording_id: &str,
+    recording_id: &str,
     transcription_text: &str,
 ) -> Result<NoteFile> {
     tokio::fs::create_dir_all(folder).await?;
@@ -233,10 +233,12 @@ pub async fn create_recording_note(
         counter += 1;
     }
 
-    let content = format!(
-        "# Contexte\n\n<!-- À compléter après la réunion -->\n<!-- Participants : -->\n<!-- Sujet : -->\n<!-- Décisions clés : -->\n<!-- Actions : -->\n\n# Transcription\n\n{}",
-        transcription_text
-    );
+    // Frontmatter (spec/07): type meeting + recording_id — the link the
+    // "ré-ingérer" flow (spec/05) uses to tie the note back to its recording.
+    // participants/project stay empty on the raw note (filled by AI later).
+    let metadata = NoteMetadata::for_recording(title, recording_id);
+    let body = format!("# Transcription\n\n{}", transcription_text);
+    let content = frontmatter::serialize(&metadata, &body);
     tokio::fs::write(&file_path, content).await?;
 
     get_note_file(&file_path).await

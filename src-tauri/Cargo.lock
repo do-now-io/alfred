@@ -22,17 +22,14 @@ name = "alfred"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
  "chrono",
  "cpal",
  "dirs 5.0.1",
- "hex",
  "hound",
  "reqwest 0.12.28",
  "rubato",
  "serde",
  "serde_json",
- "sha2",
  "sqlx",
  "tauri",
  "tauri-build",

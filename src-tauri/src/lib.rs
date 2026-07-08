@@ -1,85 +1,20 @@
 pub mod ai;
 pub mod audio;
-pub mod auth;
-pub mod calendar;
 pub mod db;
 pub mod feedback;
 pub mod keychain;
 pub mod metrics;
 pub mod notes;
-pub mod phone_calls;
 pub mod state;
 pub mod subscription;
-pub mod suggestions;
 pub mod todos;
 pub mod transcription;
 
 use std::sync::{Arc, Mutex as StdMutex};
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tokio::sync::{mpsc, Mutex};
 
 use state::AppState;
-
-// ─── Calendar commands ────────────────────────────────────────────────────────
-
-#[tauri::command]
-async fn get_today_events(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<calendar::CalendarEvent>, String> {
-    calendar::get_today_events(&state.db)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_week_events(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<calendar::CalendarEvent>, String> {
-    calendar::get_week_events(&state.db)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn trigger_calendar_sync(
-    state: tauri::State<'_, AppState>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    let google_count = calendar::sync_google_calendar(&state.db, &state.http_client)
-        .await
-        .unwrap_or(0);
-
-    app.emit(
-        "calendar-synced",
-        serde_json::json!({
-            "event_count": google_count,
-            "synced_at": chrono::Utc::now().to_rfc3339()
-        }),
-    )
-    .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn get_account_status() -> Result<auth::AccountStatus, String> {
-    Ok(auth::get_account_status())
-}
-
-#[tauri::command]
-async fn disconnect_account() -> Result<(), String> {
-    auth::disconnect_account().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn start_google_oauth(
-    state: tauri::State<'_, AppState>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    auth::start_google_oauth(app, state.oauth_port.clone(), state.http_client.clone())
-        .await
-        .map_err(|e| e.to_string())
-}
 
 // ─── Recording commands ────────────────────────────────────────────────────────
 
@@ -159,7 +94,6 @@ async fn test_microphone() -> Result<(), String> {
 #[tauri::command]
 async fn download_model(
     size: String,
-    state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -179,17 +113,6 @@ async fn get_transcription(
 }
 
 // ─── AI commands ───────────────────────────────────────────────────────────────
-
-#[tauri::command]
-async fn generate_event_briefing(
-    event_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
-    let vault_root = state.vault_path.lock().unwrap().clone();
-    ai::generate_event_briefing(&event_id, &state.db, vault_root)
-        .await
-        .map_err(|e| e.to_string())
-}
 
 #[tauri::command]
 async fn test_api_key(
@@ -542,91 +465,6 @@ async fn pick_vault_folder(app: tauri::AppHandle) -> Result<Option<String>, Stri
     Ok(path.map(|p| p.to_string()))
 }
 
-// ─── Suggestions commands ─────────────────────────────────────────────────────
-
-#[tauri::command]
-async fn get_suggestions(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<suggestions::Suggestion>, String> {
-    suggestions::get_suggestions(&state.db)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn accept_suggestion(
-    id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    suggestions::accept_suggestion(&id, &state.db)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn dismiss_suggestion(
-    id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    suggestions::dismiss_suggestion(&id, &state.db)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn create_booking_suggestion(
-    event_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<suggestions::Suggestion, String> {
-    suggestions::create_booking_suggestion(&event_id, &state.db)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn run_suggestion_engine(
-    state: tauri::State<'_, AppState>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    suggestions::run_suggestion_engine(&state.db, &state.http_client, &app)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-// ─── Phone call commands ──────────────────────────────────────────────────────
-
-#[tauri::command]
-async fn initiate_phone_call(
-    suggestion_id: String,
-    phone_number: String,
-    party_size: i64,
-    requested_time: String,
-    restaurant_name: Option<String>,
-    state: tauri::State<'_, AppState>,
-) -> Result<phone_calls::PhoneCall, String> {
-    phone_calls::initiate_phone_call(
-        &suggestion_id,
-        &phone_number,
-        party_size,
-        &requested_time,
-        restaurant_name.as_deref(),
-        &state.db,
-        &state.http_client,
-    )
-    .await
-    .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_call_status(
-    call_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<phone_calls::PhoneCall, String> {
-    phone_calls::get_call_status(&call_id, &state.db, &state.http_client)
-        .await
-        .map_err(|e| e.to_string())
-}
-
 // ─── Config & Keychain commands ───────────────────────────────────────────────
 
 #[tauri::command]
@@ -863,7 +701,6 @@ pub fn run() {
                 active_recording_id: Arc::new(StdMutex::new(None)),
                 recording_stop_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 transcription_tx,
-                oauth_port: Arc::new(Mutex::new(None)),
                 http_client: http_client.clone(),
                 resource_dir,
                 vault_path: Arc::new(StdMutex::new(vault_path.clone())),
@@ -896,40 +733,11 @@ pub fn run() {
             // Start transcription worker
             tauri::async_runtime::spawn(transcription::run_transcription_worker(transcription_rx));
 
-            // Start calendar sync loop
-            let db_sync = db.clone();
-            let http_client_sync = reqwest::Client::new();
-            let app_sync = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                // Initial sync
-                let _ = calendar::sync_google_calendar(&db_sync, &http_client_sync).await;
-                let _ = app_sync.emit(
-                    "calendar-synced",
-                    serde_json::json!({ "event_count": 0, "synced_at": chrono::Utc::now().to_rfc3339() }),
-                );
-
-                // Periodic sync
-                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(15 * 60));
-                loop {
-                    interval.tick().await;
-                    let _ = calendar::sync_google_calendar(&db_sync, &http_client_sync).await;
-                    let _ = app_sync.emit(
-                        "calendar-synced",
-                        serde_json::json!({ "event_count": 0, "synced_at": chrono::Utc::now().to_rfc3339() }),
-                    );
-                }
-            });
+            let _ = app_handle; // kept for future setup steps
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // Calendar
-            get_today_events,
-            get_week_events,
-            trigger_calendar_sync,
-            get_account_status,
-            disconnect_account,
-            start_google_oauth,
             // Recording
             start_recording,
             stop_recording,
@@ -938,7 +746,6 @@ pub fn run() {
             download_model,
             get_transcription,
             // AI
-            generate_event_briefing,
             test_api_key,
             ask_notes,
             list_chat_conversations,
@@ -966,15 +773,6 @@ pub fn run() {
             get_vault_path,
             set_vault_path,
             pick_vault_folder,
-            // Suggestions
-            get_suggestions,
-            create_booking_suggestion,
-            accept_suggestion,
-            dismiss_suggestion,
-            run_suggestion_engine,
-            // Phone calls
-            initiate_phone_call,
-            get_call_status,
             // Config & Keychain
             get_config,
             set_config,

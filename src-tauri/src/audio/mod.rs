@@ -27,7 +27,7 @@ pub async fn start_recording(
     recording_handle: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
     active_recording_id: Arc<StdMutex<Option<String>>>,
     stop_flag: Arc<AtomicBool>,
-    transcription_tx: TranscriptionSender,
+    _transcription_tx: TranscriptionSender,
 ) -> Result<()> {
     // System audio is Windows-only for now (macOS ScreenCaptureKit helper: later).
     #[cfg(not(target_os = "windows"))]

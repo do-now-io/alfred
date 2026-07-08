@@ -313,108 +313,6 @@ pub async fn run_ingestion_for_note(
     run_ingestion_core(&body, &metadata.title, metadata.recording_id.as_deref(), db, vault_root, app_handle).await
 }
 
-const EVENT_BRIEFING_SYSTEM: &str = r##"Tu es Alfred, un assistant personnel. On te donne un événement de calendrier, des extraits de notes personnelles potentiellement liées, et la liste des tâches en cours.
-Génère un briefing concis en Markdown (max 250 mots) pour préparer cet événement, structuré avec ces sections (titres en ###):
-
-### Dans vos notes
-Ce que les notes disent à propos de cet événement (contexte, décisions passées, sujets ouverts). Mets en **gras** les noms, dates et points clés. Référence chaque note source par son titre EXACT entre double crochets, par ex. [[Titre de la note]] — recopie le titre à l'identique depuis l'en-tête « Note: » car il sert de lien cliquable.
-
-### Tâches liées
-Les tâches en cours qui concernent cet événement, en liste à puces.
-
-### À préparer
-2-3 points d'attention ou questions, en liste à puces.
-
-Ne mentionne QUE ce qui est réellement lié à l'événement — ignore le reste. Omets une section si elle est vide. Si rien n'est lié du tout, réponds en une seule phrase, sans inventer."##;
-
-pub async fn generate_event_briefing(
-    event_id: &str,
-    db: &SqlitePool,
-    vault_root: Option<std::path::PathBuf>,
-) -> Result<String> {
-    let access = resolve_access(db).await?;
-
-    let event = sqlx::query!(
-        r#"SELECT title as "title!", start_at as "start_at!", end_at as "end_at!",
-           location, description, attendees
-           FROM calendar_events WHERE id = ?"#,
-        event_id
-    )
-    .fetch_optional(db)
-    .await?
-    .ok_or_else(|| anyhow!("Événement introuvable"))?;
-
-    let keywords = extract_keywords(&event.title, event.attendees.as_deref());
-
-    let notes = match vault_root.clone() {
-        Some(root) => {
-            let kw = keywords.clone();
-            tokio::task::spawn_blocking(move || find_relevant_notes(&root, &kw)).await?
-        }
-        None => vec![],
-    };
-
-    let notes_text = if notes.is_empty() {
-        "Aucune note ne correspond aux mots-clés de l'événement.".to_string()
-    } else {
-        notes
-            .iter()
-            .map(|(title, body)| format!("### Note: {}\n{}", title, body))
-            .collect::<Vec<_>>()
-            .join("\n\n")
-    };
-
-    let todos = crate::todos::get_todos(db, vault_root.as_deref()).await.unwrap_or_default();
-    let todos_text = if todos.is_empty() {
-        "Aucune tâche en cours.".to_string()
-    } else {
-        todos
-            .iter()
-            .map(|t| {
-                format!(
-                    "- {}{}{}",
-                    t.title,
-                    t.responsable.as_deref().map(|r| format!(" (@{})", r)).unwrap_or_default(),
-                    t.echeance.as_deref().map(|d| format!(" (échéance: {})", d)).unwrap_or_default()
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-
-    let prompt = format!(
-        "## Événement\nTitre: {}\nDébut: {}\nFin: {}\nLieu: {}\nParticipants: {}\nDescription: {}\n\n\
-         ## Extraits de notes potentiellement liées\n{}\n\n## Tâches en cours\n{}",
-        event.title,
-        event.start_at,
-        event.end_at,
-        event.location.as_deref().unwrap_or("—"),
-        event.attendees.as_deref().unwrap_or("—"),
-        event.description.as_deref().unwrap_or("—"),
-        notes_text,
-        todos_text
-    );
-
-    let client = reqwest::Client::new();
-    let body = json!({
-        "model": MODEL,
-        "max_tokens": 1024,
-        "system": [{
-            "type": "text",
-            "text": EVENT_BRIEFING_SYSTEM,
-            "cache_control": {"type": "ephemeral"}
-        }],
-        "messages": [{"role": "user", "content": prompt}]
-    });
-
-    let resp = call_claude_with_retry(&client, &access, &body).await?;
-
-    resp["content"][0]["text"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| anyhow!("No text in Claude response"))
-}
-
 const STOPWORDS: &[&str] = &[
     "les", "des", "une", "avec", "pour", "dans", "sur", "aux", "est", "par",
     "point", "réunion", "reunion", "meeting", "call", "rdv", "the", "and",
@@ -438,54 +336,6 @@ fn extract_keywords(title: &str, attendees: Option<&str>) -> Vec<String> {
     keywords
 }
 
-/// Scans the vault for notes matching the event keywords.
-/// Returns up to 6 (title, truncated body) pairs, best matches first.
-fn find_relevant_notes(root: &std::path::Path, keywords: &[String]) -> Vec<(String, String)> {
-    if keywords.is_empty() {
-        return vec![];
-    }
-
-    let mut scored: Vec<(usize, String, String)> = vec![];
-
-    for entry in walkdir::WalkDir::new(root)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_type().is_file()
-                && e.path().extension().map(|x| x == "md").unwrap_or(false)
-                && !e.path().components().any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
-        })
-        .take(5000)
-    {
-        let Ok(content) = std::fs::read_to_string(entry.path()) else { continue };
-        let title = entry
-            .path()
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        let title_lower = title.to_lowercase();
-        let content_lower = content.to_lowercase();
-
-        let score: usize = keywords
-            .iter()
-            .map(|kw| {
-                let in_title = if title_lower.contains(kw.as_str()) { 5 } else { 0 };
-                let in_body = content_lower.matches(kw.as_str()).count().min(10);
-                in_title + in_body
-            })
-            .sum();
-
-        if score > 0 {
-            let truncated: String = content.chars().take(1500).collect();
-            scored.push((score, title, truncated));
-        }
-    }
-
-    scored.sort_by(|a, b| b.0.cmp(&a.0));
-    scored.truncate(6);
-    scored.into_iter().map(|(_, t, b)| (t, b)).collect()
-}
 
 async fn call_claude_with_retry(
     client: &reqwest::Client,
@@ -652,23 +502,6 @@ pub async fn test_api_key(service: &str, client: &reqwest::Client) -> Result<()>
 
             if resp.status() == 401 {
                 Err(anyhow!("Clé API Claude invalide"))
-            } else {
-                Ok(())
-            }
-        }
-        "vapi" => {
-            let key = keychain::get_secret("vapi_api_key")?
-                .filter(|k| !k.is_empty())
-                .ok_or_else(|| anyhow!("No Vapi API key configured"))?;
-
-            let resp = client
-                .get("https://api.vapi.ai/phone-number")
-                .bearer_auth(&key)
-                .send()
-                .await?;
-
-            if resp.status() == 401 {
-                Err(anyhow!("Clé API Vapi invalide"))
             } else {
                 Ok(())
             }

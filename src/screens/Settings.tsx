@@ -2,10 +2,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { MdWarning, MdDownload, MdHourglassEmpty } from "react-icons/md";
+import { MdDownload } from "react-icons/md";
 import { useNotesStore } from "../store/notesStore";
 import { useTourStore } from "../store/tourStore";
-import type { AccountStatus } from "../bindings/AccountStatus";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -325,99 +324,6 @@ function AiAccessSection() {
   );
 }
 
-// ─── Account section (Google sign-in) ──────────────────────────────────────────
-// Credentials are shipped with the app, so connecting is a single click — no
-// client id/secret to paste. Microsoft is planned for a later phase.
-
-function AccountSection() {
-  const [status, setStatus] = useState<AccountStatus>({ connected: false, provider: null, email: null });
-  const [connecting, setConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(() => {
-    invoke<AccountStatus>("get_account_status").then(setStatus).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    let unsub: (() => void) | undefined;
-    listen("google-oauth-connected", () => { setConnecting(false); refresh(); }).then((fn) => { unsub = fn; });
-    return () => unsub?.();
-  }, [refresh]);
-
-  const handleConnect = async () => {
-    setError(null);
-    setConnecting(true);
-    try {
-      await invoke("start_google_oauth");
-    } catch (e) {
-      setError(String(e));
-      setConnecting(false);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    await invoke("disconnect_account");
-    refresh();
-  };
-
-  const providerLabel = (p: string | null) =>
-    p === "google" ? "Google" : p === "microsoft" ? "Microsoft" : (p ?? "Compte");
-
-  if (status.connected) {
-    return (
-      <SettingRow label="Compte connecté">
-        <span style={{ fontSize: 13, color: "var(--text-primary)" }}>
-          {providerLabel(status.provider)}{status.email ? ` · ${status.email}` : ""}
-        </span>
-        <span style={{ color: "#34C759", fontSize: 13 }}>✓</span>
-        <button
-          onClick={handleDisconnect}
-          style={{
-            background: "transparent", color: "var(--danger)",
-            border: "1px solid var(--border)", borderRadius: 6,
-            padding: "4px 10px", cursor: "pointer", fontSize: 12,
-          }}
-        >
-          Déconnecter
-        </button>
-      </SettingRow>
-    );
-  }
-
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <SettingRow label="Compte">
-        <button
-          onClick={handleConnect}
-          disabled={connecting}
-          style={{
-            background: connecting ? "var(--border)" : "var(--accent)",
-            color: connecting ? "var(--text-secondary)" : "#fff",
-            border: "none", borderRadius: 6,
-            padding: "6px 14px", cursor: connecting ? "not-allowed" : "pointer",
-            fontSize: 13,
-          }}
-        >
-          {connecting ? <><MdHourglassEmpty style={{ verticalAlign: "middle", marginRight: 4 }} /> En attente…</> : "Se connecter avec Google"}
-        </button>
-      </SettingRow>
-      <SettingRow label="Microsoft">
-        <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Bientôt</span>
-      </SettingRow>
-      {error && (
-        <div style={{
-          margin: "4px 0 8px", padding: "8px 12px",
-          background: "var(--tag-red-bg)", borderRadius: 8,
-          fontSize: 12, color: "var(--tag-red-text)",
-        }}>
-          <MdWarning style={{ verticalAlign: "middle", marginRight: 4 }} /> {error}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Settings screen ──────────────────────────────────────────────────────────
 
 export default function Settings() {
@@ -425,7 +331,6 @@ export default function Settings() {
   const [whisperModel, setWhisperModel] = useState("small");
   const [languageHint, setLanguageHint] = useState("auto");
   const [recordingSource, setRecordingSource] = useState("mic_only");
-  const [syncInterval, setSyncInterval] = useState("15");
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
@@ -433,7 +338,6 @@ export default function Settings() {
     invoke<string | null>("get_config", { key: "whisper_model" }).then((v) => v && setWhisperModel(v));
     invoke<string | null>("get_config", { key: "language_hint" }).then((v) => v && setLanguageHint(v));
     invoke<string | null>("get_config", { key: "recording_source" }).then((v) => v && setRecordingSource(v));
-    invoke<string | null>("get_config", { key: "calendar_sync_interval_min" }).then((v) => v && setSyncInterval(v));
     invoke<boolean>("get_launch_at_login").catch(() => false).then((v) => setLaunchAtLogin(v));
 
     const unsubs: (() => void)[] = [];
@@ -468,49 +372,6 @@ export default function Settings() {
 
       <Section title="Accès IA">
         <AiAccessSection />
-      </Section>
-
-      <Section title="APIs">
-        <SettingRow label="Clé API Vapi">
-          <SecretInput
-            account="vapi_api_key"
-            label="..."
-            onTest={() => invoke("test_api_key", { service: "vapi" })}
-          />
-        </SettingRow>
-        <SettingRow label="ID numéro Vapi">
-          <ConfigInput configKey="vapi_phone_number_id" placeholder="phone_num_id_xxx" />
-        </SettingRow>
-        <SettingRow label="Clé Google Places">
-          <SecretInput account="google_places_api_key" label="AIza..." />
-        </SettingRow>
-      </Section>
-
-      <Section title="Calendrier & compte">
-        <AccountSection />
-        <SettingRow label="Intervalle de sync">
-          <input
-            type="number"
-            min="5"
-            max="60"
-            value={syncInterval}
-            onChange={(e) => {
-              setSyncInterval(e.target.value);
-              setConfig("calendar_sync_interval_min", e.target.value);
-            }}
-            style={{
-              width: 60,
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              padding: "4px 8px",
-              fontSize: 13,
-              background: "var(--card-bg)",
-              color: "var(--text-primary)",
-              textAlign: "center",
-            }}
-          />
-          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>minutes</span>
-        </SettingRow>
       </Section>
 
       <Section title="Transcription">
@@ -821,74 +682,3 @@ function TodoFileRow() {
   );
 }
 
-function ConfigInput({ configKey, placeholder }: { configKey: string; placeholder: string }) {
-  const [value, setValue] = useState("");
-  const [editing, setEditing] = useState(false);
-
-  useEffect(() => {
-    invoke<string | null>("get_config", { key: configKey }).then((v) => v && setValue(v));
-  }, [configKey]);
-
-  const handleSave = async () => {
-    await invoke("set_config", { key: configKey, value });
-    setEditing(false);
-  };
-
-  if (editing) {
-    return (
-      <div style={{ display: "flex", gap: 8 }}>
-        <input
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={placeholder}
-          style={{
-            flex: 1,
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            padding: "5px 10px",
-            fontSize: 13,
-            background: "var(--card-bg)",
-            color: "var(--text-primary)",
-          }}
-        />
-        <button
-          onClick={handleSave}
-          style={{
-            background: "var(--accent)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            padding: "5px 12px",
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          OK
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-      <span style={{ fontSize: 13, color: value ? "var(--text-primary)" : "var(--text-secondary)" }}>
-        {value || "Non défini"}
-      </span>
-      <button
-        onClick={() => setEditing(true)}
-        style={{
-          background: "transparent",
-          color: "var(--accent)",
-          border: "1px solid var(--border)",
-          borderRadius: 6,
-          padding: "4px 10px",
-          cursor: "pointer",
-          fontSize: 12,
-        }}
-      >
-        Modifier
-      </button>
-    </div>
-  );
-}

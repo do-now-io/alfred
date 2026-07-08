@@ -11,7 +11,6 @@ pub struct AppState {
     pub active_recording_id: Arc<StdMutex<Option<String>>>,
     pub recording_stop_flag: Arc<AtomicBool>,
     pub transcription_tx: mpsc::Sender<TranscriptionJob>,
-    pub oauth_port: Arc<Mutex<Option<u16>>>,
     pub http_client: reqwest::Client,
     pub resource_dir: Option<std::path::PathBuf>,
     pub vault_path: Arc<StdMutex<Option<std::path::PathBuf>>>,

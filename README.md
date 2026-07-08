@@ -63,12 +63,6 @@ that path is gitignored, so every machine fetches it once), then runs
 `tauri build`. Installers land in `src-tauri\target\release\bundle\` (`msi\`
 and/or `nsis\`). Authenticode signing is not set up yet (spec/12/ROADMAP Phase E).
 
-### Google OAuth (optional)
-
-To enable "Sign in with Google", provide OAuth client credentials at build time
-(see `.env.example`). Without them, sign-in is unavailable but the rest of the
-app runs.
-
 ## Running on macOS
 
 Whisper is on by default here too (needs cmake + Xcode CLT, both already

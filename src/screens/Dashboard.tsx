@@ -2,15 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { useCalendarStore } from "../store/calendarStore";
 import { useChatStore } from "../store/chatStore";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import { useNotesStore } from "../store/notesStore";
 import { useTourTarget } from "../store/tourStore";
-import BookingDemo from "../components/BookingDemo";
-import BriefingTask from "../components/BriefingTask";
 import BriefingContent from "../components/BriefingContent";
-import type { CalendarEvent } from "../bindings/CalendarEvent";
 import type { NoteFile } from "../bindings/NoteFile";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
 import { toggleChecked, groupTasksBySection, type TaskLine } from "../utils/todoTasks";
@@ -289,64 +285,6 @@ function TasksSection() {
   );
 }
 
-// ─── Résumé IA ────────────────────────────────────────────────────────────────
-
-// ─── Tableau de tâches IA parallèles ──────────────────────────────────────────
-
-export type AITaskKind = "briefing" | "booking";
-
-export interface AITask {
-  id: string;
-  kind: AITaskKind;
-  event: CalendarEvent;
-}
-
-function TaskCard({ children }: { children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Bring the freshly launched task into view
-  useEffect(() => {
-    ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, []);
-
-  return (
-    <div ref={ref} className="card" style={{ padding: "20px 24px" }}>
-      {children}
-    </div>
-  );
-}
-
-function TaskBoard({ tasks, onRemove }: { tasks: AITask[]; onRemove: (id: string) => void }) {
-  if (tasks.length === 0) return null;
-
-  return (
-    <div>
-      <div style={{
-        display: "flex", alignItems: "center", gap: 8, marginBottom: 10,
-        fontSize: 13, fontWeight: 600, color: "var(--text-secondary)",
-      }}>
-        <span style={{ color: "var(--accent)" }}>✦</span>
-        Tâches Alfred ({tasks.length})
-      </div>
-      <div style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-      }}>
-        {tasks.map(task => (
-          <TaskCard key={task.id}>
-            {task.kind === "booking" ? (
-              <BookingDemo event={task.event} onClose={() => onRemove(task.id)} />
-            ) : (
-              <BriefingTask event={task.event} onClose={() => onRemove(task.id)} />
-            )}
-          </TaskCard>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // Render a short string with **bold** segments as React nodes (inline markdown only).
 function renderInlineMd(text: string) {
   return text.split(/(\*\*.+?\*\*)/g).map((part, i) => {
@@ -507,222 +445,21 @@ function ChatTeaser() {
   );
 }
 
-// ─── Panel droit — Cette semaine ──────────────────────────────────────────────
-
-function groupEventsByDay(events: CalendarEvent[]) {
-  const groups: Record<string, CalendarEvent[]> = {};
-  for (const ev of events) {
-    const day = ev.start_at.slice(0, 10);
-    if (!groups[day]) groups[day] = [];
-    groups[day].push(ev);
-  }
-  return groups;
-}
-
-function dayLabel(dateStr: string): string {
-  const date = new Date(dateStr + "T00:00:00");
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-
-  const d = date.getDate();
-  const months = ["jan", "fév", "mar", "avr", "mai", "juin", "juil", "août", "sep", "oct", "nov", "déc"];
-  const m = months[date.getMonth()];
-
-  if (date.toDateString() === today.toDateString()) return `Aujourd'hui – ${d} ${m}`;
-  if (date.toDateString() === tomorrow.toDateString()) return `Demain – ${d} ${m}`;
-
-  const days = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
-  return `${days[date.getDay()]} – ${d} ${m}`;
-}
-
-function isOnline(event: CalendarEvent): boolean {
-  const loc = (event.location ?? "").toLowerCase();
-  return loc.includes("ligne") || loc.includes("online") || loc.includes("zoom") || loc.includes("teams") || loc.includes("meet") || loc.includes("visio");
-}
-
-const MEAL_KEYWORDS = ["déjeuner", "dejeuner", "dîner", "diner", "lunch", "dinner", "repas", "restaurant", "resto", "brunch"];
-
-function isMeal(event: CalendarEvent): boolean {
-  const t = event.title.toLowerCase();
-  return MEAL_KEYWORDS.some(k => t.includes(k));
-}
-
-function formatTime(isoStr: string): string {
-  try {
-    return new Date(isoStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "";
-  }
-}
-
-function WeekPanel({ onBrief, onBook }: {
-  onBrief: (ev: CalendarEvent) => void;
-  onBook: (ev: CalendarEvent) => void;
-}) {
-  const { weekEvents, fetchWeekEvents } = useCalendarStore();
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchWeekEvents();
-    let unsub: (() => void) | undefined;
-    listen("calendar-synced", () => fetchWeekEvents()).then(fn => { unsub = fn; });
-    return () => unsub?.();
-  }, [fetchWeekEvents]);
-
-  const groups = groupEventsByDay(weekEvents);
-  const days = Object.keys(groups).sort();
-
-  return (
-    <aside style={{
-      width: 280, minWidth: 280,
-      borderLeft: "1px solid var(--border)",
-      background: "var(--card-bg)",
-      display: "flex", flexDirection: "column",
-      overflow: "hidden",
-    }}>
-      {/* Header */}
-      <div style={{ padding: "20px 20px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)" }}>Cette semaine</span>
-        <span style={{ fontSize: 16, color: "var(--text-muted)" }}>📅</span>
-      </div>
-
-      {/* Events */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 20px" }}>
-        {days.length === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", paddingTop: 24 }}>
-            Aucun événement cette semaine
-          </div>
-        ) : (
-          days.map(day => (
-            <div key={day} style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 10 }}>
-                {dayLabel(day)}
-              </div>
-              {groups[day].map(ev => {
-                const selected = selectedEventId === ev.id;
-                return (
-                  <div
-                    key={ev.id}
-                    onClick={() => setSelectedEventId(selected ? null : ev.id)}
-                    style={{
-                      display: "flex", gap: 12, marginBottom: 12, alignItems: "flex-start",
-                      cursor: "pointer", borderRadius: 8, padding: "4px 6px", margin: "0 -6px 8px",
-                      background: selected ? "var(--hover-bg, rgba(128,128,128,0.08))" : "transparent",
-                      transition: "background 0.15s",
-                    }}
-                  >
-                    <span style={{
-                      width: 8, height: 8, borderRadius: "50%", marginTop: 5, flexShrink: 0,
-                      background: isOnline(ev) ? "var(--dot-purple)" : "var(--dot-orange)",
-                    }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>
-                        {formatTime(ev.start_at)}
-                      </div>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.3 }}>
-                        {ev.title}
-                      </div>
-                      {ev.location && (
-                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1 }}>
-                          {ev.location}
-                        </div>
-                      )}
-                      {selected && (
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 5, marginTop: 6 }}>
-                          <button
-                            onClick={e => { e.stopPropagation(); onBrief(ev); }}
-                            style={{
-                              background: "none",
-                              border: "1px solid var(--accent)", borderRadius: 6,
-                              padding: "3px 10px", cursor: "pointer",
-                              fontSize: 12, fontWeight: 500, color: "var(--accent)",
-                              display: "inline-flex", alignItems: "center", gap: 5,
-                            }}
-                          >
-                            ✦ Résumé des notes
-                          </button>
-                          {isMeal(ev) && (
-                            <button
-                              onClick={e => { e.stopPropagation(); onBook(ev); }}
-                              style={{
-                                background: "var(--accent)", color: "#fff",
-                                border: "none", borderRadius: 6,
-                                padding: "4px 10px", cursor: "pointer",
-                                fontSize: 12, fontWeight: 500,
-                                display: "inline-flex", alignItems: "center", gap: 5,
-                              }}
-                            >
-                              📞 Demander à Alfred de réserver
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Footer */}
-      <div style={{ padding: "12px 20px", borderTop: "1px solid var(--border)" }}>
-        <button style={{
-          background: "none", border: "none", cursor: "pointer",
-          color: "var(--accent)", fontSize: 13, fontWeight: 500,
-          display: "flex", alignItems: "center", gap: 6, padding: 0,
-        }}>
-          Afficher le calendrier complet →
-        </button>
-      </div>
-
-    </aside>
-  );
-}
-
 // ─── Dashboard ────────────────────────────────────────────────────────────────
+// Single column (spec/10): no right-side calendar panel — calendar is out of v1.
 
 export default function Dashboard() {
-  const { fetchTodayEvents } = useCalendarStore();
-  const [tasks, setTasks] = useState<AITask[]>([]);
-
-  useEffect(() => {
-    fetchTodayEvents();
-    // Re-fetch when a sync lands — the initial fetch above races the backend's
-    // startup sync, and the 15-min periodic sync brings in later changes too.
-    let unsub: (() => void) | undefined;
-    listen("calendar-synced", () => fetchTodayEvents()).then(fn => { unsub = fn; });
-    return () => unsub?.();
-  }, [fetchTodayEvents]);
-
-  const addTask = (kind: AITaskKind, event: CalendarEvent) => {
-    setTasks(prev =>
-      prev.some(t => t.kind === kind && t.event.id === event.id)
-        ? prev // already running for this event — keep it
-        : [{ id: `${kind}-${event.id}`, kind, event }, ...prev] // newest on top
-    );
-  };
-
-  const removeTask = (id: string) => setTasks(prev => prev.filter(t => t.id !== id));
-
   return (
-    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
-      {/* Main content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ height: "100%", overflowY: "auto" }}>
+      <div style={{
+        maxWidth: 860, margin: "0 auto", padding: "24px 28px",
+        display: "flex", flexDirection: "column", gap: 20,
+      }}>
         <BriefCard />
         <HeroCard />
         <TasksSection />
-        <TaskBoard tasks={tasks} onRemove={removeTask} />
         <ChatTeaser />
       </div>
-
-      {/* Right panel */}
-      <WeekPanel
-        onBrief={ev => addTask("briefing", ev)}
-        onBook={ev => addTask("booking", ev)}
-      />
     </div>
   );
 }

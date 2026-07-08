@@ -28,6 +28,23 @@ pub struct CreateTodoInput {
     pub due_date: Option<String>,
 }
 
+/// Vault-relative path of the shared to-do list (spec/06). Configurable via
+/// `todo_file_path`; new vaults default under `alfred-intelligence/` alongside
+/// the AI-generated compte-rendus (spec/05).
+pub const DEFAULT_TODO_FILE: &str = "alfred-intelligence/Todo.md";
+
+pub async fn todo_file_path(db: &SqlitePool) -> String {
+    let stored: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = 'todo_file_path'")
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+    stored
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_TODO_FILE.to_string())
+}
+
 pub async fn get_todos(db: &SqlitePool) -> Result<Vec<Todo>> {
     let rows = sqlx::query!(
         r#"SELECT id as "id!", title as "title!", description, source as "source!",

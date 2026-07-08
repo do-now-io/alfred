@@ -37,9 +37,9 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [ ] | **Feedback live** d'enregistrement : volume (RMS) + timer dans `recording-status-changed` | |
 | [x] | ⚠️ **Whisper** : activer la feature par défaut + **embarquer le modèle `small`** + packaging Windows | UC |
 | [ ] | Transcription : **stocker la langue** détectée (bug) ; écrire dans `alfred-raw/` avec frontmatter (`for_recording`) | |
-| [~] | IA : passer aux modèles **Sonnet 5 / Haiku 4.5** ; **sorties structurées** ; **routage 2 modes** ; thinking off | UC |
-| [ ] | **Ingestion** (fusionnée) : 1 appel → compte-rendu (`alfred-intelligence/`) + tâches (`Todo.md`) | |
-| [ ] | **Todos → vault** : lire/écrire `Todo.md` (sections + Archivé) ; supprimer la table SQLite | |
+| [x] | IA : passer aux modèles **Sonnet 5 / Haiku 4.5** ; **sorties structurées** ; **routage 2 modes** ; thinking off (fait pour l'ingestion ; chat.rs pas encore aligné sur `thinking: disabled`) | UC |
+| [x] | **Ingestion** (fusionnée) : 1 appel → compte-rendu (`alfred-intelligence/`) + tâches (`Todo.md` + SQLite en double écriture, cf tâche suivante) | UC |
+| [ ] | **Todos → vault** : lire/écrire `Todo.md` (sections + Archivé) ; supprimer la table SQLite ; migrer `get_todos`/`create_todo`/`complete_todo`/`dismiss_todo`/`update_todo` + écran Tâches. Le **writer** (`notes/todo_md.rs`) existe déjà et est utilisé par l'ingestion — reste le cutover lecture/UI. | |
 | [ ] | Notes : frontmatter **`project` + `participants`** ; structure `alfred-raw`/`alfred-intelligence` ; regroupement par projet ; **plus de `.claude`/skills** dans le vault | |
 | [ ] | **Brief quotidien** (`generate/get_daily_brief`) | |
 | [ ] | **Chat** : historique multi-conversations + liste (persistance SQLite) | |
@@ -61,9 +61,9 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 
 | | Tâche | Qui |
 |---|---|---|
-| [ ] | Désactiver / retirer les modules `auth`, `calendar`, `suggestions`, `phone_calls`, `ingest` (CLI) | |
+| [ ] | Désactiver / retirer les modules `auth`, `calendar`, `suggestions`, `phone_calls` (`ingest` CLI déjà supprimé — spec/05) | UC |
 | [ ] | Retirer les routes `/meetings`, `/calendar`, `/ai-actions` | |
-| [ ] | Mettre à jour les défauts de dossiers (`alfred-raw`, `alfred-intelligence/Todo.md`) | |
+| [ ] | Mettre à jour les défauts de dossiers (`alfred-raw` — encore `raw/audios` ; `alfred-intelligence/Todo.md` ✅ déjà le défaut) | |
 
 ## Phase E — Packaging & distribution
 

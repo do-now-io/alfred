@@ -1,6 +1,12 @@
 # spec/06 — Todos
 
 > **Statut v1 :** refonte — la source de vérité passe de SQLite au **vault**.
+> **Écriture dans Todo.md déjà faite côté ingestion** (spec/05, écriture double
+> transitoire) ; **la lecture reste SQLite** — les commandes `get_todos` /
+> `create_todo` / `complete_todo` / `dismiss_todo` / `update_todo` et l'écran
+> Tâches n'ont pas encore basculé sur le fichier (cf. « Commandes Tauri »
+> ci-dessous). Voir aussi [`../src-tauri/src/notes/todo_md.rs`](../src-tauri/src/notes/todo_md.rs)
+> (parsing/merge du fichier, déjà écrit et testé).
 
 ## Principe
 

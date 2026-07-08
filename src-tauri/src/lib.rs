@@ -3,7 +3,6 @@ pub mod audio;
 pub mod auth;
 pub mod calendar;
 pub mod db;
-pub mod ingest;
 pub mod keychain;
 pub mod metrics;
 pub mod notes;
@@ -513,29 +512,10 @@ async fn get_call_status(
 // ─── Config & Keychain commands ───────────────────────────────────────────────
 
 #[tauri::command]
-async fn get_ingest_prompt(
-    state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
-    Ok(ingest::load_prompt(&state.db).await)
-}
-
-/// Vault-relative path of the shared to-do list shown in the Tâches tab.
-const DEFAULT_TODO_FILE: &str = "wiki/Todo.md";
-
-#[tauri::command]
 async fn get_todo_file(
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
-    let key = "todo_file_path";
-    let stored: Option<String> =
-        sqlx::query_scalar!("SELECT value FROM config WHERE key = ?", key)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| e.to_string())?;
-    Ok(stored
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| DEFAULT_TODO_FILE.to_string()))
+    Ok(todos::todo_file_path(&state.db).await)
 }
 
 /// Vault-relative folder where recordings (audio + transcription note) are saved.
@@ -546,14 +526,17 @@ async fn get_recording_folder(
     Ok(transcription::recording_folder(&state.db).await)
 }
 
+/// Manual "ré-ingérer" (spec/05): relaunches the merged ingestion on a specific
+/// `alfred-raw/` note. The automatic trigger (after `transcription-complete`)
+/// calls `ai::run_ingestion_for_recording` directly — see transcription/mod.rs.
 #[tauri::command]
 async fn run_ingest(
+    note_path: String,
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
-) -> Result<String, String> {
-    let vault_root = get_vault_root(&state)?;
-    let prompt = ingest::load_prompt(&state.db).await;
-    ingest::run_ingest(&prompt, &vault_root, &app)
+) -> Result<(), String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    ai::run_ingestion_for_note(std::path::Path::new(&note_path), &state.db, vault_root.as_deref(), &app)
         .await
         .map_err(|e| e.to_string())
 }
@@ -872,7 +855,6 @@ pub fn run() {
             // Config & Keychain
             get_config,
             set_config,
-            get_ingest_prompt,
             run_ingest,
             get_todo_file,
             get_recording_folder,

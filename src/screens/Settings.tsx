@@ -578,12 +578,8 @@ export default function Settings() {
           <TodoFileRow />
         </SettingRow>
         <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-          Chemin relatif au dossier Notes (vault). Ex. <code>wiki/Todo.md</code>
+          Chemin relatif au dossier Notes (vault). Ex. <code>alfred-intelligence/Todo.md</code>
         </div>
-      </Section>
-
-      <Section title="Ingestion">
-        <IngestPromptEditor />
       </Section>
 
       <Section title="Système">
@@ -644,62 +640,6 @@ function VaultPathRow() {
         Choisir…
       </button>
     </SettingRow>
-  );
-}
-
-function IngestPromptEditor() {
-  const [prompt, setPrompt] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    invoke<string>("get_ingest_prompt")
-      .then((p) => setPrompt(p))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const handleSave = async () => {
-    await invoke("set_config", { key: "ingest_prompt", value: prompt });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  return (
-    <div>
-      <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 8 }}>
-        Prompt exécuté par Claude (CLI local) lors de l'ingestion lancée depuis l'onglet Notes.
-        Il s'exécute dans le dossier du vault, en suivant son <code>CLAUDE.md</code>.
-      </div>
-      <textarea
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        disabled={loading}
-        rows={5}
-        placeholder={loading ? "Chargement…" : "Prompt d'ingestion…"}
-        style={{
-          width: "100%", resize: "vertical", boxSizing: "border-box",
-          fontFamily: "inherit", fontSize: 13, lineHeight: 1.5,
-          color: "var(--text-primary)", background: "var(--card-bg)",
-          border: "1px solid var(--border)", borderRadius: 8,
-          padding: "10px 12px", outline: "none",
-        }}
-      />
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
-        <button
-          onClick={handleSave}
-          disabled={loading}
-          style={{
-            background: "var(--accent)", color: "#fff", border: "none",
-            borderRadius: 6, padding: "6px 16px", cursor: loading ? "not-allowed" : "pointer",
-            fontSize: 13,
-          }}
-        >
-          Enregistrer
-        </button>
-        {saved && <span style={{ color: "#34C759", fontSize: 12 }}>✓ Enregistré</span>}
-      </div>
-    </div>
   );
 }
 

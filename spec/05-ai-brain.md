@@ -28,8 +28,9 @@ seuls l'URL de base et l'en-tête d'auth changent. En-tête commun :
 
 ## Conventions API (v1)
 
-- **Sorties structurées** (`output_config.format` + schéma JSON) pour l'ingestion
-  — fiable, remplace le « demander du JSON puis retirer les \`\`\`json ».
+- **Sorties structurées** pour l'ingestion — via **tool-use forcé** (schéma JSON
+  en `input_schema`, `tool_choice` pointant sur l'unique outil) : fiable, remplace
+  le « demander du JSON puis retirer les \`\`\`json ».
 - **Thinking désactivé** (`thinking: {type: "disabled"}`) sur toutes les tâches v1
   (coût/latence maîtrisés ; sinon Sonnet 5 raisonne en adaptatif par défaut). Le
   raisonnement adaptatif reste un levier qualité **plus tard** (notamment pour le chat).
@@ -41,23 +42,30 @@ seuls l'URL de base et l'en-tête d'auth changent. En-tête commun :
 
 ---
 
-## Usage 1 — Ingestion (transcription → compte-rendu + tâches)
+## Usage 1 — Ingestion (transcription → compte-rendu + tâches) — ✅ fait
 
 **Fusionne** l'ancienne « extraction de todos » et l'ancien « ingest » CLI en **un
-seul appel API**.
+seul appel API**. Remplace `extract_todos_from_transcription` (SQLite uniquement)
+et l'ancien `ingest.rs` (spawn du CLI `claude` local) — les deux sont supprimés.
 
-**Déclencheur** : automatiquement après `transcription-complete` ; + bouton
-**« ré-ingérer »** (relance sur une note de `alfred-raw/`).
+**Déclencheur** : automatiquement après `transcription-complete`
+(`ai::run_ingestion_for_recording`, appelé par `transcription/mod.rs`) ; + bouton
+**« ré-ingérer »** dans l'onglet Notes, actif quand une note est sélectionnée
+(relance sur cette note via `ai::run_ingestion_for_note`).
 
 **Entrée** : le texte de la transcription (note dans `alfred-raw/`).
 
-**Modèle** : `claude-sonnet-5`, sortie structurée :
+**Modèle** : `claude-sonnet-5`. **Sortie structurée** via **tool-use forcé**
+(`tool_choice: {"type": "tool", "name": "submit_ingestion"}`, même mécanisme que
+le chat agentique spec/07b) plutôt qu'un champ `output_config.format` — plus
+robuste que « demander du JSON puis retirer les \`\`\`json », et déjà éprouvé dans
+ce code base :
 ```json
 {
   "resume": "compte-rendu structuré en Markdown (points clés abordés)",
   "points_cles": ["..."],
   "taches": [
-    { "titre": "...", "responsable": "Prénom|null", "echeance": "YYYY-MM-DD|null" }
+    { "titre": "...", "responsable": "Prénom (optionnel)", "echeance": "YYYY-MM-DD (optionnel)" }
   ]
 }
 ```
@@ -67,10 +75,16 @@ responsable de chaque tâche quand il est identifiable.
 **Écriture (par Rust, jamais par l'IA)** :
 1. Compte-rendu → `alfred-intelligence/{titre}.md` avec frontmatter
    (`type: meeting`, `date`, `recording_id`, `participants`, `project`).
-2. Tâches → fusionnées dans `alfred-intelligence/Todo.md`, section `## À faire`,
-   dédup par titre normalisé (spec/06).
+   `participants`/`project` existent dans le frontmatter mais ne sont pas encore
+   peuplés par l'IA (regroupement par projet = spec/07, hors de ce chantier).
+2. Tâches → **écriture double** tant que spec/06 (Todos → vault) n'est pas faite :
+   fusionnées dans `alfred-intelligence/Todo.md` (section `## À faire`, dédup par
+   titre normalisé) **et** insérées dans la table SQLite `todos` (pour que l'écran
+   Tâches actuel continue de les afficher). Le fichier deviendra seul juste après
+   le cutover spec/06.
 
-**Événement** : `ingestion_completed { ai_mode }` (metrics, spec/15) + `notes-updated`.
+**Événement** : `ingestion_completed { ai_mode }` (metrics, spec/15) + `notes-updated`
+(+ `todos-updated` pour la partie SQLite, transitoire).
 
 ---
 
@@ -102,13 +116,17 @@ synthèse hebdo).
 
 ## Commandes Tauri (v1)
 
-- `run_ingest(recording_id | note_path)` — ingestion (auto + ré-ingérer)
+- `run_ingest(note_path)` — ré-ingère une note (le déclenchement auto passe par
+  `ai::run_ingestion_for_recording`, appelé en interne depuis la transcription)
 - `ask_notes(question, history) -> ChatResponse`
 - `generate_daily_brief() -> String` · `get_daily_brief() -> { text, generated_at } | null`
 - `test_api_key(service)` — valide la clé perso / le token AlfredIA
 
-Supprimées de la v1 : `extract_todos_from_transcription` (fusionnée dans l'ingestion),
-`generate_weekly_synthesis`, `generate_event_briefing`.
+Supprimées : `extract_todos_from_transcription` (fusionnée dans l'ingestion),
+l'ancien `ingest.rs` (CLI). **Pas encore supprimées** (gardées tant que Calendar,
+hors v1, n'est pas retiré — Phase D) : `generate_weekly_synthesis`,
+`generate_event_briefing`, encore utilisées par le Dashboard et le briefing
+d'événement calendrier. À retirer avec le nettoyage Calendar.
 
 ## Hors v1 / plus tard
 

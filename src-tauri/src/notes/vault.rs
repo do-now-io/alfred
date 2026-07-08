@@ -242,6 +242,31 @@ pub async fn create_recording_note(
     get_note_file(&file_path).await
 }
 
+/// Write the AI-generated compte-rendu (spec/05) as a fresh note with frontmatter
+/// — unlike `create_recording_note`, which writes the raw transcription without
+/// frontmatter (spec/04, a separate not-yet-done cleanup task).
+pub async fn create_intelligence_note(
+    folder: &Path,
+    title: &str,
+    metadata: NoteMetadata,
+    body: &str,
+) -> Result<NoteFile> {
+    tokio::fs::create_dir_all(folder).await?;
+
+    let safe_name = sanitize_filename(title);
+    let mut file_path = folder.join(format!("{}.md", safe_name));
+    let mut counter = 2;
+    while file_path.exists() {
+        file_path = folder.join(format!("{} {}.md", safe_name, counter));
+        counter += 1;
+    }
+
+    let content = frontmatter::serialize(&metadata, body);
+    tokio::fs::write(&file_path, content).await?;
+
+    get_note_file(&file_path).await
+}
+
 pub async fn update_note_file(
     path: &Path,
     metadata: NoteMetadata,

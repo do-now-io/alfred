@@ -11,6 +11,13 @@ pub struct NoteMetadata {
     pub note_type: String,
     pub status: String,
     pub recording_id: Option<String>,
+    /// First names of meeting participants, when known (spec/05 ingestion).
+    #[serde(default)]
+    pub participants: Vec<String>,
+    /// Vault "project" this note belongs to, when known (spec/07, hors v1 pour le
+    /// regroupement automatique — le champ existe déjà pour l'ingestion).
+    #[serde(default)]
+    pub project: Option<String>,
 }
 
 impl NoteMetadata {
@@ -22,6 +29,8 @@ impl NoteMetadata {
             note_type: "note".to_string(),
             status: "active".to_string(),
             recording_id: None,
+            participants: vec![],
+            project: None,
         }
     }
 
@@ -33,6 +42,29 @@ impl NoteMetadata {
             note_type: "meeting".to_string(),
             status: "active".to_string(),
             recording_id: Some(recording_id.to_string()),
+            participants: vec![],
+            project: None,
+        }
+    }
+
+    /// The compte-rendu note produced by ingestion (spec/05): same `recording_id`
+    /// as the raw transcription note, plus whatever participants/project the AI
+    /// could identify (project-based grouping itself is a later feature — spec/07).
+    pub fn for_meeting_report(
+        title: &str,
+        recording_id: Option<&str>,
+        participants: Vec<String>,
+        project: Option<String>,
+    ) -> Self {
+        Self {
+            title: title.to_string(),
+            date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+            tags: vec![],
+            note_type: "meeting".to_string(),
+            status: "active".to_string(),
+            recording_id: recording_id.map(|s| s.to_string()),
+            participants,
+            project,
         }
     }
 
@@ -42,6 +74,8 @@ impl NoteMetadata {
         if self.note_type != "note" { count += 1; }
         if self.status != "active" { count += 1; }
         if self.recording_id.is_some() { count += 1; }
+        if !self.participants.is_empty() { count += 1; }
+        if self.project.is_some() { count += 1; }
         count
     }
 }
@@ -104,6 +138,21 @@ pub fn parse(raw: &str, filename_stem: &str) -> (NoteMetadata, String) {
                             .collect();
                     }
                 }
+                "participants" => {
+                    let v = value.trim().trim_matches('[').trim_matches(']');
+                    if !v.is_empty() {
+                        metadata.participants = v
+                            .split(',')
+                            .map(|t| t.trim().trim_matches('"').to_string())
+                            .filter(|t| !t.is_empty())
+                            .collect();
+                    }
+                }
+                "project" => {
+                    if !value.is_empty() && value != "null" && value != "~" {
+                        metadata.project = Some(value.trim_matches('"').to_string());
+                    }
+                }
                 _ => {} // ignore unknown keys
             }
         } else if line.starts_with("- ") && line.len() > 2 {
@@ -140,6 +189,19 @@ pub fn serialize(metadata: &NoteMetadata, body: &str) -> String {
         out.push_str(&format!("recording_id: {}\n", rid));
     }
 
+    if !metadata.participants.is_empty() {
+        let participants_str = metadata.participants
+            .iter()
+            .map(|p| p.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!("participants: [{}]\n", participants_str));
+    }
+
+    if let Some(ref project) = metadata.project {
+        out.push_str(&format!("project: {}\n", project));
+    }
+
     out.push_str("---\n\n");
     out.push_str(body);
 
@@ -159,6 +221,8 @@ mod tests {
             note_type: "note".into(),
             status: "active".into(),
             recording_id: None,
+            participants: vec![],
+            project: None,
         };
         let body = "# Test\n\nHello world.";
         let raw = serialize(&meta, body);

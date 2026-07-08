@@ -160,13 +160,16 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
         "transcription_id": transcription_id
     }))?;
 
-    // Trigger AI todo extraction
+    // Trigger the merged ingestion (compte-rendu + tasks, spec/05).
     let db_clone = job.db.clone();
     let app_clone = job.app_handle.clone();
-    let t_id = transcription_id.clone();
+    let vault_clone = job.vault_path.clone();
+    let rec_id = recording_id.clone();
+    let text = raw_text.clone();
+    let title = note_title.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = crate::ai::extract_todos_from_transcription(&t_id, &db_clone, &app_clone).await {
-            eprintln!("Todo extraction error: {}", e);
+        if let Err(e) = crate::ai::run_ingestion_for_recording(&rec_id, &text, &title, &db_clone, vault_clone.as_deref(), &app_clone).await {
+            eprintln!("Ingestion error: {}", e);
         }
     });
 

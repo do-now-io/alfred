@@ -1,11 +1,9 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { MdMoveToInbox, MdAutorenew, MdCheck, MdErrorOutline } from "react-icons/md";
 import type { VaultNode } from "../../bindings/VaultNode";
 import { useNotesStore } from "../../store/notesStore";
 import FileTreeNode from "./FileTreeNode";
-import IngestModal, { type IngestModalState } from "./IngestModal";
 
 type IngestState = "idle" | "running" | "done" | "error";
 
@@ -22,9 +20,6 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
   const [newName, setNewName] = useState("");
   const [ingest, setIngest] = useState<IngestState>("idle");
   const [ingestError, setIngestError] = useState<string | null>(null);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalStatus, setModalStatus] = useState<IngestModalState>("running");
 
   const handleCreate = async () => {
     if (!vaultPath) return;
@@ -32,34 +27,25 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
     await createNote(`${vaultPath}/raw`, "Nouvelle note");
   };
 
+  // Re-runs the merged ingestion (spec/05) on the selected alfred-raw/ note —
+  // regenerates its compte-rendu + re-extracts tasks. Ingestion also runs
+  // automatically right after every recording; this is the manual "ré-ingérer".
   const handleIngest = async () => {
-    if (ingest === "running" || !vaultPath) return;
+    if (ingest === "running" || !selectedPath) return;
     setIngest("running");
     setIngestError(null);
-    setLogs([]);
-    setModalStatus("running");
-    setModalOpen(true);
-
-    const unlisten = await listen<string>("ingest-log", (e) => {
-      setLogs(prev => [...prev, e.payload]);
-    });
 
     try {
-      await invoke<string>("run_ingest");
-      await fetchTree(); // surface freshly ingested notes
+      await invoke("run_ingest", { notePath: selectedPath });
+      await fetchTree(); // surface the freshly written compte-rendu
       setIngest("done");
-      setModalStatus("done");
       setTimeout(() => setIngest("idle"), 2500);
     } catch (e) {
       const msg = String(e);
       console.error("Ingestion échouée:", msg);
       setIngestError(msg);
-      setLogs(prev => [...prev, `✗ ${msg}`]);
       setIngest("error");
-      setModalStatus("error");
       setTimeout(() => setIngest("idle"), 5000);
-    } finally {
-      unlisten();
     }
   };
 
@@ -98,7 +84,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
         </span>
         {vaultPath && (
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <IngestButton state={ingest} error={ingestError} onClick={handleIngest} />
+            <IngestButton state={ingest} error={ingestError} disabled={!selectedPath} onClick={handleIngest} />
             <button
               onClick={handleCreate}
               title="Nouvelle note"
@@ -165,14 +151,6 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
         </div>
       )}
 
-      {modalOpen && (
-        <IngestModal
-          logs={logs}
-          state={modalStatus}
-          error={ingestError}
-          onClose={() => setModalOpen(false)}
-        />
-      )}
     </div>
   );
 }
@@ -185,7 +163,17 @@ function btnStyle(bg: string, color: string, border = false): React.CSSPropertie
   };
 }
 
-function IngestButton({ state, error, onClick }: { state: IngestState; error: string | null; onClick: () => void }) {
+function IngestButton({
+  state,
+  error,
+  disabled,
+  onClick,
+}: {
+  state: IngestState;
+  error: string | null;
+  disabled: boolean;
+  onClick: () => void;
+}) {
   const running = state === "running";
 
   const { icon, color, title } = (() => {
@@ -194,25 +182,25 @@ function IngestButton({ state, error, onClick }: { state: IngestState; error: st
         return {
           icon: <MdAutorenew style={{ display: "block", transformOrigin: "center", animation: "alfred-spin 0.8s linear infinite" }} />,
           color: "var(--accent)",
-          title: "Ingestion en cours…",
+          title: "Ré-ingestion en cours…",
         };
       case "done":
         return {
           icon: <MdCheck style={{ animation: "alfred-pop 0.3s ease" }} />,
           color: "#34C759",
-          title: "Ingestion terminée — wiki mis à jour",
+          title: "Ré-ingestion terminée — compte-rendu régénéré",
         };
       case "error":
         return {
           icon: <MdErrorOutline style={{ animation: "alfred-pop 0.3s ease" }} />,
           color: "var(--danger)",
-          title: error ? `Ingestion échouée : ${error}` : "Ingestion échouée",
+          title: error ? `Ré-ingestion échouée : ${error}` : "Ré-ingestion échouée",
         };
       default:
         return {
           icon: <MdMoveToInbox />,
-          color: "var(--text-secondary)",
-          title: "Ingérer le dossier raw/ dans le wiki",
+          color: disabled ? "var(--text-muted)" : "var(--text-secondary)",
+          title: disabled ? "Sélectionne une note à ré-ingérer" : "Ré-ingérer la note sélectionnée",
         };
     }
   })();
@@ -220,11 +208,11 @@ function IngestButton({ state, error, onClick }: { state: IngestState; error: st
   return (
     <button
       onClick={onClick}
-      disabled={running}
+      disabled={running || disabled}
       title={title}
       style={{
         background: "none", border: "none",
-        cursor: running ? "wait" : "pointer",
+        cursor: disabled ? "not-allowed" : running ? "wait" : "pointer",
         color, fontSize: 17, lineHeight: 1, padding: 2,
         display: "inline-flex", alignItems: "center",
         transition: "color 0.15s",

@@ -1,9 +1,12 @@
 use anyhow::{anyhow, Result};
+use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
+use std::path::Path;
 use tauri::Emitter;
 
 use crate::keychain;
+use crate::notes::todo_md::IngestTask;
 
 pub mod chat;
 
@@ -71,93 +74,236 @@ pub async fn resolve_access(db: &SqlitePool) -> Result<AiAccess> {
     }
 }
 
-const TODO_EXTRACTION_SYSTEM: &str = r#"Tu es un assistant qui extrait des tâches à faire depuis des transcriptions.
-Tu dois retourner UNIQUEMENT un tableau JSON valide, rien d'autre.
-Chaque tâche a les champs: title (string, obligatoire), description (string ou null), due_date (string YYYY-MM-DD ou null).
-Si aucune tâche n'est détectée, retourne [].
-Exemples de tâches: appels à passer, réunions à planifier, documents à envoyer, rendez-vous à prendre."#;
+// ─── Ingestion fusionnée (spec/05) ──────────────────────────────────────────────
+//
+// One Claude call turns a transcription into a compte-rendu + extracted tasks.
+// Replaces the old two-step "extract_todos_from_transcription" + CLI "ingest".
+// Rust (never the AI) does all the writing: alfred-intelligence/{titre}.md
+// (compte-rendu) and a dual-write of tasks — Todo.md (spec/06 target) + the
+// SQLite `todos` table (kept in sync until the Tâches screen migrates to the
+// file, a separate ROADMAP task).
 
-pub async fn extract_todos_from_transcription(
-    transcription_id: &str,
-    db: &SqlitePool,
-    app_handle: &tauri::AppHandle,
-) -> Result<Vec<crate::todos::Todo>> {
+const INGESTION_SYSTEM: &str = r#"Tu es Alfred, un assistant personnel. On te donne la transcription brute d'un enregistrement (réunion, note vocale, appel). Analyse-la et soumets un compte-rendu structuré via l'outil `submit_ingestion`.
+
+Consignes :
+- `resume` : compte-rendu structuré en Markdown (points clés abordés), en français, concis.
+- `points_cles` : liste des points clés abordés, en phrases courtes.
+- `taches` : chaque tâche à faire identifiée dans la transcription. Quand un responsable est nommé (prénom), rappelle-le dans `responsable` — c'est important, ne l'invente pas s'il n'est pas mentionné. `echeance` au format YYYY-MM-DD si une date est mentionnée, sinon omets-la.
+- N'invente rien : si la transcription est trop courte ou vide de contenu exploitable, renvoie un résumé bref, une liste de points clés vide, et aucune tâche."#;
+
+fn ingestion_tool() -> serde_json::Value {
+    json!([{
+        "name": "submit_ingestion",
+        "description": "Soumets le compte-rendu structuré de la transcription et les tâches identifiées.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "resume": {
+                    "type": "string",
+                    "description": "Compte-rendu structuré en Markdown"
+                },
+                "points_cles": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                },
+                "taches": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "titre": { "type": "string" },
+                            "responsable": { "type": "string", "description": "Prénom du responsable, si identifiable" },
+                            "echeance": { "type": "string", "description": "YYYY-MM-DD, si mentionnée" }
+                        },
+                        "required": ["titre"]
+                    }
+                }
+            },
+            "required": ["resume", "points_cles", "taches"]
+        }
+    }])
+}
+
+#[derive(Debug, Deserialize)]
+struct IngestionOutput {
+    resume: String,
+    #[serde(default)]
+    points_cles: Vec<String>,
+    #[serde(default)]
+    taches: Vec<IngestedTask>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IngestedTask {
+    titre: String,
+    #[serde(default)]
+    responsable: Option<String>,
+    #[serde(default)]
+    echeance: Option<String>,
+}
+
+/// Vault-relative folder for AI-generated compte-rendus (spec/05).
+const DEFAULT_INTELLIGENCE_FOLDER: &str = "alfred-intelligence";
+
+async fn intelligence_folder(db: &SqlitePool) -> String {
+    let stored: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = 'intelligence_folder'")
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+    stored
+        .map(|s| s.trim().trim_matches('/').trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_INTELLIGENCE_FOLDER.to_string())
+}
+
+/// One Claude call → `IngestionOutput`, forcing the `submit_ingestion` tool so the
+/// response is always structured (no fragile "strip the ```json fence" parsing).
+async fn call_ingestion(text: &str, db: &SqlitePool) -> Result<(IngestionOutput, &'static str)> {
     let access = resolve_access(db).await?;
-
-    let row = sqlx::query!(
-        "SELECT raw_text, recording_id FROM transcriptions WHERE id = ?",
-        transcription_id
-    )
-    .fetch_optional(db)
-    .await?
-    .ok_or_else(|| anyhow!("Transcription not found"))?;
-
-    if row.raw_text.trim().is_empty() {
-        return Ok(vec![]);
-    }
-
     let client = reqwest::Client::new();
 
     let body = json!({
         "model": MODEL,
-        "max_tokens": 1024,
+        "max_tokens": 4096,
+        "thinking": {"type": "disabled"},
         "system": [{
             "type": "text",
-            "text": TODO_EXTRACTION_SYSTEM,
+            "text": INGESTION_SYSTEM,
             "cache_control": {"type": "ephemeral"}
         }],
+        "tools": ingestion_tool(),
+        "tool_choice": {"type": "tool", "name": "submit_ingestion"},
         "messages": [{
             "role": "user",
-            "content": format!("Transcription:\n{}", row.raw_text)
+            "content": format!("Transcription:\n{}", text)
         }]
     });
 
     let resp = call_claude_with_retry(&client, &access, &body).await?;
 
-    let content = resp["content"][0]["text"]
-        .as_str()
-        .ok_or_else(|| anyhow!("No text in Claude response"))?;
+    let content = resp["content"].as_array().cloned().unwrap_or_default();
+    let block = content
+        .iter()
+        .find(|b| b["type"] == "tool_use" && b["name"] == "submit_ingestion")
+        .ok_or_else(|| anyhow!("Claude did not call submit_ingestion: {:?}", resp))?;
 
-    // Strip markdown code blocks if present
-    let json_str = content
-        .trim()
-        .trim_start_matches("```json")
-        .trim_start_matches("```")
-        .trim_end_matches("```")
-        .trim();
+    let output: IngestionOutput = serde_json::from_value(block["input"].clone())
+        .map_err(|e| anyhow!("Invalid submit_ingestion input: {} — {:?}", e, block["input"]))?;
 
-    let extracted: Vec<serde_json::Value> = serde_json::from_str(json_str)
-        .map_err(|e| anyhow!("Failed to parse Claude response as JSON: {} — Response: {}", e, json_str))?;
+    Ok((output, access.mode))
+}
 
-    let mut todos = Vec::new();
-    for item in extracted {
-        let title = item["title"].as_str().unwrap_or("").trim().to_string();
+/// Shared engine: run the ingestion call, then write everything (Rust does the
+/// writing, never the AI). `recording_id` is `None` when re-ingesting a note that
+/// isn't linked to a recording (spec/05 "note_path" entry point).
+async fn run_ingestion_core(
+    text: &str,
+    note_title: &str,
+    recording_id: Option<&str>,
+    db: &SqlitePool,
+    vault_root: Option<&Path>,
+    app_handle: &tauri::AppHandle,
+) -> Result<()> {
+    if text.trim().is_empty() {
+        return Ok(());
+    }
+
+    let (output, ai_mode) = call_ingestion(text, db).await?;
+
+    if let Some(vault_root) = vault_root {
+        // 1. Compte-rendu → alfred-intelligence/{titre}.md
+        let folder = vault_root.join(intelligence_folder(db).await);
+        let metadata = crate::notes::NoteMetadata::for_meeting_report(note_title, recording_id, vec![], None);
+        let mut body = output.resume.clone();
+        if !output.points_cles.is_empty() {
+            body.push_str("\n\n## Points clés\n");
+            for p in &output.points_cles {
+                body.push_str(&format!("- {}\n", p));
+            }
+        }
+        match crate::notes::vault::create_intelligence_note(&folder, note_title, metadata, &body).await {
+            Ok(_) => eprintln!("[ingestion] compte-rendu created: {}", note_title),
+            Err(e) => eprintln!("[ingestion] failed to write compte-rendu: {}", e),
+        }
+
+        // 2. Tâches → Todo.md (spec/06 target format), deduped.
+        if !output.taches.is_empty() {
+            let todo_rel_path = crate::todos::todo_file_path(db).await;
+            let tasks: Vec<IngestTask> = output
+                .taches
+                .iter()
+                .map(|t| IngestTask {
+                    titre: t.titre.clone(),
+                    responsable: t.responsable.clone(),
+                    echeance: t.echeance.clone(),
+                })
+                .collect();
+            match crate::notes::todo_md::append_tasks(vault_root, &todo_rel_path, &tasks).await {
+                Ok(n) => eprintln!("[ingestion] {} task(s) added to {}", n, todo_rel_path),
+                Err(e) => eprintln!("[ingestion] failed to update Todo.md: {}", e),
+            }
+        }
+
+        let _ = app_handle.emit("notes-updated", json!({}));
+    } else {
+        eprintln!("[ingestion] vault not configured, skipping note/Todo.md writes");
+    }
+
+    // 3. Dual-write to SQLite (Tâches screen still reads this — spec/06 not done yet).
+    let source_id = recording_id.unwrap_or(note_title);
+    let mut created = 0;
+    for t in &output.taches {
+        let title = t.titre.trim();
         if title.is_empty() {
             continue;
         }
-        let description = item["description"].as_str().map(|s| s.to_string());
-        let due_date = item["due_date"].as_str().map(|s| s.to_string());
-
-        match crate::todos::create_todo_internal(
-            &title,
-            description.as_deref(),
-            "transcription",
-            Some(transcription_id),
-            due_date.as_deref(),
-            db,
-        )
-        .await
-        {
-            Ok(todo) => todos.push(todo),
-            Err(e) => eprintln!("Failed to create todo from transcription: {}", e),
+        match crate::todos::create_todo_internal(title, None, "transcription", Some(source_id), t.echeance.as_deref(), db).await {
+            Ok(_) => created += 1,
+            Err(e) => eprintln!("[ingestion] failed to create SQLite todo: {}", e),
         }
     }
-
-    if !todos.is_empty() {
-        let _ = app_handle.emit("todos-updated", json!({ "count": todos.len() }));
+    if created > 0 {
+        let _ = app_handle.emit("todos-updated", json!({ "count": created }));
     }
 
-    Ok(todos)
+    crate::metrics::send("ingestion_completed", json!({ "ai_mode": ai_mode }));
+
+    Ok(())
+}
+
+/// Automatic trigger, right after `transcription-complete` (spec/05).
+pub async fn run_ingestion_for_recording(
+    recording_id: &str,
+    transcription_text: &str,
+    note_title: &str,
+    db: &SqlitePool,
+    vault_root: Option<&Path>,
+    app_handle: &tauri::AppHandle,
+) -> Result<()> {
+    run_ingestion_core(transcription_text, note_title, Some(recording_id), db, vault_root, app_handle).await
+}
+
+/// Manual "ré-ingérer" trigger, relaunched on a specific `alfred-raw/` note
+/// (spec/05). Reads the note's body (frontmatter stripped) and, if the note
+/// already carries a `recording_id`, keeps that link.
+pub async fn run_ingestion_for_note(
+    note_path: &Path,
+    db: &SqlitePool,
+    vault_root: Option<&Path>,
+    app_handle: &tauri::AppHandle,
+) -> Result<()> {
+    let raw = tokio::fs::read_to_string(note_path)
+        .await
+        .map_err(|e| anyhow!("Cannot read {:?}: {}", note_path, e))?;
+
+    let stem = note_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let (metadata, body) = crate::notes::frontmatter::parse(&raw, &stem);
+
+    run_ingestion_core(&body, &metadata.title, metadata.recording_id.as_deref(), db, vault_root, app_handle).await
 }
 
 pub async fn generate_weekly_synthesis(db: &SqlitePool) -> Result<String> {

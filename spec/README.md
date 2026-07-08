@@ -75,11 +75,15 @@ décorrélé de l'identité Stripe. Événements : `install_created`, `app_launc
 `recording_completed` (mic/système), `ingestion_completed` (mode byo/alfredia),
 `ai_request`. Envoi vers le backend (`/metrics`).
 
-## Risques v1 en tête
+## Risques v1 — statut
 
-1. **Backend AlfredIA** (proxy + Stripe + metrics) — **gate le lancement**, plus gros morceau, hors app desktop.
-2. **Audio système sur Windows** — à coder (WASAPI loopback).
-3. **Whisper par défaut, cross-platform** — build + packaging Windows, téléchargement du modèle au 1er lancement.
+Les 3 risques qui gataient le lancement sont **levés** :
+
+1. ✅ **Backend AlfredIA** (proxy + Stripe + metrics) — construit, validé en prod (Coolify).
+2. ✅ **Audio système Windows** (WASAPI loopback + mixed) — fait, testé. Reste **macOS** (helper Swift ScreenCaptureKit), non commencé.
+3. ✅ **Whisper par défaut, cross-platform** — feature par défaut + modèle `small` embarqué, installeurs Windows testés (transcription offline dès le 1er lancement).
+
+**Nouveau risque en tête** : la **Phase C (UX/écrans)** est quasi entièrement à construire (Accueil, Onboarding, nav, bandeau d'enregistrement, Feedback) — c'est elle qui bloque une v1 montrable aux ~10 users, le moteur (Phases A/B) étant largement en avance.
 
 ## Suivi des tâches
 

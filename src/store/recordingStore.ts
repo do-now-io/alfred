@@ -10,8 +10,10 @@ interface RecordingStore {
   /** Epoch ms when the current recording began — survives view changes so the
    *  timer stays accurate no matter which component (re)mounts. */
   startedAt: number | null;
+  /** Live mic RMS level (0..1), from `recording-status-changed` (spec/03 feedback live). */
+  volume: number;
   errorMessage: string | null;
-  setStatus: (status: RecordingStatus, durationSeconds: number) => void;
+  setStatus: (status: RecordingStatus, durationSeconds: number, volume?: number) => void;
   setError: (message: string) => void;
   startRecording: (source?: string) => Promise<void>;
   stopRecording: () => Promise<void>;
@@ -21,13 +23,15 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
   status: "idle",
   durationSeconds: 0,
   startedAt: null,
+  volume: 0,
   errorMessage: null,
 
-  setStatus: (status, durationSeconds) =>
+  setStatus: (status, durationSeconds, volume) =>
     set((s) => ({
       status,
       durationSeconds,
       errorMessage: null,
+      volume: status === "recording" ? (volume ?? s.volume) : 0,
       // Anchor the start time once when recording begins and keep it across
       // subsequent status events; clear it when we return to idle/error.
       startedAt:
@@ -38,14 +42,14 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
             : s.startedAt,
     })),
 
-  setError: (message) => set({ status: "error", errorMessage: message, startedAt: null }),
+  setError: (message) => set({ status: "error", errorMessage: message, startedAt: null, volume: 0 }),
 
   startRecording: async (source = "mic_only") => {
     try {
-      set({ status: "recording", durationSeconds: 0, startedAt: Date.now(), errorMessage: null });
+      set({ status: "recording", durationSeconds: 0, startedAt: Date.now(), errorMessage: null, volume: 0 });
       await invoke("start_recording", { source });
     } catch (e) {
-      set({ status: "error", errorMessage: String(e), startedAt: null });
+      set({ status: "error", errorMessage: String(e), startedAt: null, volume: 0 });
     }
   },
 

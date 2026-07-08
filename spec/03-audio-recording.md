@@ -63,8 +63,10 @@ décrivait une segmentation VAD sur silences — non implémentée, hors v1.)
 
 `Idle → Recording → (stop) → Processing (transcription, spec 04) → Idle`
 
-Événement émis : `recording-status-changed { status, duration_seconds }`.
-⚠️ `duration_seconds` vaut `0` aujourd'hui — à compléter (voir feedback live).
+Événement émis : `recording-status-changed { status, duration_seconds, volume? }`.
+✅ Pour la capture micro (`mic_only` et le volet micro de `mixed`), `duration_seconds`
+et `volume` (RMS 0..1) sont émis en direct toutes les ~250 ms — plus de `0` figé.
+`system_only` (WASAPI loopback) n'émet pas encore de volume live (scope v1 : micro).
 
 ## UX v1 (détail avec spec 10)
 
@@ -79,9 +81,9 @@ décrivait une segmentation VAD sur silences — non implémentée, hors v1.)
   - Quand tu donnes une tâche, nomme le responsable (prénom).
   - Récapitule les décisions à la fin.
   - Épelle les noms propres / termes techniques peu courants.
-- **Retour d'état live** : **visualisation du volume micro** + **timer**.
-  Implémentation : émettre niveau (RMS) + durée dans `recording-status-changed`
-  à cadence régulière (~200 ms–1 s).
+- **Retour d'état live** : ✅ **visualisation du volume micro** + **timer** —
+  niveau (RMS) + durée dans `recording-status-changed` toutes les ~250 ms
+  (bandeau topbar, `RecordingBar.tsx`).
 
 ## Nettoyage WAV
 

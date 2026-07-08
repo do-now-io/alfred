@@ -7,6 +7,35 @@ function formatDuration(seconds: number): string {
   return `${m}:${s}`;
 }
 
+// Live mic volume (spec/03 "feedback live") as a small bar meter. RMS values in
+// practice sit well under 1.0, so a mild boost + curve keeps normal speech
+// visibly animated instead of pinned near the bottom.
+const METER_BARS = 4;
+
+function VolumeMeter({ volume }: { volume: number }) {
+  const level = Math.min(1, Math.sqrt(volume) * 1.8);
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 14 }}>
+      {Array.from({ length: METER_BARS }).map((_, i) => {
+        const threshold = (i + 1) / METER_BARS;
+        const active = level >= threshold - 1 / METER_BARS / 2;
+        return (
+          <span
+            key={i}
+            style={{
+              width: 3,
+              height: 4 + i * 3,
+              borderRadius: 1,
+              background: active ? "var(--danger)" : "rgba(255,255,255,0.2)",
+              transition: "background 0.12s ease",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 const btn = (bg: string): React.CSSProperties => ({
   background: bg,
   color: "#fff",
@@ -29,6 +58,7 @@ const btn = (bg: string): React.CSSProperties => ({
  */
 export default function RecordingBar() {
   const status = useRecordingStore((s) => s.status);
+  const volume = useRecordingStore((s) => s.volume);
   const errorMessage = useRecordingStore((s) => s.errorMessage);
   const startRecording = useRecordingStore((s) => s.startRecording);
   const stopRecording = useRecordingStore((s) => s.stopRecording);
@@ -57,6 +87,7 @@ export default function RecordingBar() {
           <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 14, color: "var(--text-secondary)" }}>
             {formatDuration(elapsed)}
           </span>
+          <VolumeMeter volume={volume} />
           <button onClick={stopRecording} style={btn("var(--danger)")}>
             <MdStop size={16} /> Arrêter
           </button>

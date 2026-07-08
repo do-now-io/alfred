@@ -180,15 +180,6 @@ async fn get_transcription(
 // ─── AI commands ───────────────────────────────────────────────────────────────
 
 #[tauri::command]
-async fn generate_weekly_synthesis(
-    state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
-    ai::generate_weekly_synthesis(&state.db)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 async fn generate_event_briefing(
     event_id: String,
     state: tauri::State<'_, AppState>,
@@ -206,6 +197,26 @@ async fn test_api_key(
 ) -> Result<(), String> {
     ai::test_api_key(&service, &state.http_client)
         .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn generate_daily_brief(
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    ai::generate_daily_brief(&state.db, vault_root.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_daily_brief(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<serde_json::Value>, String> {
+    ai::get_daily_brief(&state.db)
+        .await
+        .map(|opt| opt.map(|(text, generated_at)| serde_json::json!({ "text": text, "generated_at": generated_at })))
         .map_err(|e| e.to_string())
 }
 
@@ -829,10 +840,11 @@ pub fn run() {
             download_model,
             get_transcription,
             // AI
-            generate_weekly_synthesis,
             generate_event_briefing,
             test_api_key,
             ask_notes,
+            generate_daily_brief,
+            get_daily_brief,
             subscribe_alfredia,
             // Todos
             get_todos,

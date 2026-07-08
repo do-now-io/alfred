@@ -75,3 +75,37 @@ export function toggleImportant(body: string, taskIndex: number): string {
     return rebuildLine(line, { important: !/⭐\s*$/.test(m[3]) });
   });
 }
+
+const HEADING_RE = /^##\s+(.+?)\s*$/;
+
+/**
+ * Groups tasks by the `## Section` heading they fall under (spec/06: Prioritaire /
+ * En cours / À faire / Archivé). `taskIndex` on each task is still the file-wide
+ * index used by `toggleChecked`/`setImportant` — grouping is purely presentational.
+ */
+export function groupTasksBySection(body: string): Map<string, TaskLine[]> {
+  const lines = body.split("\n");
+  const headings: { name: string; lineIndex: number }[] = [];
+  lines.forEach((line, lineIndex) => {
+    const m = HEADING_RE.exec(line);
+    if (m) headings.push({ name: m[1], lineIndex });
+  });
+
+  const sectionFor = (lineIndex: number): string => {
+    let current = "";
+    for (const h of headings) {
+      if (h.lineIndex > lineIndex) break;
+      current = h.name;
+    }
+    return current;
+  };
+
+  const groups = new Map<string, TaskLine[]>();
+  for (const task of parseTasks(body)) {
+    const section = sectionFor(task.lineIndex);
+    const list = groups.get(section) ?? [];
+    list.push(task);
+    groups.set(section, list);
+  }
+  return groups;
+}

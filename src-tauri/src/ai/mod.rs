@@ -324,78 +324,6 @@ pub async fn run_ingestion_for_note(
     run_ingestion_core(&body, &metadata.title, metadata.recording_id.as_deref(), db, vault_root, app_handle).await
 }
 
-pub async fn generate_weekly_synthesis(db: &SqlitePool) -> Result<String> {
-    let access = resolve_access(db).await?;
-
-    // Gather week events
-    let events = crate::calendar::get_week_events(db).await?;
-    let events_text = events
-        .iter()
-        .map(|e| {
-            format!(
-                "- {} ({}{})",
-                e.title,
-                e.start_at,
-                e.location.as_deref().map(|l| format!(" — {}", l)).unwrap_or_default()
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    // Gather pending todos
-    let todos = crate::todos::get_todos(db).await?;
-    let todos_text = todos
-        .iter()
-        .map(|t| {
-            format!(
-                "- {}{}",
-                t.title,
-                t.due_date.as_deref().map(|d| format!(" (échéance: {})", d)).unwrap_or_default()
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let prompt = format!(
-        "Génère une synthèse hebdomadaire concise en Markdown (max 300 mots) pour un manager:\n\n\
-         ## Événements de la semaine:\n{}\n\n## Tâches en cours:\n{}\n\n\
-         Résume les priorités, identifie les conflits ou opportunités, et donne 2-3 recommandations.",
-        if events_text.is_empty() { "Aucun événement" } else { &events_text },
-        if todos_text.is_empty() { "Aucune tâche" } else { &todos_text }
-    );
-
-    let client = reqwest::Client::new();
-    let body = json!({
-        "model": MODEL,
-        "max_tokens": 1024,
-        "messages": [{"role": "user", "content": prompt}]
-    });
-
-    let resp = call_claude_with_retry(&client, &access, &body).await?;
-
-    let synthesis = resp["content"][0]["text"]
-        .as_str()
-        .ok_or_else(|| anyhow!("No text in Claude response"))?
-        .to_string();
-
-    // Store in config
-    let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query!(
-        "INSERT OR REPLACE INTO config (key, value) VALUES ('weekly_synthesis', ?)",
-        synthesis
-    )
-    .execute(db)
-    .await?;
-    sqlx::query!(
-        "INSERT OR REPLACE INTO config (key, value) VALUES ('weekly_synthesis_last_run', ?)",
-        now
-    )
-    .execute(db)
-    .await?;
-
-    Ok(synthesis)
-}
-
 const EVENT_BRIEFING_SYSTEM: &str = r##"Tu es Alfred, un assistant personnel. On te donne un événement de calendrier, des extraits de notes personnelles potentiellement liées, et la liste des tâches en cours.
 Génère un briefing concis en Markdown (max 250 mots) pour préparer cet événement, structuré avec ces sections (titres en ###):
 
@@ -623,6 +551,95 @@ async fn call_claude_with_retry(
     }
 
     Err(last_err)
+}
+
+// ─── Brief quotidien (spec/05 usage 3) ──────────────────────────────────────────
+
+const DAILY_BRIEF_SYSTEM: &str = r#"Tu es Alfred, un assistant personnel. À partir des tâches en cours et des notes récentes de l'utilisateur, rédige un résumé Markdown TRÈS COURT (3 à 5 lignes maximum) de ce qu'il faut savoir aujourd'hui : échéances proches, sujets chauds. N'invente rien. Si tu n'as rien de notable à signaler, dis-le en une phrase, chaleureuse et brève."#;
+
+/// Generates the "Aujourd'hui" brief (spec/10) from current todos + recent notes,
+/// and caches it (`daily_brief` + `daily_brief_last_run`) for `get_daily_brief`.
+pub async fn generate_daily_brief(db: &SqlitePool, vault_root: Option<&Path>) -> Result<String> {
+    let access = resolve_access(db).await?;
+
+    let todos = crate::todos::get_todos(db).await.unwrap_or_default();
+    let todos_text = if todos.is_empty() {
+        "Aucune tâche en attente.".to_string()
+    } else {
+        todos
+            .iter()
+            .take(15)
+            .map(|t| {
+                format!(
+                    "- {}{}",
+                    t.title,
+                    t.due_date.as_deref().map(|d| format!(" (échéance {})", d)).unwrap_or_default()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let recents_text = match vault_root {
+        Some(root) => {
+            let root = root.to_path_buf();
+            let recents = tokio::task::spawn_blocking(move || crate::notes::vault::list_recent_notes(&root, 5))
+                .await?
+                .unwrap_or_default();
+            if recents.is_empty() {
+                "Aucune note récente.".to_string()
+            } else {
+                recents.iter().map(|r| format!("- {}", r.title)).collect::<Vec<_>>().join("\n")
+            }
+        }
+        None => "Vault non configuré.".to_string(),
+    };
+
+    let prompt = format!("## Tâches en cours\n{}\n\n## Notes récentes\n{}", todos_text, recents_text);
+
+    let client = reqwest::Client::new();
+    let body = json!({
+        "model": MODEL,
+        "max_tokens": 400,
+        "thinking": {"type": "disabled"},
+        "system": [{
+            "type": "text",
+            "text": DAILY_BRIEF_SYSTEM,
+            "cache_control": {"type": "ephemeral"}
+        }],
+        "messages": [{"role": "user", "content": prompt}]
+    });
+
+    let resp = call_claude_with_retry(&client, &access, &body).await?;
+    let text = resp["content"][0]["text"]
+        .as_str()
+        .ok_or_else(|| anyhow!("No text in Claude response"))?
+        .to_string();
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    sqlx::query!("INSERT OR REPLACE INTO config (key, value) VALUES ('daily_brief', ?)", text)
+        .execute(db)
+        .await?;
+    sqlx::query!("INSERT OR REPLACE INTO config (key, value) VALUES ('daily_brief_last_run', ?)", today)
+        .execute(db)
+        .await?;
+
+    Ok(text)
+}
+
+/// Cached brief, if one was generated — `(text, generated_at date)`.
+pub async fn get_daily_brief(db: &SqlitePool) -> Result<Option<(String, String)>> {
+    let text: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = 'daily_brief'")
+        .fetch_optional(db)
+        .await?;
+    let generated_at: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = 'daily_brief_last_run'")
+        .fetch_optional(db)
+        .await?;
+
+    Ok(match (text, generated_at) {
+        (Some(t), Some(d)) if !t.trim().is_empty() => Some((t, d)),
+        _ => None,
+    })
 }
 
 pub async fn test_api_key(service: &str, client: &reqwest::Client) -> Result<()> {

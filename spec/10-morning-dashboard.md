@@ -35,10 +35,11 @@ Topbar **sans barre de recherche**.
 - **Indicateur d'état Alfred** (remplace la cloche) — voir ci-dessous.
 - Avatar + nom **Alfred** (menu profil).
 
-### Indicateur d'état Alfred
+### Indicateur d'état Alfred — ✅ fait
 
-Ton « majordome », piloté par les événements (`recording-status-changed`,
-`transcription-*`, `ingestion_completed`) ; labels éditables dans l'app :
+Ton « majordome », piloté par les événements réels (`recording-status-changed`,
+`transcription-complete`, `ingestion-status-changed`) — `store/alfredStatusStore.ts` +
+`<AlfredStatusIndicator/>` dans la Topbar (remplace la cloche) :
 
 | État | Label |
 |---|---|
@@ -46,17 +47,25 @@ Ton « majordome », piloté par les événements (`recording-status-changed`,
 | enregistrement | Tout ouïe… |
 | transcription | Je prends note… |
 | analyse (ingestion) | Je cogite… |
-| création des tâches | Je mets de l'ordre… |
+
+**Simplifié à 4 états** (v1) : « création des tâches » n'a pas de signal distinct
+de « analyse » (une seule ingestion fusionnée, spec/05) — pas de 5ᵉ état fabriqué
+sans événement réel derrière. Labels codés en dur pour l'instant (pas encore
+éditables dans l'app).
 
 ## Page Alfred (`/`) — trois blocs
 
-1. **« Aujourd'hui »** — brief quotidien (spec/05) : titre + texte court Markdown +
-   « Généré le {date} » + bouton **régénérer**. État vide (aucune donnée) : message
-   d'accueil incitant à enregistrer ou écrire.
-2. **Tâches** — bloc **dépliable** : sections Prioritaire / En cours / À faire
-   (depuis `Todo.md`, spec/06), cases à cocher, lien « voir toutes les tâches » → `/tasks`.
-3. **Input Alfred** (chat, spec/07b) — champ de saisie + **exemples cliquables**.
-   La conversation se déroule **sur la page** (fil qui se déploie sous l'input).
+1. **« Aujourd'hui »** — ✅ brief quotidien (spec/05, `generate_daily_brief`/
+   `get_daily_brief`) : titre + texte court Markdown (rendu via `BriefingContent`,
+   wikilinks cliquables) + « Généré le {date} » + bouton **régénérer**. Auto-génération
+   au premier chargement du jour si rien en cache. État vide : message d'accueil.
+2. **Tâches** — ✅ bloc **dépliable** (`TasksSection`, `Dashboard.tsx`) : sections
+   Prioritaire / En cours / À faire (regroupées depuis `Todo.md` par les en-têtes
+   `## `, spec/06), cases à cocher, lien « voir toutes les tâches » → `/tasks`.
+3. **Input Alfred** (chat, spec/07b) — 🚧 **teaser** fait (champ + exemples
+   cliquables, `ChatTeaser`) mais envoie vers `/ai-actions` plutôt que de dérouler
+   la conversation **sur la page** — l'historique/liste de conversations (section
+   suivante) n'est pas fait, donc la conversation inline reste à construire avec.
 
 ### Chat — historique & liste des conversations
 

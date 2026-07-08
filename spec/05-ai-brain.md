@@ -123,10 +123,10 @@ synthèse hebdo).
 - `test_api_key(service)` — valide la clé perso / le token AlfredIA
 
 Supprimées : `extract_todos_from_transcription` (fusionnée dans l'ingestion),
-l'ancien `ingest.rs` (CLI). **Pas encore supprimées** (gardées tant que Calendar,
-hors v1, n'est pas retiré — Phase D) : `generate_weekly_synthesis`,
-`generate_event_briefing`, encore utilisées par le Dashboard et le briefing
-d'événement calendrier. À retirer avec le nettoyage Calendar.
+l'ancien `ingest.rs` (CLI), `generate_weekly_synthesis` (remplacée par le brief
+quotidien sur l'accueil — spec/10). **Pas encore supprimée** (gardée tant que
+Calendar, hors v1, n'est pas retiré — Phase D) : `generate_event_briefing`,
+encore utilisée par le panneau « Cette semaine » du Dashboard.
 
 ## Hors v1 / plus tard
 

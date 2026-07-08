@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
   MdHome, MdCheckBox, MdStickyNote2,
-  MdAutoAwesome, MdSettings, MdSearch, MdNotifications, MdHub,
+  MdAutoAwesome, MdSettings, MdSearch, MdHub,
 } from "react-icons/md";
 import alfredLogo from "./assets/alfred-logo.png";
 import Dashboard from "./screens/Dashboard";
@@ -18,6 +18,7 @@ import Onboarding from "./screens/Onboarding";
 import { useRecordingStore } from "./store/recordingStore";
 import { useNotesStore } from "./store/notesStore";
 import { useTourStore, useTourTarget } from "./store/tourStore";
+import { useAlfredStatusStore, alfredStatusLabel } from "./store/alfredStatusStore";
 import RecordingBar from "./components/RecordingBar";
 import GuidedTour from "./components/tour/GuidedTour";
 
@@ -146,6 +147,36 @@ function Sidebar() {
   );
 }
 
+// ─── État indicator ────────────────────────────────────────────────────────────
+// Alfred's "butler" status (spec/10) — replaces the notification bell. Driven
+// by useAlfredStatusStore, wired to the real pipeline events in AppInner below.
+
+function AlfredStatusIndicator() {
+  const state = useAlfredStatusStore((s) => s.state);
+  const busy = state !== "idle";
+
+  return (
+    <div
+      title={alfredStatusLabel(state)}
+      style={{
+        display: "flex", alignItems: "center", gap: 7,
+        padding: "5px 12px", borderRadius: 20,
+        background: busy ? "var(--active-bg)" : "transparent",
+        border: "1px solid var(--border)",
+        fontSize: 12.5, color: busy ? "var(--accent)" : "var(--text-muted)",
+        whiteSpace: "nowrap", transition: "background 0.2s, color 0.2s",
+      }}
+    >
+      <span style={{
+        width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+        background: busy ? "var(--accent)" : "var(--text-muted)",
+        animation: busy ? "alfred-pulse 1.4s ease-in-out infinite" : "none",
+      }} />
+      {alfredStatusLabel(state)}
+    </div>
+  );
+}
+
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
 function Topbar() {
@@ -181,9 +212,7 @@ function Topbar() {
 
       <RecordingBar />
 
-      <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "var(--text-secondary)", padding: 4, display: "flex", alignItems: "center" }}>
-        <MdNotifications />
-      </button>
+      <AlfredStatusIndicator />
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
         <div style={{
@@ -203,20 +232,31 @@ function Topbar() {
 
 function AppInner() {
   const setStatus = useRecordingStore((s) => s.setStatus);
+  const setAlfredState = useAlfredStatusStore((s) => s.set);
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
 
-    listen<{ status: string; duration_seconds: number }>("recording-status-changed", (e) => {
-      setStatus(e.payload.status as Parameters<typeof setStatus>[0], e.payload.duration_seconds);
+    listen<{ status: string; duration_seconds: number; volume?: number }>("recording-status-changed", (e) => {
+      setStatus(e.payload.status as Parameters<typeof setStatus>[0], e.payload.duration_seconds, e.payload.volume);
+      if (e.payload.status === "recording") setAlfredState("recording");
+      else if (e.payload.status === "stopping" || e.payload.status === "processing") setAlfredState("transcribing");
+      else if (e.payload.status === "error") setAlfredState("idle");
     }).then(fn => unsubs.push(fn));
 
+    // Transcription done → the merged ingestion (spec/05) is now writing the
+    // compte-rendu + tasks; "ingestion-status-changed" is what actually clears it.
     listen<{ recording_id: string; transcription_id: string }>("transcription-complete", (_e) => {
       setStatus("idle", 0);
+      setAlfredState("thinking");
+    }).then(fn => unsubs.push(fn));
+
+    listen<{ status: string }>("ingestion-status-changed", () => {
+      setAlfredState("idle");
     }).then(fn => unsubs.push(fn));
 
     return () => unsubs.forEach(fn => fn());
-  }, [setStatus]);
+  }, [setStatus, setAlfredState]);
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>

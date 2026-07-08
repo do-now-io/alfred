@@ -3,16 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useCalendarStore } from "../store/calendarStore";
-import { useTodoStore } from "../store/todoStore";
+import { useChatStore } from "../store/chatStore";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import { useNotesStore } from "../store/notesStore";
 import { useTourTarget } from "../store/tourStore";
 import BookingDemo from "../components/BookingDemo";
 import BriefingTask from "../components/BriefingTask";
+import BriefingContent from "../components/BriefingContent";
 import type { CalendarEvent } from "../bindings/CalendarEvent";
 import type { NoteFile } from "../bindings/NoteFile";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
-import { parseTasks, toggleChecked, setImportant, type TaskLine } from "../utils/todoTasks";
+import { toggleChecked, groupTasksBySection, type TaskLine } from "../utils/todoTasks";
 
 // ─── Hero card — enregistrement ───────────────────────────────────────────────
 
@@ -113,55 +114,72 @@ function HeroCard() {
   );
 }
 
-// ─── Section tâches — tâches « importantes » (⭐) du fichier Todo.md ────────────
+// ─── Section tâches — sections Prioritaire / En cours / À faire (spec/10) ──────
+// Reads/writes Todo.md directly (same pattern as Tasks.tsx), grouped by the
+// `## Section` headings the file already uses (spec/06) — a lighter, in-place
+// summary rather than the full editor.
 
 const DEFAULT_TODO_RELATIVE = "wiki/Todo.md";
-const ATTENTION_LIMIT = 6;
+const SECTIONS_SHOWN = ["Prioritaire", "En cours", "À faire"];
+const SECTION_LIMIT = 5;
 
-function AttentionRow({ task, onToggleDone, onUnflag, onOpen }: {
-  task: TaskLine;
-  onToggleDone: () => void;
-  onUnflag: () => void;
-  onOpen: () => void;
+function TaskRow({ task, onToggle, onOpen }: {
+  task: TaskLine; onToggle: () => void; onOpen: () => void;
 }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 12,
-      padding: "13px 0", borderBottom: "1px solid var(--border)",
+      padding: "8px 0", borderBottom: "1px solid var(--border)",
     }}>
       <input
         type="checkbox"
         checked={task.checked}
-        onChange={onToggleDone}
-        style={{ width: 16, height: 16, cursor: "pointer", accentColor: "var(--accent)", flexShrink: 0 }}
+        onChange={onToggle}
+        style={{ width: 15, height: 15, cursor: "pointer", accentColor: "var(--accent)", flexShrink: 0 }}
       />
       <span
         onClick={onOpen}
         title="Ouvrir dans Tâches"
         style={{
-          flex: 1, fontSize: 14, color: "var(--text-primary)", cursor: "pointer",
+          flex: 1, fontSize: 13.5, color: "var(--text-primary)", cursor: "pointer",
           textDecoration: task.checked ? "line-through" : "none",
           opacity: task.checked ? 0.5 : 1,
         }}
       >
         {renderInlineMd(task.text)}
       </span>
-      <button
-        onClick={onUnflag}
-        title="Retirer des importantes"
-        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, color: "#E0A93A", padding: 2, lineHeight: 1 }}
-      >
-        ★
-      </button>
     </div>
   );
 }
 
-function AttentionSection() {
+function TaskSectionBlock({ name, tasks, onToggle, onOpen }: {
+  name: string; tasks: TaskLine[];
+  onToggle: (taskIndex: number) => void; onOpen: () => void;
+}) {
+  if (tasks.length === 0) return null;
+  const pending = tasks.filter(t => !t.checked).length;
+
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0 4px" }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          {name}
+        </span>
+        {pending > 0 && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{pending}</span>}
+      </div>
+      {tasks.slice(0, SECTION_LIMIT).map(t => (
+        <TaskRow key={t.taskIndex} task={t} onToggle={() => onToggle(t.taskIndex)} onOpen={onOpen} />
+      ))}
+    </div>
+  );
+}
+
+function TasksSection() {
   const navigate = useNavigate();
   const vaultPath = useNotesStore(s => s.vaultPath);
   const fetchVaultPath = useNotesStore(s => s.fetchVaultPath);
   const fetchRecents = useNotesStore(s => s.fetchRecents);
+  const [collapsed, setCollapsed] = useState(false);
 
   const [rel, setRel] = useState<string | null>(null);
   const [body, setBody] = useState("");
@@ -191,9 +209,12 @@ function AttentionSection() {
 
   useEffect(() => {
     load();
-    let unsub: (() => void) | undefined;
-    listen("notes-updated", () => load()).then(fn => { unsub = fn; });
-    return () => unsub?.();
+    const unsubs: Array<() => void> = [];
+    // notes-updated: file rewritten elsewhere. todos-updated: the merged
+    // ingestion (spec/05) dual-writes SQLite + this file — either means "reload".
+    listen("notes-updated", () => load()).then(fn => unsubs.push(fn));
+    listen("todos-updated", () => load()).then(fn => unsubs.push(fn));
+    return () => unsubs.forEach(fn => fn());
   }, [load]);
 
   const save = useCallback((newBody: string) => {
@@ -203,48 +224,58 @@ function AttentionSection() {
     saveTimer.current = setTimeout(() => {
       invoke<NoteFile>("update_note_file", { path, metadata: meta, body: newBody })
         .then(() => fetchRecents())
-        .catch(e => console.error("Attention: save failed:", e));
+        .catch(e => console.error("Tasks: save failed:", e));
     }, 600);
   }, [path, fetchRecents]);
 
   const apply = (newBody: string) => { setBody(newBody); save(newBody); };
 
-  const important = parseTasks(body).filter(t => t.important && !t.checked);
-  const visible = important.slice(0, ATTENTION_LIMIT);
+  if (!path) return null;
 
-  if (!path || important.length === 0) return null;
+  const groups = groupTasksBySection(body);
+  const totalPending = SECTIONS_SHOWN.reduce(
+    (n, s) => n + (groups.get(s) ?? []).filter(t => !t.checked).length, 0
+  );
 
   return (
     <div className="card" style={{ padding: "20px 24px" }}>
-      <h2 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>
-        Vos tâches prioritaires
-      </h2>
-
-      <div>
-        {visible.map(task => (
-          <AttentionRow
-            key={task.taskIndex}
-            task={task}
-            onToggleDone={() => apply(toggleChecked(body, task.taskIndex))}
-            onUnflag={() => apply(setImportant(body, task.taskIndex, false))}
-            onOpen={() => navigate("/tasks")}
-          />
-        ))}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>
+          Vos tâches
+        </h2>
+        <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+          {totalPending > 0 ? `${totalPending} en attente` : "tout est fait"}
+        </span>
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12 }}
+        >
+          {collapsed ? "Déplier ▾" : "Replier ▴"}
+        </button>
+        <button
+          onClick={() => navigate("/tasks")}
+          style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 12.5, fontWeight: 500 }}
+        >
+          Voir toutes les tâches →
+        </button>
       </div>
 
-      {important.length > visible.length && (
-        <div style={{ paddingTop: 12, textAlign: "center" }}>
-          <button
-            onClick={() => navigate("/tasks")}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              color: "var(--accent)", fontSize: 13, fontWeight: 500,
-              display: "inline-flex", alignItems: "center", gap: 6,
-            }}
-          >
-            Afficher tout ({important.length}) →
-          </button>
-        </div>
+      {!collapsed && (
+        totalPending === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "10px 0 2px" }}>
+            Rien en attente — belle organisation.
+          </div>
+        ) : (
+          SECTIONS_SHOWN.map(name => (
+            <TaskSectionBlock
+              key={name}
+              name={name}
+              tasks={groups.get(name) ?? []}
+              onToggle={(taskIndex) => apply(toggleChecked(body, taskIndex))}
+              onOpen={() => navigate("/tasks")}
+            />
+          ))
+        )
       )}
     </div>
   );
@@ -318,52 +349,54 @@ function renderInlineMd(text: string) {
   });
 }
 
-function AISummary() {
-  const { todos, fetchTodos } = useTodoStore();
-  const { todayEvents } = useCalendarStore();
-  const [synthesis, setSynthesis] = useState<string | null>(null);
+// ─── Brief quotidien — bloc « Aujourd'hui » (spec/05 usage 3, spec/10) ─────────
+
+function BriefCard() {
+  const [text, setText] = useState<string | null>(null);
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const openNoteByRef = useNotesStore(s => s.openNoteByRef);
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchTodos();
-    invoke<string | null>("get_config", { key: "weekly_synthesis" }).then(v => {
-      if (v && v.trim()) setSynthesis(v);
-    });
-    let unsub: (() => void) | undefined;
-    listen("transcription-complete", () => fetchTodos()).then(fn => { unsub = fn; });
-    return () => unsub?.();
-  }, [fetchTodos]);
+  const today = () => new Date().toISOString().slice(0, 10);
 
-  const pending = todos.length;
-  const todayCount = todayEvents.length;
-
-  // Parse last meeting actions from synthesis (simplified)
-  const lastMeeting = todayEvents[0] ?? null;
-  const actions = synthesis
-    ? synthesis.split("\n").filter(l => l.startsWith("- ") || l.startsWith("* ")).slice(0, 3)
-    : [];
-
-  const handleGenerate = async () => {
+  const generate = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await invoke<string>("generate_weekly_synthesis");
-      setSynthesis(result);
+      const result = await invoke<string>("generate_daily_brief");
+      setText(result);
+      setGeneratedAt(today());
     } catch (e) {
-      console.error(e);
+      console.error("daily brief failed:", e);
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    invoke<{ text: string; generated_at: string } | null>("get_daily_brief").then(r => {
+      if (r) {
+        setText(r.text);
+        setGeneratedAt(r.generated_at);
+      }
+      // Auto-generate once per day, on first load, if nothing cached for today.
+      if (!r || r.generated_at !== today()) generate();
+    }).catch(() => generate());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleWikilink = async (ref: string) => {
+    const ok = await openNoteByRef(ref);
+    if (ok) navigate("/notes");
   };
 
   return (
     <div className="card" style={{ padding: "20px 24px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <span style={{ color: "var(--accent)", fontSize: 16 }}>✦</span>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>
-          Résumé IA
-        </h2>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>Aujourd'hui</h2>
         <button
-          onClick={handleGenerate}
+          onClick={generate}
           disabled={loading}
           style={{
             marginLeft: "auto", background: "none", border: "1px solid var(--border)",
@@ -371,43 +404,94 @@ function AISummary() {
             fontSize: 12, color: "var(--text-secondary)",
           }}
         >
-          {loading ? "⏳" : "↻ Générer"}
+          {loading ? "⏳" : "↻ Régénérer"}
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: 24 }}>
-        {/* Left column */}
-        <div style={{ flex: 1 }}>
-          <p style={{ margin: "0 0 6px", fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-            {pending > 0
-              ? `Vous avez ${pending} tâche${pending > 1 ? "s" : ""} en attente.`
-              : "Aucune tâche en attente."}
-            {todayCount > 0
-              ? ` ${todayCount} réunion${todayCount > 1 ? "s" : ""} prévue${todayCount > 1 ? "s" : ""} aujourd'hui.`
-              : ""}
-          </p>
-        </div>
-
-        {/* Right column */}
-        {lastMeeting && (
-          <div style={{ flex: 1, borderLeft: "1px solid var(--border)", paddingLeft: 24 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", marginBottom: 6 }}>
-              Dernière réunion : {lastMeeting.title}
-            </div>
-            {actions.length > 0 ? (
-              actions.map((a, i) => (
-                <div key={i} style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", gap: 6, marginBottom: 3 }}>
-                  <span style={{ color: "var(--accent)" }}>✓</span>
-                  <span>{renderInlineMd(a.replace(/^[-*]\s*/, ""))}</span>
-                </div>
-              ))
-            ) : (
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Cliquez sur "Générer" pour obtenir un résumé
-              </div>
-            )}
+      {loading && !text ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Alfred prépare votre brief…</div>
+      ) : text ? (
+        <>
+          <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+            <BriefingContent markdown={text} onWikilink={handleWikilink} />
           </div>
-        )}
+          {generatedAt && (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>Généré le {generatedAt}</div>
+          )}
+        </>
+      ) : (
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          Enregistrez ou écrivez quelque chose, et Alfred vous préparera un point chaque jour.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Input Alfred — teaser de chat (spec/10, historique complet dans /ai-actions) ─
+
+const CHAT_EXAMPLES = [
+  "Résume mes notes récentes",
+  "Sur quoi ai-je travaillé cette semaine ?",
+  "Quelles sont mes tâches en retard ?",
+];
+
+function ChatTeaser() {
+  const [text, setText] = useState("");
+  const navigate = useNavigate();
+  const send = useChatStore(s => s.send);
+
+  const submit = (question: string) => {
+    const q = question.trim();
+    if (!q) return;
+    setText("");
+    send(q);
+    navigate("/ai-actions");
+  };
+
+  return (
+    <div className="card" style={{ padding: "18px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ color: "var(--accent)", fontSize: 16 }}>✦</span>
+        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>Demander à Alfred</h2>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") submit(text); }}
+          placeholder="Posez une question sur vos notes…"
+          style={{
+            flex: 1, border: "1px solid var(--border)", borderRadius: 8,
+            padding: "8px 12px", fontSize: 13.5, background: "var(--bg)", color: "var(--text-primary)",
+          }}
+        />
+        <button
+          onClick={() => submit(text)}
+          disabled={!text.trim()}
+          style={{
+            background: text.trim() ? "var(--accent)" : "var(--border)", color: "#fff", border: "none",
+            borderRadius: 8, padding: "8px 16px", cursor: text.trim() ? "pointer" : "not-allowed",
+            fontSize: 13, fontWeight: 500, whiteSpace: "nowrap",
+          }}
+        >
+          Envoyer
+        </button>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {CHAT_EXAMPLES.map(ex => (
+          <button
+            key={ex}
+            onClick={() => submit(ex)}
+            style={{
+              background: "var(--active-bg)", border: "1px solid var(--border)",
+              borderRadius: 16, padding: "5px 12px", cursor: "pointer",
+              fontSize: 12, color: "var(--text-secondary)",
+            }}
+          >
+            {ex}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -617,10 +701,11 @@ export default function Dashboard() {
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
       {/* Main content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+        <BriefCard />
         <HeroCard />
-        <AttentionSection />
+        <TasksSection />
         <TaskBoard tasks={tasks} onRemove={removeTask} />
-        <AISummary />
+        <ChatTeaser />
       </div>
 
       {/* Right panel */}

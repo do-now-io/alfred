@@ -34,14 +34,14 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 |---|---|---|
 | [~] | ⚠️ **Audio système** : Windows ✅ (WASAPI loopback, `system_only` + `mixed`, testé) — reste macOS helper Swift (Tanguy) | UC/T |
 | [x] | Durcir la **capture micro** (gérer `i16`/`f32`/`u16` selon le device) | UC |
-| [ ] | **Feedback live** d'enregistrement : volume (RMS) + timer dans `recording-status-changed` | |
+| [x] | **Feedback live** d'enregistrement : volume (RMS) + timer dans `recording-status-changed` (micro ; system_only/mixed pas encore de volume live) | UC |
 | [x] | ⚠️ **Whisper** : activer la feature par défaut + **embarquer le modèle `small`** + packaging Windows | UC |
 | [ ] | Transcription : **stocker la langue** détectée (bug) ; écrire dans `alfred-raw/` avec frontmatter (`for_recording`) | |
 | [x] | IA : passer aux modèles **Sonnet 5 / Haiku 4.5** ; **sorties structurées** ; **routage 2 modes** ; thinking off (fait pour l'ingestion ; chat.rs pas encore aligné sur `thinking: disabled`) | UC |
 | [x] | **Ingestion** (fusionnée) : 1 appel → compte-rendu (`alfred-intelligence/`) + tâches (`Todo.md` + SQLite en double écriture, cf tâche suivante) | UC |
 | [ ] | **Todos → vault** : lire/écrire `Todo.md` (sections + Archivé) ; supprimer la table SQLite ; migrer `get_todos`/`create_todo`/`complete_todo`/`dismiss_todo`/`update_todo` + écran Tâches. Le **writer** (`notes/todo_md.rs`) existe déjà et est utilisé par l'ingestion — reste le cutover lecture/UI. | |
 | [ ] | Notes : frontmatter **`project` + `participants`** ; structure `alfred-raw`/`alfred-intelligence` ; regroupement par projet ; **plus de `.claude`/skills** dans le vault | |
-| [ ] | **Brief quotidien** (`generate/get_daily_brief`) | |
+| [x] | **Brief quotidien** (`generate/get_daily_brief`) | UC |
 | [ ] | **Chat** : historique multi-conversations + liste (persistance SQLite) | |
 | [~] | **Metrics** : `install_id` anonyme + envoi des événements | UC |
 
@@ -49,8 +49,8 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 
 | | Tâche | Qui |
 |---|---|---|
-| [ ] | **Accueil « Alfred »** : brief + bloc tâches dépliable + input chat + exemples | |
-| [ ] | **Indicateur d'état** (topbar, labels majordome) + **bandeau d'enregistrement** | |
+| [~] | **Accueil « Alfred »** : brief ✅ + bloc tâches dépliable (par sections Prioritaire/En cours/À faire) ✅ + input chat + exemples ✅ (teaser qui envoie vers `/ai-actions` ; **historique/liste de conversations sur la page** reste à faire, cf tâche Chat) | UC |
+| [x] | **Indicateur d'état** (topbar, labels majordome) + **bandeau d'enregistrement** (timer + volume live + stop) | UC |
 | [ ] | Déclenchement via **logo** (hover micro) + **page de guidage** d'enregistrement | |
 | [ ] | **Nav** : retirer Réunions / Calendrier / Actions IA + barre de recherche ; ajouter **Feedback** | |
 | [~] | **Onboarding** refonte (2 slides, détection vault + scaffolding dossiers, choix accès IA, test micro) + **tournée guidée** post-onboarding (vrai enregistrement → transcription → ingestion → tâches/notes → question à Alfred) | UC |

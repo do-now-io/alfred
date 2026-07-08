@@ -142,10 +142,11 @@ export default function GuidedTour() {
 
   // Never fight the router: if the user wanders off during a step that expects
   // them to be on a specific screen, quietly end the tour rather than yank them
-  // back or block navigation.
+  // back or block navigation. "/recording" is allowed too: clicking the hero
+  // card also takes you to the guidance page (spec/03) the instant recording starts.
   useEffect(() => {
     if (!active || step !== "record") return;
-    if (location.pathname !== "/") skip();
+    if (location.pathname !== "/" && location.pathname !== "/recording") skip();
   }, [active, step, location.pathname, skip]);
 
   // Auto-advance once a chat reply lands, while on the "ask" step.

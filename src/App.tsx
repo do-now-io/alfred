@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
   MdHome, MdCheckBox, MdStickyNote2,
-  MdAutoAwesome, MdSettings, MdSearch, MdHub,
+  MdAutoAwesome, MdSettings, MdSearch, MdHub, MdMic,
 } from "react-icons/md";
 import alfredLogo from "./assets/alfred-logo.png";
 import Dashboard from "./screens/Dashboard";
@@ -13,6 +13,7 @@ import Tasks from "./screens/Tasks";
 import Graph from "./screens/Graph";
 import Settings from "./screens/Settings";
 import AIActions from "./screens/AIActions";
+import RecordingGuide from "./screens/RecordingGuide";
 import Placeholder from "./screens/Placeholder";
 import Onboarding from "./screens/Onboarding";
 import { useRecordingStore } from "./store/recordingStore";
@@ -22,16 +23,53 @@ import { useAlfredStatusStore, alfredStatusLabel } from "./store/alfredStatusSto
 import RecordingBar from "./components/RecordingBar";
 import GuidedTour from "./components/tour/GuidedTour";
 
-// ─── Logo ─────────────────────────────────────────────────────────────────────
+// ─── Logo — the recording trigger (spec/03/10) ─────────────────────────────────
+// The single control that starts a recording: hover reveals a mic overlay,
+// click starts (if idle) and always takes you to the guidance page (spec/03),
+// which shows live feedback + capture tips for the rest of the recording.
 
 function AlfredLogo() {
+  const navigate = useNavigate();
+  const [hover, setHover] = useState(false);
+  const status = useRecordingStore((s) => s.status);
+  const startRecording = useRecordingStore((s) => s.startRecording);
+
+  const handleClick = () => {
+    if (status === "idle") startRecording();
+    navigate("/recording");
+  };
+
   return (
     <div style={{ padding: "20px 20px 16px", display: "flex", justifyContent: "center" }}>
-      <img
-        src={alfredLogo}
-        alt="Alfred"
-        style={{ width: 132, height: "auto", borderRadius: 20, display: "block" }}
-      />
+      <button
+        onClick={handleClick}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        title={status === "recording" ? "Enregistrement en cours" : "Démarrer un enregistrement"}
+        style={{
+          position: "relative", padding: 0, border: "none", background: "none",
+          cursor: "pointer", width: 132, height: 132, borderRadius: 20,
+          display: "block",
+        }}
+      >
+        <img
+          src={alfredLogo}
+          alt="Alfred"
+          style={{
+            width: 132, height: "auto", borderRadius: 20, display: "block",
+            filter: hover ? "brightness(0.55)" : "none", transition: "filter 0.15s",
+          }}
+        />
+        {(hover || status === "recording") && (
+          <span style={{
+            position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+            color: status === "recording" ? "var(--danger)" : "#fff", fontSize: 34,
+            animation: status === "recording" ? "alfred-pulse 1.4s ease-in-out infinite" : "alfred-pop 0.15s ease",
+          }}>
+            <MdMic />
+          </span>
+        )}
+      </button>
     </div>
   );
 }
@@ -266,6 +304,7 @@ function AppInner() {
         <main style={{ flex: 1, overflow: "auto" }}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/recording" element={<RecordingGuide />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/notes" element={<Notes />} />
             <Route path="/graph" element={<Graph />} />

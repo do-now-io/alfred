@@ -18,6 +18,7 @@ import { toggleChecked, groupTasksBySection, type TaskLine } from "../utils/todo
 // ─── Hero card — enregistrement ───────────────────────────────────────────────
 
 function HeroCard() {
+  const navigate = useNavigate();
   const { status, startRecording, stopRecording } = useRecordingStore();
   // Guided tour (spec/13) spotlights this exact card as "cliquez ici pour démarrer".
   const tourRef = useTourTarget("hero-card");
@@ -32,10 +33,17 @@ function HeroCard() {
   const isRecording = status === "recording";
   const isProcessing = status === "stopping" || status === "processing";
 
+  // Same trigger + destination as the sidebar logo (spec/03): start, then hand
+  // off to the guidance page for live feedback + capture tips.
+  const handleStart = () => {
+    startRecording();
+    navigate("/recording");
+  };
+
   return (
     <div
       ref={tourRef}
-      onClick={isIdle ? () => startRecording() : undefined}
+      onClick={isIdle ? handleStart : undefined}
       style={{
         background: isRecording ? "#3D0A0A" : "var(--dark-card)",
         borderRadius: 16, padding: "20px 28px",

@@ -68,22 +68,30 @@ décrivait une segmentation VAD sur silences — non implémentée, hors v1.)
 et `volume` (RMS 0..1) sont émis en direct toutes les ~250 ms — plus de `0` figé.
 `system_only` (WASAPI loopback) n'émet pas encore de volume live (scope v1 : micro).
 
-## UX v1 (détail avec spec 10)
+## UX v1 (détail avec spec 10) — ✅ fait
 
-- **Déclenchement** : le **logo Alfred** (haut-gauche, animation micro au hover)
-  **est** le déclencheur — un seul contrôle. Le **bandeau** persistant n'apparaît
-  que **pendant** l'enregistrement (timer + volume + bouton stop).
-- **Page de guidage** : lancer un enregistrement redirige vers une page liée à
-  l'enregistrement, affichant des **conseils de captation** (liste éditable,
-  stockée dans l'app) :
+- **Déclenchement** : ✅ le **logo Alfred** (sidebar, `App.tsx` → `AlfredLogo`)
+  est un déclencheur (hover → icône micro en surimpression ; clic → démarre si
+  idle, puis navigue vers `/recording`). La carte d'enregistrement de l'accueil
+  (`HeroCard`) reste un **second point d'entrée équivalent** (même
+  démarrage + même redirection) plutôt qu'être retirée — la tournée guidée
+  (spec/13) s'appuie dessus, et c'est une affordance d'accueil naturelle ; « un
+  seul contrôle » est respecté au sens où les deux mènent à la même expérience.
+  Le **bandeau** topbar (`RecordingBar.tsx`) reste affiché pendant tout
+  l'enregistrement, quelle que soit la page.
+- **Page de guidage** (`/recording`, `RecordingGuide.tsx`) : ✅ affichée après
+  déclenchement (ou accessible directement, idle → bouton démarrer). Montre
+  timer + volume en grand, bouton Arrêter, et les **conseils de captation**
+  (liste éditable en place, persistée via `get_config`/`set_config('capture_tips')`
+  en JSON) :
   - Présente les participants : prénom + rôle.
   - Annonce le sujet / objectif en une phrase au début.
   - Quand tu donnes une tâche, nomme le responsable (prénom).
   - Récapitule les décisions à la fin.
   - Épelle les noms propres / termes techniques peu courants.
 - **Retour d'état live** : ✅ **visualisation du volume micro** + **timer** —
-  niveau (RMS) + durée dans `recording-status-changed` toutes les ~250 ms
-  (bandeau topbar, `RecordingBar.tsx`).
+  niveau (RMS) + durée dans `recording-status-changed` toutes les ~250 ms,
+  affichés à la fois dans le bandeau topbar et en grand sur la page de guidage.
 
 ## Nettoyage WAV
 

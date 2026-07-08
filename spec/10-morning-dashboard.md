@@ -10,8 +10,10 @@ Topbar **sans barre de recherche**.
 
 ## Sidebar
 
-- **Logo Alfred** en haut = **déclencheur d'enregistrement** (anim micro au hover).
-  Clic → `start_recording` + redirection vers la **page de guidage** (spec/03).
+- ✅ **Logo Alfred** en haut = **déclencheur d'enregistrement** (anim micro au hover).
+  Clic → `start_recording` + redirection vers la **page de guidage** (`/recording`,
+  spec/03). La carte d'enregistrement de l'accueil fait de même (second point
+  d'entrée équivalent, cf spec/03).
 - **Navigation v1** :
 
   | Icône | Label | Route |

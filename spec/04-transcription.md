@@ -11,28 +11,33 @@ parallélisme — Whisper est intensif) le transcrit via `whisper-rs` dans
 note dans le vault**, puis déclenche l'IA (extraction de todos + ingestion,
 spec 05).
 
-## Whisper = feature Cargo
+## Whisper = feature Cargo — ✅ activée par défaut
 
 - `whisper-rs` est derrière la feature Cargo **`whisper`**. Sans elle → stub qui
   renvoie une erreur (« Whisper not compiled »).
-- **« Activé par défaut » ⇒ les builds livrés compilent avec `--features whisper`**
-  (Windows + macOS).
-- Deps de build : **cmake**, **libclang** (Windows), Xcode CLT (macOS). Packaging
-  à couvrir dans le build de release (voir README).
+- **`default = ["whisper"]`** dans `src-tauri/Cargo.toml` : `cargo build`/`tauri
+  build`/`tauri dev` compilent Whisper **sans flag** (Windows + macOS). Échappatoire
+  dev : `./scripts/dev-windows.ps1 -NoWhisper` (`--no-default-features`) pour
+  bosser sur autre chose sans installer cmake/libclang.
+- Deps de build : **cmake**, **libclang** (Windows), Xcode CLT (macOS) — désormais
+  requises pour **tout** build, plus seulement un mode « whisper » à part.
 - Backend **CPU** par défaut (marche partout) ; Metal (macOS) optionnel.
 
-## Modèle
+## Modèle — ✅ `small` embarqué
 
 - Config `whisper_model` (défaut `small` ; valeurs `tiny` / `base` / `small` /
   `medium` / `large-v3`).
 - Résolution, dans l'ordre : `Resources/models/ggml-{size}.bin` (**embarqué au
   build**) → `$APP_DATA_DIR/models/ggml-{size}.bin` (**téléchargé**).
-- Téléchargement : `download_model(size)` depuis
-  `huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{size}.bin`, émet
-  `download-progress`.
-- **Décidé :** `small` est **embarqué** dans l'installeur (marche hors-ligne dès
-  le 1er lancement, zéro friction). Les modèles plus gros (`large-v3`…) sont
-  **téléchargeables en option** depuis les Réglages.
+- **Bundling** : `tauri.conf.json` → `bundle.resources: ["models/ggml-small.bin"]`.
+  Le fichier doit exister sous `src-tauri/models/` **avant** `tauri build` — il
+  est gitignoré (466 Mo) et récupéré par `scripts/fetch-whisper-model.{sh,ps1}`
+  (appelé par `build-macos.sh` / `scripts/build-windows.ps1`, idempotent). `tauri
+  dev` ne bundle rien : les devs sans le fichier local ne sont pas bloqués.
+- Téléchargement (modèles optionnels depuis les Réglages) : `download_model(size)`
+  depuis `huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{size}.bin`,
+  émet `download-progress`. Écrit dans un `.part` puis renomme à la fin —
+  un téléchargement interrompu ne laisse plus de `.bin` corrompu pris pour complet.
 
 ## Pipeline
 

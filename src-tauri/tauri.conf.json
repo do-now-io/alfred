@@ -29,6 +29,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "models/ggml-small.bin"
+    ],
     "macOS": {
       "entitlements": "Alfred.entitlements",
       "infoPlist": "Info.plist"

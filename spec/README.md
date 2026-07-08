@@ -47,7 +47,7 @@ par nous).
 | 01  | Data Model                  | 🚧 | SQLite = config/état ; todos → vault ; calendrier hors v1 |
 | 02  | Calendar                    | 🕓 | **Hors v1** (retiré avec Google/OAuth) |
 | 03  | Audio Recording             | 🚧 | Micro ok ; **audio système Windows à coder** ; trigger logo/bandeau ; page de guidage ; feedback live (volume, timer) |
-| 04  | Transcription               | 🚧 | Whisper **par défaut**, cross-platform ; écrit dans `alfred-raw/` |
+| 04  | Transcription               | ✅ | Whisper **par défaut** (Windows + macOS), modèle `small` **embarqué** au build |
 | 05  | AI Brain + Ingestion        | 🚧 | **Spec faite.** Ingestion (extraction fusionnée) · chat · brief quotidien ; Haiku/Sonnet 5 ; sorties structurées ; 2 modes d'accès |
 | 06  | Todos                       | 🚧 | `Todo.md` = source unique ; supprimer la table SQLite |
 | 07  | Notes (vault)               | 🚧 | Structure `alfred-*` ; supprimer skills/`.claude` ; regroupement par `project` (dossiers virtuels) |

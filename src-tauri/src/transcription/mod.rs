@@ -339,28 +339,43 @@ pub async fn download_model(
         size
     );
 
+    // Download to a `.part` file and rename on success, so a failed/interrupted
+    // download never leaves a corrupt file at `model_path` that `exists()` would
+    // then treat as complete.
+    let part_path = model_dir.join(format!("ggml-{}.bin.part", size));
+
     let client = reqwest::Client::new();
     let mut resp = client.get(&url).send().await?.error_for_status()?;
 
     let total = resp.content_length().unwrap_or(0);
     let mut downloaded: u64 = 0;
-    let mut file = tokio::fs::File::create(&model_path).await?;
+    let mut file = tokio::fs::File::create(&part_path).await?;
 
-    while let Some(chunk) = resp.chunk().await? {
-        tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
-        downloaded += chunk.len() as u64;
-        let percent = if total > 0 {
-            (downloaded * 100 / total) as f64
-        } else {
-            0.0
-        };
-        let _ = app_handle.emit("download-progress", serde_json::json!({
-            "percent": percent,
-            "bytes_downloaded": downloaded,
-            "total_bytes": total
-        }));
+    let download_result: Result<()> = async {
+        while let Some(chunk) = resp.chunk().await? {
+            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
+            downloaded += chunk.len() as u64;
+            let percent = if total > 0 {
+                (downloaded * 100 / total) as f64
+            } else {
+                0.0
+            };
+            let _ = app_handle.emit("download-progress", serde_json::json!({
+                "percent": percent,
+                "bytes_downloaded": downloaded,
+                "total_bytes": total
+            }));
+        }
+        Ok(())
+    }
+    .await;
+
+    if let Err(e) = download_result {
+        let _ = tokio::fs::remove_file(&part_path).await;
+        return Err(e);
     }
 
+    tokio::fs::rename(&part_path, &model_path).await?;
     Ok(())
 }
 

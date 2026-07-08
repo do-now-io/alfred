@@ -54,5 +54,7 @@ whisper-rs = { git = "https://github.com/tazz4843/whisper-rs", features = ["meta
 whisper-rs = { git = "https://github.com/tazz4843/whisper-rs", optional = true }
 
 [features]
-default = []
+# Whisper ships in release builds (spec/04): the `small` model is bundled at
+# build time by scripts/fetch-whisper-model.*, so it works offline on first launch.
+default = ["whisper"]
 whisper = ["whisper-rs"]

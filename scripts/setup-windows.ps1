@@ -24,8 +24,12 @@ Write-Host "==> Checking prerequisites..." -ForegroundColor Cyan
 Require-Command "cargo" "Install Rust from https://rustup.rs (choose the MSVC toolchain)."
 Require-Command "node"  "Install Node.js from https://nodejs.org."
 
+# Whisper is a default Cargo feature now (spec/04): cmake + libclang are needed
+# for every build, not just a special "whisper" mode. dev-windows.ps1's
+# -NoWhisper flag is the escape hatch if a machine can't install these.
 if (-not (Get-Command "cmake" -ErrorAction SilentlyContinue)) {
-    Write-Host "note: cmake not found — only needed for the (deferred) Whisper feature." -ForegroundColor Yellow
+    Write-Host "note: cmake not found — required to compile Whisper (on by default). Install: winget install Kitware.CMake" -ForegroundColor Yellow
+    Write-Host "      Or use './scripts/dev-windows.ps1 -NoWhisper' to skip it while hacking on unrelated features." -ForegroundColor Yellow
 }
 
 Write-Host "==> Ensuring sqlx-cli is installed..." -ForegroundColor Cyan
@@ -48,4 +52,4 @@ try {
 Write-Host ""
 Write-Host "Done. Next:" -ForegroundColor Green
 Write-Host "  npm install"
-Write-Host "  npm run tauri:dev   (or ./scripts/dev-windows.ps1)"
+Write-Host "  ./scripts/dev-windows.ps1"

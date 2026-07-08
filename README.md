@@ -4,10 +4,10 @@ Alfred — personal assistant desktop app (Tauri 2 + React/TypeScript).
 
 ## Running on Windows
 
-The base app runs on Windows. Local Whisper transcription is **optional** and off
-by default (see "Local transcription" below); without it, audio recording works
-but recordings are not transcribed. Everything else (calendar, notes/vault,
-todos, suggestions, chat) runs normally.
+Whisper (local transcription, CPU) is **on by default** (spec/04) — the app
+builds `whisper.cpp` via the `whisper` Cargo feature, which is now part of
+`default`. Everything else (calendar, notes/vault, todos, suggestions, chat)
+runs normally regardless.
 
 ### Prerequisites
 
@@ -18,6 +18,12 @@ todos, suggestions, chat) runs normally.
 - **WebView2 runtime** — preinstalled on Windows 11. If missing, install the
   Evergreen runtime from Microsoft.
 - **Node.js** 18+.
+- **CMake** — `winget install Kitware.CMake` (builds `whisper.cpp`).
+- **libclang** (for `bindgen`) — easiest without admin: `pip install --user libclang`.
+  Alternatively install LLVM (`winget install LLVM.LLVM`, requires admin).
+
+Don't want to install CMake/libclang right now? Skip Whisper for a session with
+`./scripts/dev-windows.ps1 -NoWhisper` (recording still works, no transcription).
 
 ### Setup
 
@@ -26,7 +32,7 @@ From the repo root, in PowerShell:
 ```powershell
 ./scripts/setup-windows.ps1   # installs sqlx-cli, creates the compile-time dev DB + migrations
 npm install
-npm run tauri:dev             # or ./scripts/dev-windows.ps1
+./scripts/dev-windows.ps1     # auto-discovers libclang.dll, runs `tauri dev`
 ```
 
 `setup-windows.ps1` creates `src-tauri/alfred_dev.db` and runs the migrations so
@@ -34,31 +40,28 @@ the compile-time `sqlx::query!` macros can verify against the schema. That DB is
 used only at build time — at runtime the app creates its own database in the
 Windows app-data directory (`%APPDATA%\com.alfred.app`).
 
-### Local transcription (Whisper, CPU) on Windows
+The first build is slow (it compiles whisper.cpp). The CPU backend works on any
+machine. To use your GPU instead (CUDA/Vulkan), enable the matching `whisper-rs`
+feature in `src-tauri/Cargo.toml` and install that SDK — not covered here.
 
-Whisper is compiled in via the `whisper` Cargo feature, which builds `whisper.cpp`.
-Extra prerequisites:
+### Model
 
-- **CMake** — `winget install Kitware.CMake`
-- **libclang** (for `bindgen`) — easiest without admin: `pip install --user libclang`.
-  Alternatively install LLVM (`winget install LLVM.LLVM`, requires admin).
+The `small` model is **bundled into release builds** (see "Packaging" below) —
+it works offline from the first launch, no download needed. In dev, if it's not
+already fetched, download it from **Settings → Transcription** (or run
+`./scripts/fetch-whisper-model.ps1` to fetch it into `src-tauri/models/` ahead of
+time). Models are cached in `%APPDATA%\com.alfred.app\models\`.
 
-Then run:
+### Packaging (release build)
 
 ```powershell
-./scripts/dev-whisper-windows.ps1
+./scripts/build-windows.ps1
 ```
 
-The script auto-discovers `libclang.dll` (via `LIBCLANG_PATH`, a `pip`-installed
-`libclang`, or an LLVM install), sets `LIBCLANG_PATH`, and runs
-`tauri dev --features whisper`. The first build is slow (it compiles whisper.cpp).
-
-Once running, download a model in **Settings → (transcription)** — the default is
-`small`. Models are cached in `%APPDATA%\com.alfred.app\models\`.
-
-The CPU backend works on any machine. To use your GPU instead (CUDA/Vulkan),
-enable the matching `whisper-rs` feature in `src-tauri/Cargo.toml` and install
-that SDK — not covered here.
+Fetches the `small` model into `src-tauri/models/` (skipped if already present —
+that path is gitignored, so every machine fetches it once), then runs
+`tauri build`. Installers land in `src-tauri\target\release\bundle\` (`msi\`
+and/or `nsis\`). Authenticode signing is not set up yet (spec/12/ROADMAP Phase E).
 
 ### Google OAuth (optional)
 
@@ -68,17 +71,27 @@ app runs.
 
 ## Running on macOS
 
+Whisper is on by default here too (needs cmake + Xcode CLT, both already
+required for macOS builds).
+
 ```bash
 npm install
-npm run tauri:dev                 # without Whisper
-npm run tauri:dev:whisper         # with local Whisper transcription (needs cmake, Xcode CLT)
-./build-macos.sh                  # release build (.app + .dmg) with Whisper
+npm run tauri:dev                 # dev, with Whisper
+./scripts/fetch-whisper-model.sh  # optional: pre-fetch the `small` model into src-tauri/models/
+./build-macos.sh                  # release build (.app + .dmg), fetches + bundles `small`, then builds
 ```
+
+`npm run tauri:dev:whisper` / `dev-whisper.sh` still work but are deprecated
+aliases for the plain dev command now that Whisper is always on.
+
+## Audio system capture (spec/03)
+
+- **Windows:** `system_only` / `mixed` recording sources are implemented via
+  WASAPI loopback — no extra setup needed.
+- **macOS:** not implemented yet (ScreenCaptureKit helper, tracked separately).
+  `system_only`/`mixed` return an error; use `mic_only`.
 
 ## Known Windows follow-ups
 
-- **Recording robustness:** the audio capture path assumes the input device
-  delivers `f32` samples; some WASAPI devices report `i16`, which would fail at
-  runtime. To be hardened later.
 - **Ingest ("run Claude" feature):** resolves the `claude` CLI from PATH; a
   `.cmd` shim may not resolve. Only affects the manual ingest action.

@@ -41,7 +41,7 @@ clé de registre Windows) ; **« Revoir l'introduction »** (rejoue l'onboarding
 - Éditeur de **prompt d'ingestion CLI** (l'ingestion est API — spec/05 ; un éditeur
   de prompt d'ingestion API pourra revenir plus tard).
 
-## Défauts à mettre à jour (Rust)
+## Défauts (Rust) — ✅ faits
 
 - `DEFAULT_RECORDING_FOLDER` : `raw/audios` → **`alfred-raw`**.
 - `DEFAULT_TODO_FILE` : `wiki/Todo.md` → **`alfred-intelligence/Todo.md`**.

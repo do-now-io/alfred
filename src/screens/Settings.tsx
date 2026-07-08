@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { MdWarning, MdDownload, MdHourglassEmpty } from "react-icons/md";
 import { useNotesStore } from "../store/notesStore";
+import { useTourStore } from "../store/tourStore";
 import type { AccountStatus } from "../bindings/AccountStatus";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -419,6 +421,7 @@ function AccountSection() {
 // ─── Settings screen ──────────────────────────────────────────────────────────
 
 export default function Settings() {
+  const navigate = useNavigate();
   const [whisperModel, setWhisperModel] = useState("small");
   const [languageHint, setLanguageHint] = useState("auto");
   const [recordingSource, setRecordingSource] = useState("mic_only");
@@ -565,7 +568,7 @@ export default function Settings() {
           <RecordingFolderRow />
         </SettingRow>
         <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-          Chemin relatif au vault où l'audio et la transcription sont déposés. Ex. <code>raw/audios</code>
+          Chemin relatif au vault où l'audio et la transcription sont déposés. Ex. <code>alfred-raw</code>
         </div>
       </Section>
 
@@ -604,6 +607,21 @@ export default function Settings() {
             }}
           >
             Revoir l'introduction
+          </button>
+        </SettingRow>
+        <SettingRow label="Visite guidée">
+          <button
+            onClick={() => {
+              navigate("/");
+              useTourStore.getState().start();
+            }}
+            style={{
+              background: "transparent", color: "var(--accent)",
+              border: "1px solid var(--border)", borderRadius: 6,
+              padding: "4px 10px", cursor: "pointer", fontSize: 12,
+            }}
+          >
+            Revoir la visite guidée
           </button>
         </SettingRow>
       </Section>
@@ -658,7 +676,7 @@ function RecordingFolderRow() {
   };
 
   const handleSave = async () => {
-    const v = editValue.trim().replace(/^\/+|\/+$/g, "") || "raw/audios";
+    const v = editValue.trim().replace(/^\/+|\/+$/g, "") || "alfred-raw";
     await invoke("set_config", { key: "recording_folder", value: v });
     setValue(v);
     setEditing(false);
@@ -675,7 +693,7 @@ function RecordingFolderRow() {
             if (e.key === "Enter") handleSave();
             if (e.key === "Escape") setEditing(false);
           }}
-          placeholder="raw/audios"
+          placeholder="alfred-raw"
           style={{
             flex: 1, border: "1px solid var(--border)", borderRadius: 6,
             padding: "5px 10px", fontSize: 13,
@@ -708,7 +726,7 @@ function RecordingFolderRow() {
 
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-      <span style={{ fontSize: 13, color: "var(--text-primary)" }}>{value || "raw/audios"}</span>
+      <span style={{ fontSize: 13, color: "var(--text-primary)" }}>{value || "alfred-raw"}</span>
       <button
         onClick={startEdit}
         style={{

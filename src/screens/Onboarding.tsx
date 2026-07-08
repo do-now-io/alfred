@@ -2,13 +2,11 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
-  MdMic, MdAutoAwesome, MdStickyNote2, MdEventNote, MdChatBubbleOutline,
-  MdCheckCircle, MdFolderOpen, MdVpnKey, MdGraphicEq, MdArrowBack, MdArrowForward,
-  MdHourglassEmpty, MdWarning,
+  MdMic, MdAutoAwesome, MdCheckCircle, MdFolderOpen, MdVpnKey,
+  MdArrowBack, MdArrowForward, MdHourglassEmpty, MdWarning,
 } from "react-icons/md";
 import { useNotesStore } from "../store/notesStore";
 import alfredLogo from "../assets/alfred-logo.png";
-import type { AccountStatus } from "../bindings/AccountStatus";
 
 // ─── Shared bits ────────────────────────────────────────────────────────────
 
@@ -51,62 +49,15 @@ const primaryBtn = (disabled = false): React.CSSProperties => ({
   display: "inline-flex", alignItems: "center", gap: 6,
 });
 
+const okRow: React.CSSProperties = {
+  fontSize: 13, color: "#34C759", display: "flex", alignItems: "center", gap: 6,
+};
+
+const errorRow: React.CSSProperties = {
+  fontSize: 13, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6,
+};
+
 // ─── Setup steps ──────────────────────────────────────────────────────────────
-
-function ConnectAccountStep() {
-  const [status, setStatus] = useState<AccountStatus>({ connected: false, provider: null, email: null });
-  const [connecting, setConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = () => invoke<AccountStatus>("get_account_status").then(setStatus).catch(() => {});
-
-  useEffect(() => {
-    refresh();
-    let unsub: (() => void) | undefined;
-    listen("google-oauth-connected", () => { setConnecting(false); refresh(); }).then((fn) => { unsub = fn; });
-    return () => unsub?.();
-  }, []);
-
-  const connect = async () => {
-    setError(null);
-    setConnecting(true);
-    try {
-      await invoke("start_google_oauth");
-    } catch (e) {
-      setError(String(e));
-      setConnecting(false);
-    }
-  };
-
-  if (status.connected) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, color: "#34C759", fontSize: 15 }}>
-        <MdCheckCircle size={20} />
-        <span style={{ color: "var(--text-primary)" }}>
-          Connecté{status.email ? ` · ${status.email}` : ""}
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-      <button onClick={connect} disabled={connecting} style={primaryBtn(connecting)}>
-        {connecting
-          ? <><MdHourglassEmpty size={18} /> En attente du navigateur…</>
-          : <>Se connecter avec Google</>}
-      </button>
-      <button disabled style={{ ...primaryBtn(true), background: "transparent", border: "1px solid var(--border)" }}>
-        Se connecter avec Microsoft — bientôt
-      </button>
-      {error && (
-        <div style={{ color: "var(--danger)", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-          <MdWarning size={15} /> {error}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function VaultStep() {
   const { vaultPath, fetchVaultPath, setVaultPath, pickVaultFolder } = useNotesStore();
@@ -124,7 +75,7 @@ function VaultStep() {
         <MdFolderOpen size={18} /> Choisir un dossier
       </button>
       {vaultPath && (
-        <div style={{ fontSize: 13, color: "#34C759", display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={okRow}>
           <MdCheckCircle size={16} />
           <span style={{ color: "var(--text-secondary)", maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {vaultPath}
@@ -176,75 +127,83 @@ function ClaudeKeyStep() {
         </button>
       </div>
       {(state === "ok" || (hasKey && state === "idle")) && (
-        <div style={{ fontSize: 13, color: "#34C759", display: "flex", alignItems: "center", gap: 6 }}>
-          <MdCheckCircle size={16} /> Clé enregistrée{state === "ok" ? " et validée" : ""}
-        </div>
+        <div style={okRow}><MdCheckCircle size={16} /> Clé enregistrée{state === "ok" ? " et validée" : ""}</div>
       )}
       {state === "error" && (
-        <div style={{ fontSize: 13, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6 }}>
-          <MdWarning size={15} /> Clé invalide ou erreur réseau
-        </div>
+        <div style={errorRow}><MdWarning size={15} /> Clé invalide ou erreur réseau</div>
       )}
     </div>
   );
 }
 
-const SELECT_STYLE: React.CSSProperties = {
-  border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px",
-  fontSize: 14, background: "var(--card-bg)", color: "var(--text-primary)", width: "100%",
-};
+const modeBtn = (active: boolean): React.CSSProperties => ({
+  flex: 1, padding: "8px 12px", borderRadius: 8, fontSize: 13.5, fontWeight: 500,
+  cursor: "pointer", border: active ? `1.5px solid ${ACCENT}` : "1px solid var(--border)",
+  background: active ? "var(--active-bg)" : "transparent",
+  color: active ? ACCENT : "var(--text-secondary)",
+});
 
-function WhisperStep() {
-  const [model, setModel] = useState("small");
-  const [lang, setLang] = useState("auto");
-  const [progress, setProgress] = useState<number | null>(null);
+function AiAccessStep() {
+  const [mode, setMode] = useState<"byo" | "alfredia">("byo");
+  const [subState, setSubState] = useState<"idle" | "subscribing" | "active" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  const refreshSub = () => {
+    invoke<string | null>("get_secret", { account: "alfredia_token" }).then((t) => {
+      if (!t) return;
+      invoke("test_api_key", { service: "alfredia" }).then(() => setSubState("active")).catch(() => {});
+    });
+  };
 
   useEffect(() => {
-    invoke<string | null>("get_config", { key: "whisper_model" }).then((v) => v && setModel(v));
-    invoke<string | null>("get_config", { key: "language_hint" }).then((v) => v && setLang(v));
+    invoke<string | null>("get_config", { key: "ai_mode" }).then((v) => { if (v === "alfredia") setMode("alfredia"); });
+    refreshSub();
     let unsub: (() => void) | undefined;
-    listen<{ percent: number }>("download-progress", (e) => {
-      setProgress(e.payload.percent);
-      if (e.payload.percent >= 100) setTimeout(() => setProgress(null), 2000);
-    }).then((fn) => { unsub = fn; });
+    listen("alfredia-subscribed", () => { setSubState("active"); setMode("alfredia"); }).then((fn) => { unsub = fn; });
     return () => unsub?.();
   }, []);
 
-  const changeModel = async (m: string) => {
-    setModel(m);
-    await invoke("set_config", { key: "whisper_model", value: m });
-    try { await invoke("download_model", { size: m }); } catch {}
+  const changeMode = async (m: "byo" | "alfredia") => {
+    setMode(m);
+    await invoke("set_config", { key: "ai_mode", value: m });
   };
 
-  const changeLang = async (l: string) => {
-    setLang(l);
-    await invoke("set_config", { key: "language_hint", value: l });
+  const subscribe = async (plan: "monthly" | "yearly") => {
+    setError(null);
+    setSubState("subscribing");
+    try {
+      await invoke("subscribe_alfredia", { plan });
+      setSubState("active");
+    } catch (e) {
+      setError(String(e));
+      setSubState("error");
+    }
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, textAlign: "left" }}>
-      <label style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-        Modèle de transcription
-        <select className="alfred-select" value={model} onChange={(e) => changeModel(e.target.value)} style={{ ...SELECT_STYLE, marginTop: 4 }}>
-          <option value="tiny">Tiny (75 MB, rapide)</option>
-          <option value="base">Base (142 MB)</option>
-          <option value="small">Small (466 MB, recommandé)</option>
-          <option value="medium">Medium (1.5 GB, précis)</option>
-        </select>
-      </label>
-      {progress !== null && (
-        <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>Téléchargement… {Math.round(progress)}%</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={() => changeMode("byo")} style={modeBtn(mode === "byo")}>Ma clé Claude</button>
+        <button onClick={() => changeMode("alfredia")} style={modeBtn(mode === "alfredia")}>Abonnement AlfredIA</button>
+      </div>
+
+      {mode === "byo" ? (
+        <ClaudeKeyStep />
+      ) : subState === "active" ? (
+        <div style={{ ...okRow, justifyContent: "center" }}><MdCheckCircle size={16} /> Abonnement actif</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+          <button onClick={() => subscribe("monthly")} disabled={subState === "subscribing"} style={primaryBtn(subState === "subscribing")}>
+            {subState === "subscribing" ? <><MdHourglassEmpty size={18} /> En attente du paiement…</> : "S'abonner — 20 €/mois"}
+          </button>
+          {subState !== "subscribing" && (
+            <button onClick={() => subscribe("yearly")} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 16px", cursor: "pointer", fontSize: 13, color: ACCENT }}>
+              Annuel
+            </button>
+          )}
+          {error && <div style={errorRow}><MdWarning size={15} /> {error}</div>}
+        </div>
       )}
-      <label style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-        Langue
-        <select className="alfred-select" value={lang} onChange={(e) => changeLang(e.target.value)} style={{ ...SELECT_STYLE, marginTop: 4 }}>
-          <option value="auto">Auto-détection</option>
-          <option value="fr">Français</option>
-          <option value="en">English</option>
-          <option value="es">Español</option>
-          <option value="de">Deutsch</option>
-        </select>
-      </label>
     </div>
   );
 }
@@ -267,15 +226,9 @@ function MicStep() {
       <button onClick={test} disabled={state === "testing"} style={primaryBtn(state === "testing")}>
         {state === "testing" ? <><MdHourglassEmpty size={18} /> Test en cours…</> : <><MdMic size={18} /> Tester le micro</>}
       </button>
-      {state === "ok" && (
-        <div style={{ fontSize: 13, color: "#34C759", display: "flex", alignItems: "center", gap: 6 }}>
-          <MdCheckCircle size={16} /> Micro accessible
-        </div>
-      )}
+      {state === "ok" && <div style={okRow}><MdCheckCircle size={16} /> Micro accessible</div>}
       {state === "error" && (
-        <div style={{ fontSize: 13, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6 }}>
-          <MdWarning size={15} /> Accès refusé — autorisez Alfred dans Réglages Système → Confidentialité → Micro
-        </div>
+        <div style={errorRow}><MdWarning size={15} /> Accès refusé — autorisez Alfred dans les réglages système</div>
       )}
     </div>
   );
@@ -295,7 +248,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <Panel
           icon={<img src={alfredLogo} alt="Alfred" style={{ width: 84, height: "auto", borderRadius: 18 }} />}
           title="Bienvenue dans Alfred"
-          text="Votre assistant personnel : il capture vos pensées à la voix, les transforme en notes et en tâches, et garde un œil sur votre agenda. Voici comment tout s'articule."
+          text="Votre majordome personnel : il écoute, transcrit, résume et retient — pour que vous n'ayez plus à prendre de notes vous-même. Deux minutes d'installation, puis on essaie ensemble."
         />
       ),
     },
@@ -303,8 +256,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle><MdMic /></IconCircle>}
-          title="Capturez à la voix"
-          text="Lancez un enregistrement et parlez naturellement. Alfred transcrit en local (Whisper). L'enregistrement continue même si vous changez de vue — il tourne en arrière-plan."
+          title="Parlez, il transcrit"
+          text="Lancez un enregistrement et parlez naturellement — réunion, note vocale, brainstorm. La transcription tourne en local (Whisper, déjà installé, ça marche hors ligne dès le premier lancement) et continue même si vous changez de vue."
         />
       ),
     },
@@ -312,48 +265,9 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle><MdAutoAwesome /></IconCircle>}
-          title="Des tâches extraites automatiquement"
-          text="À partir de vos transcriptions, Alfred détecte les actions à faire et les ajoute à votre to-do. Les tâches prioritaires (★) remontent sur le tableau de bord."
+          title="Il en tire l'essentiel"
+          text="De chaque enregistrement, Alfred rédige un compte-rendu et en extrait les tâches à faire — avec le responsable, quand vous le nommez. Vos notes restent reliées entre elles, et vous pouvez lui parler directement pour retrouver n'importe quoi."
         />
-      ),
-    },
-    {
-      node: (
-        <Panel
-          icon={<IconCircle><MdStickyNote2 /></IconCircle>}
-          title="Vos notes, reliées entre elles"
-          text="Un coffre de notes en markdown avec liens [[wiki]] et tags. Le Graphe visualise les connexions entre vos notes pour naviguer dans votre savoir."
-        />
-      ),
-    },
-    {
-      node: (
-        <Panel
-          icon={<IconCircle><MdEventNote /></IconCircle>}
-          title="Votre agenda, augmenté"
-          text="Alfred synchronise le calendrier de votre compte connecté, prépare des résumés avant vos réunions, et peut même appeler un restaurant pour réserver à votre place."
-        />
-      ),
-    },
-    {
-      node: (
-        <Panel
-          icon={<IconCircle><MdChatBubbleOutline /></IconCircle>}
-          title="Discutez avec Alfred"
-          text="Posez des questions sur vos notes, demandez un résumé de votre semaine. Tout est connecté : enregistrements, notes, tâches et agenda nourrissent les réponses."
-        />
-      ),
-    },
-    {
-      skippable: true,
-      node: (
-        <Panel
-          icon={<IconCircle tone="dark"><MdEventNote /></IconCircle>}
-          title="Connectez votre compte"
-          text="Connectez Google pour donner à Alfred l'accès à votre calendrier et à vos emails. Vous pourrez le faire plus tard depuis les Réglages."
-        >
-          <ConnectAccountStep />
-        </Panel>
       ),
     },
     {
@@ -362,7 +276,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <Panel
           icon={<IconCircle><MdFolderOpen /></IconCircle>}
           title="Choisissez votre dossier de notes"
-          text="Alfred range vos notes dans un dossier markdown (le « vault »). Choisissez-en un — un dossier existant ou un nouveau."
+          text="Alfred range tout dans un dossier markdown (le « vault »), compatible Obsidian. Choisissez-en un — un dossier existant ou un nouveau, rien d'autre n'y sera touché."
         >
           <VaultStep />
         </Panel>
@@ -373,22 +287,10 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle><MdVpnKey /></IconCircle>}
-          title="Clé API Claude"
-          text="L'IA d'Alfred (extraction de tâches, chat, résumés) tourne avec Claude. Collez votre clé API pour l'activer."
+          title="Accès à l'IA"
+          text="Alfred s'appuie sur Claude pour rédiger, extraire les tâches et répondre à vos questions. Choisissez comment y accéder — modifiable à tout moment dans les Réglages."
         >
-          <ClaudeKeyStep />
-        </Panel>
-      ),
-    },
-    {
-      skippable: true,
-      node: (
-        <Panel
-          icon={<IconCircle><MdGraphicEq /></IconCircle>}
-          title="Transcription"
-          text="Choisissez le modèle Whisper et la langue. Small est un bon compromis ; un plus gros modèle est plus précis mais plus lourd."
-        >
-          <WhisperStep />
+          <AiAccessStep />
         </Panel>
       ),
     },
@@ -398,7 +300,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <Panel
           icon={<IconCircle tone="dark"><MdMic /></IconCircle>}
           title="Autorisez le micro"
-          text="Faites un test rapide pour vérifier l'accès au microphone (macOS vous demandera l'autorisation)."
+          text="Un test rapide pour vérifier l'accès au microphone (macOS vous demandera l'autorisation la première fois)."
         >
           <MicStep />
         </Panel>
@@ -409,7 +311,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <Panel
           icon={<IconCircle><MdCheckCircle /></IconCircle>}
           title="Tout est prêt !"
-          text="Vous pouvez commencer. Vous retrouverez tous ces réglages à tout moment dans Paramètres."
+          text="Vous retrouverez tous ces réglages à tout moment dans Paramètres. Une dernière chose avant de vous lâcher dans l'app…"
         />
       ),
     },

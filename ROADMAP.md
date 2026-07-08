@@ -53,7 +53,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [ ] | **Indicateur d'état** (topbar, labels majordome) + **bandeau d'enregistrement** | |
 | [ ] | Déclenchement via **logo** (hover micro) + **page de guidage** d'enregistrement | |
 | [ ] | **Nav** : retirer Réunions / Calendrier / Actions IA + barre de recherche ; ajouter **Feedback** | |
-| [ ] | **Onboarding** refonte (2 slides, détection vault + scaffolding dossiers, choix accès IA, test micro) | |
+| [~] | **Onboarding** refonte (2 slides, détection vault + scaffolding dossiers, choix accès IA, test micro) + **tournée guidée** post-onboarding (vrai enregistrement → transcription → ingestion → tâches/notes → question à Alfred) | UC |
 | [~] | **Settings** refonte (accès IA ✓, Whisper ici, retirer Vapi/Google/Places/calendrier/ingest CLI ; défauts `alfred-*`) | UC |
 | [ ] | **Onglet Feedback** (formulaire + `submit_feedback`) | |
 
@@ -63,7 +63,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 |---|---|---|
 | [ ] | Désactiver / retirer les modules `auth`, `calendar`, `suggestions`, `phone_calls` (`ingest` CLI déjà supprimé — spec/05) | UC |
 | [ ] | Retirer les routes `/meetings`, `/calendar`, `/ai-actions` | |
-| [ ] | Mettre à jour les défauts de dossiers (`alfred-raw` — encore `raw/audios` ; `alfred-intelligence/Todo.md` ✅ déjà le défaut) | |
+| [x] | Mettre à jour les défauts de dossiers (`alfred-raw` ✅, `alfred-intelligence/Todo.md` ✅) | UC |
 
 ## Phase E — Packaging & distribution
 

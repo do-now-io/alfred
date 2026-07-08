@@ -302,6 +302,32 @@ pub async fn delete_note_file(path: &Path) -> Result<()> {
         .map_err(|e| anyhow!("Cannot delete {:?}: {}", path, e))
 }
 
+// ─── Vault scaffolding (spec/13 onboarding) ─────────────────────────────────────
+
+/// Idempotently create the vault's expected structure on first setup:
+/// `alfred-raw/`, `alfred-intelligence/`, and a skeleton `Todo.md` (spec/06's
+/// four sections) if one doesn't already exist. Never overwrites existing files.
+pub async fn scaffold_vault(
+    vault_root: &Path,
+    recording_folder: &str,
+    intelligence_folder: &str,
+    todo_rel_path: &str,
+) -> Result<()> {
+    tokio::fs::create_dir_all(vault_root.join(recording_folder)).await?;
+    tokio::fs::create_dir_all(vault_root.join(intelligence_folder)).await?;
+
+    let todo_path = vault_root.join(todo_rel_path);
+    if !todo_path.exists() {
+        if let Some(parent) = todo_path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        let (skeleton, _) = crate::notes::todo_md::merge_tasks(None, &[]);
+        tokio::fs::write(&todo_path, skeleton).await?;
+    }
+
+    Ok(())
+}
+
 // ─── SQLite → vault migration ─────────────────────────────────────────────────
 
 pub async fn migrate_sqlite_to_vault(

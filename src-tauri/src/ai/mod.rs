@@ -145,7 +145,7 @@ struct IngestedTask {
 /// Vault-relative folder for AI-generated compte-rendus (spec/05).
 const DEFAULT_INTELLIGENCE_FOLDER: &str = "alfred-intelligence";
 
-async fn intelligence_folder(db: &SqlitePool) -> String {
+pub async fn intelligence_folder(db: &SqlitePool) -> String {
     let stored: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = 'intelligence_folder'")
         .fetch_optional(db)
         .await
@@ -205,11 +205,28 @@ async fn run_ingestion_core(
     vault_root: Option<&Path>,
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
+    // `ingestion-status-changed` (spec/13's guided tour) needs an unambiguous
+    // done/error signal — `notes-updated`/`todos-updated` are too generic (they
+    // can fire for unrelated reasons) to reliably drive UI waiting on ingestion.
+    let emit_status = |status: &str| {
+        let _ = app_handle.emit(
+            "ingestion-status-changed",
+            json!({ "status": status, "recording_id": recording_id }),
+        );
+    };
+
     if text.trim().is_empty() {
+        emit_status("done");
         return Ok(());
     }
 
-    let (output, ai_mode) = call_ingestion(text, db).await?;
+    let (output, ai_mode) = match call_ingestion(text, db).await {
+        Ok(r) => r,
+        Err(e) => {
+            emit_status("error");
+            return Err(e);
+        }
+    };
 
     if let Some(vault_root) = vault_root {
         // 1. Compte-rendu → alfred-intelligence/{titre}.md
@@ -268,6 +285,7 @@ async fn run_ingestion_core(
     }
 
     crate::metrics::send("ingestion_completed", json!({ "ai_mode": ai_mode }));
+    emit_status("done");
 
     Ok(())
 }

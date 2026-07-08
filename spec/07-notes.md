@@ -18,9 +18,10 @@ plus de notes — la table `notes` est **legacy** (migration uniquement).
     └── Todo.md            # source de vérité des todos (spec 06)
 ```
 
-- Aujourd'hui le code écrit dans `raw/audios/` (config `recording_folder`, défaut
-  `raw/audios`) et l'ingest CLI lisait `raw/`. **À migrer** vers `alfred-raw/` /
-  `alfred-intelligence/`.
+- ✅ Défauts alignés : `recording_folder` → `alfred-raw` (spec/11), compte-rendus
+  IA → `alfred-intelligence/{titre}.md`, todos → `alfred-intelligence/Todo.md`
+  (spec/05, spec/06). Reste : frontmatter riche sur la note brute elle-même
+  (`alfred-raw/`, aujourd'hui sans frontmatter) et le regroupement par `project`.
 - **Aucun fichier technique Alfred dans le vault** (pas de `.claude/`, pas de
   skill, pas de `CLAUDE.md`) — les prompts vivent dans l'app.
 - Notes legacy SQLite exportées vers `{vault}/Legacy/` au 1er démarrage

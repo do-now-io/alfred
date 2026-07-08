@@ -17,7 +17,9 @@ import Placeholder from "./screens/Placeholder";
 import Onboarding from "./screens/Onboarding";
 import { useRecordingStore } from "./store/recordingStore";
 import { useNotesStore } from "./store/notesStore";
+import { useTourStore, useTourTarget } from "./store/tourStore";
 import RecordingBar from "./components/RecordingBar";
+import GuidedTour from "./components/tour/GuidedTour";
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 
@@ -35,9 +37,14 @@ function AlfredLogo() {
 
 // ─── Nav item ─────────────────────────────────────────────────────────────────
 
-function NavItem({ to, icon, label, end = false }: { to: string; icon: React.ReactNode; label: string; end?: boolean }) {
+function NavItem({
+  to, icon, label, end = false, tourId,
+}: { to: string; icon: React.ReactNode; label: string; end?: boolean; tourId?: string }) {
+  // Guided tour (spec/13) spotlights specific nav items (e.g. Tâches) by id.
+  const tourRef = useTourTarget(tourId ?? to);
   return (
     <NavLink
+      ref={tourId ? tourRef : undefined}
       to={to}
       end={end}
       style={({ isActive }) => ({
@@ -123,7 +130,7 @@ function Sidebar() {
 
       <nav style={{ flex: 1, overflowY: "auto", paddingBottom: 8 }}>
         <NavItem to="/" icon={<MdHome />} label="Aujourd'hui" end />
-        <NavItem to="/tasks" icon={<MdCheckBox />} label="Tâches" />
+        <NavItem to="/tasks" icon={<MdCheckBox />} label="Tâches" tourId="nav-tasks" />
         <NavItem to="/notes" icon={<MdStickyNote2 />} label="Notes" />
         <NavItem to="/graph" icon={<MdHub />} label="Graphe" />
         <NavItem to="/ai-actions" icon={<MdAutoAwesome />} label="Alfred" />
@@ -229,6 +236,7 @@ function AppInner() {
           </Routes>
         </main>
       </div>
+      <GuidedTour />
     </div>
   );
 }
@@ -261,13 +269,22 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
+  // A genuine first-run completion also launches the guided tour (spec/13).
+  // Replaying the intro from Settings ("Revoir l'introduction") does not — the
+  // tour has its own separate "Revoir la visite guidée" entry.
   const finishOnboarding = () => {
+    sessionStorage.removeItem("alfred_force_onboarding");
+    setOnboarded(true);
+    useTourStore.getState().start();
+  };
+
+  const finishOnboardingReplay = () => {
     sessionStorage.removeItem("alfred_force_onboarding");
     setOnboarded(true);
   };
 
   if (forceOnboarding) {
-    return <Onboarding onDone={finishOnboarding} />;
+    return <Onboarding onDone={finishOnboardingReplay} />;
   }
 
   if (onboarded === null) {

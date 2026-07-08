@@ -6,6 +6,7 @@ import { useCalendarStore } from "../store/calendarStore";
 import { useTodoStore } from "../store/todoStore";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import { useNotesStore } from "../store/notesStore";
+import { useTourTarget } from "../store/tourStore";
 import BookingDemo from "../components/BookingDemo";
 import BriefingTask from "../components/BriefingTask";
 import type { CalendarEvent } from "../bindings/CalendarEvent";
@@ -17,6 +18,8 @@ import { parseTasks, toggleChecked, setImportant, type TaskLine } from "../utils
 
 function HeroCard() {
   const { status, startRecording, stopRecording } = useRecordingStore();
+  // Guided tour (spec/13) spotlights this exact card as "cliquez ici pour démarrer".
+  const tourRef = useTourTarget("hero-card");
 
   // Elapsed time is derived from the recording's start timestamp (see store), so
   // it stays accurate even after navigating away from the Dashboard and back.
@@ -30,6 +33,7 @@ function HeroCard() {
 
   return (
     <div
+      ref={tourRef}
       onClick={isIdle ? () => startRecording() : undefined}
       style={{
         background: isRecording ? "#3D0A0A" : "var(--dark-card)",

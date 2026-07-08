@@ -177,7 +177,7 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
 }
 
 /// Vault-relative folder where recordings (audio + transcription note) are stored.
-pub const DEFAULT_RECORDING_FOLDER: &str = "raw/audios";
+pub const DEFAULT_RECORDING_FOLDER: &str = "alfred-raw";
 
 /// The configured recording folder (vault-relative), or the default. Reuses the same
 /// `SELECT value FROM config` query as the other config readers (offline `.sqlx` cache).

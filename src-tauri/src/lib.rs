@@ -397,21 +397,30 @@ async fn get_vault_path(
         .map(|p| p.to_string_lossy().to_string()))
 }
 
+/// Sets the vault path and scaffolds its expected structure (spec/13):
+/// `alfred-raw/`, `alfred-intelligence/`, and a skeleton `Todo.md` — idempotent,
+/// never touches existing files/folders.
 #[tauri::command]
 async fn set_vault_path(
     path: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let pb = std::path::PathBuf::from(&path);
-    *state.vault_path.lock().unwrap() = Some(pb);
+    *state.vault_path.lock().unwrap() = Some(pb.clone());
     sqlx::query!(
         "INSERT OR REPLACE INTO config (key, value) VALUES ('notes_vault_path', ?)",
         path
     )
     .execute(&state.db)
     .await
-    .map(|_| ())
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    let recording_folder = transcription::recording_folder(&state.db).await;
+    let intelligence_folder = ai::intelligence_folder(&state.db).await;
+    let todo_rel_path = todos::todo_file_path(&state.db).await;
+    notes::vault::scaffold_vault(&pb, &recording_folder, &intelligence_folder, &todo_rel_path)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

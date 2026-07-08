@@ -2,12 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatStore, type ChatTurn } from "../../store/chatStore";
 import { useNotesStore } from "../../store/notesStore";
+import { useTourTarget } from "../../store/tourStore";
 import BriefingContent from "../BriefingContent";
 import type { ChatSource } from "../../bindings/ChatSource";
 
+// The "last-meeting" suggestion doubles as the guided tour's final spotlight
+// target (spec/13) — id kept stable so GuidedTour can find it.
 const SUGGESTIONS = [
-  "Résume mes notes récentes",
-  "Sur quoi ai-je travaillé cette semaine ?",
+  { id: "recent-notes", label: "Résume mes notes récentes" },
+  { id: "week-work", label: "Sur quoi ai-je travaillé cette semaine ?" },
+  { id: "last-meeting", label: "Retrouve-moi ma dernière réunion enregistrée" },
 ];
 
 const COLUMN_MAX = 760;
@@ -131,6 +135,7 @@ export default function ChatPanel() {
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 function EmptyState({ onPick }: { onPick: (q: string) => void }) {
+  const tourRef = useTourTarget("chat-suggestion-last-meeting");
   return (
     <div style={{
       paddingTop: 56, display: "flex", flexDirection: "column",
@@ -153,15 +158,16 @@ function EmptyState({ onPick }: { onPick: (q: string) => void }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginTop: 4 }}>
         {SUGGESTIONS.map(s => (
           <button
-            key={s}
-            onClick={() => onPick(s)}
+            key={s.id}
+            ref={s.id === "last-meeting" ? tourRef : undefined}
+            onClick={() => onPick(s.label)}
             style={{
               background: "var(--active-bg)", border: "1px solid var(--border)",
               borderRadius: 16, padding: "6px 14px", cursor: "pointer",
               fontSize: 12.5, color: "var(--text-secondary)",
             }}
           >
-            {s}
+            {s.label}
           </button>
         ))}
       </div>

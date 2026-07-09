@@ -415,6 +415,121 @@ async fn call_claude_with_retry(
     Err(last_err)
 }
 
+// ─── Glossaire Whisper dérivé du contexte (spec/17 §1) ───────────────────────────
+//
+// Claude reads `Contexte Alfred.md` (spec/16) and derives a FLAT list of proper
+// nouns / house terms — no definitions (Whisper is acoustic, not semantic) —
+// wrapped in a short French sentence. Stored in `config.transcription_glossary`
+// and injected as Whisper's `initial_prompt` (see transcription/mod.rs) to fix
+// proper nouns at the source ("Ulysse" vs "Le vice").
+
+/// ~224 tokens is Whisper's usable prompt budget (n_text_ctx/2). We can't count
+/// Whisper tokens here, so this char cap is a coarse backstop (~64 names ×
+/// ~15 chars); Claude is also told the budget. whisper.cpp keeps the *last*
+/// prompt tokens on overflow, so we truncate the TAIL ourselves (Claude orders
+/// the most-important/most-mis-transcribed names first — spec/17 §1).
+const GLOSSARY_MAX_CHARS: usize = 1000;
+
+const GLOSSARY_SYSTEM: &str = r#"Tu construis le GLOSSAIRE d'un moteur de transcription vocale (Whisper) à partir du contexte interne d'un utilisateur (son entreprise, son équipe, ses clients, ses projets, son vocabulaire). Ce glossaire aide Whisper à bien orthographier les noms propres et termes métier à l'oral.
+
+Soumets le glossaire via l'outil `submit_glossary`. Règles STRICTES :
+- Une liste PLATE de noms propres et termes uniquement : prénoms/noms de personnes, entreprises, clients, projets (noms de code), outils, sigles, jargon maison. AUCUNE définition, AUCUNE explication, AUCune phrase (Whisper est acoustique, pas sémantique). Ex. « Kubernetes, Grafana, ArgoCD, Terraform », pas « Kube = Kubernetes ».
+- Ordonne les termes du plus important / le plus susceptible d'être mal transcrit au moins important (la fin peut être tronquée).
+- Budget : environ 60 à 90 termes maximum (~200 tokens). Reste concis.
+- Enrobe la liste dans une courte phrase, dans la langue principale du contexte (français par défaut), sur ce modèle : « Transcription en français. Termes et noms propres : <liste séparée par des virgules>. »
+- Si le contexte ne contient aucun nom propre / terme exploitable, renvoie une chaîne vide."#;
+
+fn glossary_tool() -> serde_json::Value {
+    json!([{
+        "name": "submit_glossary",
+        "description": "Soumets le glossaire plat (noms propres et termes) pour l'initial_prompt de Whisper.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "glossaire": {
+                    "type": "string",
+                    "description": "Une seule ligne : courte phrase d'enrobage + liste plate de noms/termes séparés par des virgules. Vide si rien d'exploitable."
+                }
+            },
+            "required": ["glossaire"]
+        }
+    }])
+}
+
+/// Truncate to the token budget, cutting on a comma boundary so we never leave a
+/// half-spelled name in the prompt. Keeps the head (Claude ordered by importance).
+fn cap_glossary(s: &str) -> String {
+    let s = s.trim();
+    if s.chars().count() <= GLOSSARY_MAX_CHARS {
+        return s.to_string();
+    }
+    let head: String = s.chars().take(GLOSSARY_MAX_CHARS).collect();
+    match head.rfind(',') {
+        Some(i) => head[..i].trim_end().to_string(),
+        None => head.trim_end().to_string(),
+    }
+}
+
+/// Derive the Whisper glossary from `Contexte Alfred.md` and store it in
+/// `config.transcription_glossary` (spec/17 §1). Regenerated at onboarding, when
+/// the context note changes (debounced, caller's job), or via a manual button.
+/// Empty context → empty glossary stored (Whisper falls back to no prompt).
+pub async fn generate_glossary_from_context(db: &SqlitePool, vault_root: Option<&Path>) -> Result<String> {
+    let context = match vault_root {
+        Some(root) => crate::notes::context::read_context(root, db).await,
+        None => None,
+    };
+
+    // No usable context → clear any stale glossary, nothing to derive.
+    let context = match context {
+        Some(c) => c,
+        None => {
+            store_glossary(db, "").await?;
+            return Ok(String::new());
+        }
+    };
+
+    let access = resolve_access(db).await?;
+    let client = reqwest::Client::new();
+    let body = json!({
+        "model": MODEL,
+        "max_tokens": 1024,
+        "thinking": {"type": "disabled"},
+        "system": [{
+            "type": "text",
+            "text": GLOSSARY_SYSTEM,
+            "cache_control": {"type": "ephemeral"}
+        }],
+        "tools": glossary_tool(),
+        "tool_choice": {"type": "tool", "name": "submit_glossary"},
+        "messages": [{
+            "role": "user",
+            "content": format!("Contexte interne :\n\n{}", context)
+        }]
+    });
+
+    let resp = call_claude_with_retry(&client, &access, &body).await?;
+    let block = resp["content"]
+        .as_array()
+        .and_then(|c| c.iter().find(|b| b["type"] == "tool_use" && b["name"] == "submit_glossary"))
+        .ok_or_else(|| anyhow!("Claude did not call submit_glossary: {:?}", resp))?;
+
+    let glossaire = block["input"]["glossaire"].as_str().unwrap_or("").to_string();
+    let capped = cap_glossary(&glossaire);
+    store_glossary(db, &capped).await?;
+    Ok(capped)
+}
+
+async fn store_glossary(db: &SqlitePool, value: &str) -> Result<()> {
+    sqlx::query!(
+        "INSERT OR REPLACE INTO config (key, value) VALUES ('transcription_glossary', ?)",
+        value
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 // ─── Brief quotidien (spec/05 usage 3) ──────────────────────────────────────────
 
 const DAILY_BRIEF_SYSTEM: &str = r#"Tu es Alfred, un assistant personnel. À partir des tâches en cours et des notes récentes de l'utilisateur, rédige un résumé Markdown TRÈS COURT (3 à 5 lignes maximum) de ce qu'il faut savoir aujourd'hui : échéances proches, sujets chauds. N'invente rien. Si tu n'as rien de notable à signaler, dis-le en une phrase, chaleureuse et brève."#;

@@ -432,6 +432,19 @@ async fn open_context_note(
         .map_err(|e| e.to_string())
 }
 
+/// Derive the Whisper glossary from `Contexte Alfred.md` (spec/17 §1) and store
+/// it in `config.transcription_glossary`. Called at onboarding, on context-note
+/// change (debounced by the caller), or via a manual button. Returns the glossary.
+#[tauri::command]
+async fn generate_glossary_from_context(
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    ai::generate_glossary_from_context(&state.db, vault_root.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn get_vault_path(
     state: tauri::State<'_, AppState>,
@@ -789,6 +802,7 @@ pub fn run() {
             set_vault_path,
             pick_vault_folder,
             open_context_note,
+            generate_glossary_from_context,
             // Config & Keychain
             get_config,
             set_config,

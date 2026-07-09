@@ -531,6 +531,9 @@ function VaultPathRow() {
 function ContextNoteRow() {
   const navigate = useNavigate();
   const { selectFile } = useNotesStore();
+  const [glossaryState, setGlossaryState] = useState<
+    { kind: "idle" } | { kind: "loading" } | { kind: "done"; terms: number } | { kind: "error"; message: string }
+  >({ kind: "idle" });
 
   const handleOpen = async () => {
     try {
@@ -542,18 +545,51 @@ function ContextNoteRow() {
     }
   };
 
+  // Derive the Whisper glossary from Contexte Alfred.md (spec/17 §1). Corrects
+  // proper nouns at the source on the next recordings.
+  const handleRegenGlossary = async () => {
+    setGlossaryState({ kind: "loading" });
+    try {
+      const glossary = await invoke<string>("generate_glossary_from_context");
+      // Rough term count from the comma-separated list (info only).
+      const terms = glossary.trim() ? glossary.split(",").length : 0;
+      setGlossaryState({ kind: "done", terms });
+    } catch (e) {
+      setGlossaryState({ kind: "error", message: String(e) });
+    }
+  };
+
+  const btnStyle = {
+    background: "transparent", color: "var(--accent)",
+    border: "1px solid var(--border)", borderRadius: 6,
+    padding: "4px 10px", cursor: "pointer", fontSize: 12,
+  } as const;
+
   return (
     <SettingRow label="Contexte interne">
-      <button
-        onClick={handleOpen}
-        style={{
-          background: "transparent", color: "var(--accent)",
-          border: "1px solid var(--border)", borderRadius: 6,
-          padding: "4px 10px", cursor: "pointer", fontSize: 12,
-        }}
-      >
-        Ouvrir la note
-      </button>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+        {glossaryState.kind === "done" && (
+          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+            {glossaryState.terms > 0 ? `Glossaire : ~${glossaryState.terms} termes` : "Contexte vide"}
+          </span>
+        )}
+        {glossaryState.kind === "error" && (
+          <span style={{ fontSize: 12, color: "var(--danger, #c0392b)" }} title={glossaryState.message}>
+            Échec
+          </span>
+        )}
+        <button
+          onClick={handleRegenGlossary}
+          disabled={glossaryState.kind === "loading"}
+          style={{ ...btnStyle, opacity: glossaryState.kind === "loading" ? 0.6 : 1 }}
+          title="Régénère le glossaire de transcription (noms propres) à partir de la note de contexte"
+        >
+          {glossaryState.kind === "loading" ? "Génération…" : "Régénérer le glossaire"}
+        </button>
+        <button onClick={handleOpen} style={btnStyle}>
+          Ouvrir la note
+        </button>
+      </div>
     </SettingRow>
   );
 }

@@ -72,7 +72,9 @@ et `volume` (RMS 0..1) sont émis en direct toutes les ~250 ms — plus de `0` f
 
 - **Déclenchement** : ✅ le **logo Alfred** (sidebar, `App.tsx` → `AlfredLogo`)
   est un déclencheur (hover → icône micro en surimpression ; clic → démarre si
-  idle, puis navigue vers `/recording`). La carte d'enregistrement de l'accueil
+  idle, puis navigue vers `/recording` ; **pendant l'enregistrement, clic =
+  stop** — hover → icône stop, liseré rouge). L'état majordome s'affiche en
+  permanence **sous le logo** — lecture d'état unique de l'app (spec/10). La carte d'enregistrement de l'accueil
   (`HeroCard`) reste un **second point d'entrée équivalent** (même
   démarrage + même redirection) plutôt qu'être retirée — la tournée guidée
   (spec/13) s'appuie dessus, et c'est une affordance d'accueil naturelle ; « un

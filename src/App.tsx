@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
   MdHome, MdCheckBox, MdStickyNote2,
-  MdAutoAwesome, MdSettings, MdHub, MdMic, MdOutlineFeedback,
+  MdAutoAwesome, MdSettings, MdHub, MdMic, MdStop, MdOutlineFeedback,
 } from "react-icons/md";
 import alfredLogo from "./assets/alfred-logo.png";
 import Dashboard from "./screens/Dashboard";
@@ -23,53 +23,96 @@ import { useAlfredStatusStore, alfredStatusLabel } from "./store/alfredStatusSto
 import RecordingBar from "./components/RecordingBar";
 import GuidedTour from "./components/tour/GuidedTour";
 
-// ─── Logo — the recording trigger (spec/03/10) ─────────────────────────────────
-// The single control that starts a recording: hover reveals a mic overlay,
-// click starts (if idle) and always takes you to the guidance page (spec/03),
-// which shows live feedback + capture tips for the rest of the recording.
+// ─── Logo — recording trigger AND the app's single status readout ──────────────
+// (spec/03/10, ajusté après test) Top-left Alfred is where you look to know what
+// he's doing: the butler label lives under the logo, and there is no separate
+// status pill in the topbar. Click: idle → start + guidance page; recording →
+// STOP; transcribing/thinking → guidance page (progress).
 
 function AlfredLogo() {
   const navigate = useNavigate();
   const [hover, setHover] = useState(false);
-  const status = useRecordingStore((s) => s.status);
+  const recStatus = useRecordingStore((s) => s.status);
   const startRecording = useRecordingStore((s) => s.startRecording);
+  const stopRecording = useRecordingStore((s) => s.stopRecording);
+  const butler = useAlfredStatusStore((s) => s.state);
+
+  const isRecording = recStatus === "recording";
+  const busy = butler !== "idle";
 
   const handleClick = () => {
-    if (status === "idle") startRecording();
-    navigate("/recording");
+    if (isRecording) {
+      stopRecording();
+    } else if (recStatus === "idle") {
+      startRecording();
+      navigate("/recording");
+    } else {
+      navigate("/recording"); // transcription/ingestion en cours — voir la progression
+    }
   };
 
+  const title = isRecording
+    ? "Arrêter l'enregistrement"
+    : recStatus === "idle"
+      ? "Démarrer un enregistrement"
+      : "Voir la progression";
+
   return (
-    <div style={{ padding: "20px 20px 16px", display: "flex", justifyContent: "center" }}>
+    <div style={{ padding: "20px 20px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
       <button
         onClick={handleClick}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
-        title={status === "recording" ? "Enregistrement en cours" : "Démarrer un enregistrement"}
+        title={title}
         style={{
-          position: "relative", padding: 0, border: "none", background: "none",
+          position: "relative", padding: 0, background: "none",
           cursor: "pointer", width: 132, height: 132, borderRadius: 20,
-          display: "block",
+          display: "block", overflow: "hidden",
+          border: isRecording ? "2px solid var(--danger)" : "2px solid transparent",
+          transition: "border-color 0.2s",
         }}
       >
         <img
           src={alfredLogo}
           alt="Alfred"
           style={{
-            width: 132, height: "auto", borderRadius: 20, display: "block",
-            filter: hover ? "brightness(0.55)" : "none", transition: "filter 0.15s",
+            width: "100%", height: "auto", borderRadius: 18, display: "block",
+            filter: hover || isRecording ? "brightness(0.55)" : "none", transition: "filter 0.15s",
           }}
         />
-        {(hover || status === "recording") && (
+        {isRecording ? (
+          // Recording: hover offers the stop, otherwise a pulsing mic.
           <span style={{
             position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
-            color: status === "recording" ? "var(--danger)" : "#fff", fontSize: 34,
-            animation: status === "recording" ? "alfred-pulse 1.4s ease-in-out infinite" : "alfred-pop 0.15s ease",
+            color: "var(--danger)", fontSize: 36,
+            animation: hover ? "none" : "alfred-pulse 1.4s ease-in-out infinite",
+          }}>
+            {hover ? <MdStop /> : <MdMic />}
+          </span>
+        ) : hover && recStatus === "idle" ? (
+          <span style={{
+            position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#fff", fontSize: 34, animation: "alfred-pop 0.15s ease",
           }}>
             <MdMic />
           </span>
-        )}
+        ) : null}
       </button>
+
+      {/* Butler status — THE status readout (no duplicate elsewhere). */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6,
+        fontSize: 12.5, whiteSpace: "nowrap",
+        color: isRecording ? "var(--danger)" : busy ? "var(--accent)" : "var(--text-muted)",
+        transition: "color 0.2s",
+      }}>
+        <span style={{
+          width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+          background: "currentColor",
+          animation: busy || isRecording ? "alfred-pulse 1.4s ease-in-out infinite" : "none",
+        }} />
+        {alfredStatusLabel(butler)}
+      </div>
     </div>
   );
 }
@@ -186,37 +229,9 @@ function Sidebar() {
   );
 }
 
-// ─── État indicator ────────────────────────────────────────────────────────────
-// Alfred's "butler" status (spec/10) — replaces the notification bell. Driven
-// by useAlfredStatusStore, wired to the real pipeline events in AppInner below.
-
-function AlfredStatusIndicator() {
-  const state = useAlfredStatusStore((s) => s.state);
-  const busy = state !== "idle";
-
-  return (
-    <div
-      title={alfredStatusLabel(state)}
-      style={{
-        display: "flex", alignItems: "center", gap: 7,
-        padding: "5px 12px", borderRadius: 20,
-        background: busy ? "var(--active-bg)" : "transparent",
-        border: "1px solid var(--border)",
-        fontSize: 12.5, color: busy ? "var(--accent)" : "var(--text-muted)",
-        whiteSpace: "nowrap", transition: "background 0.2s, color 0.2s",
-      }}
-    >
-      <span style={{
-        width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-        background: busy ? "var(--accent)" : "var(--text-muted)",
-        animation: busy ? "alfred-pulse 1.4s ease-in-out infinite" : "none",
-      }} />
-      {alfredStatusLabel(state)}
-    </div>
-  );
-}
-
 // ─── Topbar ───────────────────────────────────────────────────────────────────
+// The butler status lives under the sidebar logo (single readout) — the topbar
+// only hosts the recording bandeau (timer + volume + stop) while recording.
 
 function Topbar() {
   return (
@@ -231,8 +246,6 @@ function Topbar() {
       <div style={{ flex: 1 }} />
 
       <RecordingBar />
-
-      <AlfredStatusIndicator />
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
         <div style={{
@@ -253,6 +266,9 @@ function Topbar() {
 function AppInner() {
   const setStatus = useRecordingStore((s) => s.setStatus);
   const setAlfredState = useAlfredStatusStore((s) => s.set);
+  // Ingestion failures must be VISIBLE: a silent one is indistinguishable from
+  // "the feature doesn't work" (compte-rendu + tasks just never appear).
+  const [ingestError, setIngestError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -271,8 +287,11 @@ function AppInner() {
       setAlfredState("thinking");
     }).then(fn => unsubs.push(fn));
 
-    listen<{ status: string }>("ingestion-status-changed", () => {
+    listen<{ status: string; message?: string }>("ingestion-status-changed", (e) => {
       setAlfredState("idle");
+      if (e.payload.status === "error") {
+        setIngestError(e.payload.message ?? "Erreur inconnue pendant la rédaction du compte-rendu");
+      }
     }).then(fn => unsubs.push(fn));
 
     return () => unsubs.forEach(fn => fn());
@@ -297,6 +316,27 @@ function AppInner() {
         </main>
       </div>
       <GuidedTour />
+      {ingestError && (
+        <div style={{
+          position: "fixed", bottom: 20, right: 20, zIndex: 1500,
+          maxWidth: 420, padding: "12px 16px", borderRadius: 12,
+          background: "var(--card-bg)", border: "1px solid var(--danger)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+          display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13,
+        }}>
+          <span style={{ color: "var(--danger)", flexShrink: 0, marginTop: 1 }}>⚠</span>
+          <div style={{ color: "var(--text-primary)", lineHeight: 1.5 }}>
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>Le compte-rendu n'a pas pu être rédigé</div>
+            <div style={{ color: "var(--text-secondary)" }}>{ingestError}</div>
+          </div>
+          <button
+            onClick={() => setIngestError(null)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 15, padding: 0, lineHeight: 1 }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

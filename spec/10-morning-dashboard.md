@@ -45,11 +45,15 @@ Topbar **sans barre de recherche**.
 - **Indicateur d'état Alfred** (remplace la cloche) — voir ci-dessous.
 - Avatar + nom **Alfred** (menu profil).
 
-### Indicateur d'état Alfred — ✅ fait
+### Indicateur d'état Alfred — ✅ fait (ajusté après test)
 
 Ton « majordome », piloté par les événements réels (`recording-status-changed`,
-`transcription-complete`, `ingestion-status-changed`) — `store/alfredStatusStore.ts` +
-`<AlfredStatusIndicator/>` dans la Topbar (remplace la cloche) :
+`transcription-complete`, `ingestion-status-changed`) — `store/alfredStatusStore.ts`.
+**Affiché sous le logo Alfred** (haut de la sidebar), qui est LA lecture d'état
+unique de l'app — la pastille Topbar initiale a été retirée après test (doublon
+avec le bandeau : « Transcription en cours… » + « Je prends note… » côte à côte).
+Le bandeau Topbar ne s'affiche plus que **pendant** l'enregistrement (timer +
+volume + stop) et sur erreur :
 
 | État | Label |
 |---|---|

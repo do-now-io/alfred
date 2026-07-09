@@ -1,4 +1,4 @@
-import { MdMic, MdStop, MdWarning, MdHourglassEmpty } from "react-icons/md";
+import { MdMic, MdStop, MdWarning } from "react-icons/md";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import VolumeMeter from "./VolumeMeter";
 
@@ -36,7 +36,10 @@ export default function RecordingBar() {
   const stopRecording = useRecordingStore((s) => s.stopRecording);
   const elapsed = useRecordingElapsed();
 
-  if (status === "idle") return null;
+  // Only two states surface here: active recording (timer + volume + stop —
+  // spec/10's bandeau) and errors. Transcription/ingestion progress lives on
+  // the butler label under the sidebar logo instead.
+  if (status !== "recording" && status !== "error") return null;
 
   return (
     <div
@@ -66,11 +69,8 @@ export default function RecordingBar() {
         </>
       )}
 
-      {(status === "stopping" || status === "processing") && (
-        <span style={{ color: "var(--text-secondary)", fontSize: 13, display: "flex", alignItems: "center", gap: 6, paddingRight: 6 }}>
-          <MdHourglassEmpty size={16} /> Transcription en cours…
-        </span>
-      )}
+      {/* stopping/processing intentionally show nothing here — the butler label
+          under the sidebar logo is the app's single status readout. */}
 
       {status === "error" && (
         <>

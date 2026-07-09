@@ -206,25 +206,27 @@ async fn run_ingestion_core(
     vault_root: Option<&Path>,
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
-    // `ingestion-status-changed` (spec/13's guided tour) needs an unambiguous
-    // done/error signal — `notes-updated`/`todos-updated` are too generic (they
-    // can fire for unrelated reasons) to reliably drive UI waiting on ingestion.
-    let emit_status = |status: &str| {
+    // `ingestion-status-changed` (spec/13's guided tour + error surfacing) needs
+    // an unambiguous done/error signal — `notes-updated`/`todos-updated` are too
+    // generic (they can fire for unrelated reasons) to reliably drive UI waiting
+    // on ingestion. Errors carry their message: a silent ingestion failure looks
+    // exactly like "the feature doesn't work" (learned the hard way in testing).
+    let emit_status = |status: &str, message: Option<String>| {
         let _ = app_handle.emit(
             "ingestion-status-changed",
-            json!({ "status": status, "recording_id": recording_id }),
+            json!({ "status": status, "recording_id": recording_id, "message": message }),
         );
     };
 
     if text.trim().is_empty() {
-        emit_status("done");
+        emit_status("done", None);
         return Ok(());
     }
 
     let (output, ai_mode) = match call_ingestion(text, db).await {
         Ok(r) => r,
         Err(e) => {
-            emit_status("error");
+            emit_status("error", Some(e.to_string()));
             return Err(e);
         }
     };
@@ -274,7 +276,7 @@ async fn run_ingestion_core(
     }
 
     crate::metrics::send("ingestion_completed", json!({ "ai_mode": ai_mode }));
-    emit_status("done");
+    emit_status("done", None);
 
     Ok(())
 }

@@ -1,9 +1,10 @@
 use anyhow::{anyhow, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::SqlitePool;
 use std::path::Path;
 use tauri::Emitter;
+use ts_rs::TS;
 
 use crate::keychain;
 use crate::notes::todo_md::IngestTask;
@@ -302,7 +303,10 @@ async fn run_ingestion_core(
     Ok(())
 }
 
-/// Automatic trigger, right after `transcription-complete` (spec/05).
+/// Automatic trigger, right after `transcription-complete` (spec/05). Routes
+/// through the augmented two-step flow (spec/17 §3) when `augmented_ingestion` is
+/// enabled, otherwise runs the direct one-shot ingestion (default — no regression
+/// while the resolution UI is being built).
 pub async fn run_ingestion_for_recording(
     recording_id: &str,
     transcription_text: &str,
@@ -311,7 +315,47 @@ pub async fn run_ingestion_for_recording(
     vault_root: Option<&Path>,
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
-    run_ingestion_core(transcription_text, note_title, Some(recording_id), db, vault_root, app_handle).await
+    if !augmented_ingestion_enabled(db).await {
+        return run_ingestion_core(transcription_text, note_title, Some(recording_id), db, vault_root, app_handle).await;
+    }
+
+    // Augmented: analyze first. Any analysis failure falls back to a direct
+    // ingestion — we never drop the compte-rendu just because analysis broke.
+    let context = match vault_root {
+        Some(root) => crate::notes::context::read_context(root, db).await,
+        None => None,
+    };
+    let clarifications = match call_analyze(transcription_text, context.as_deref(), db).await {
+        Ok(mut c) => {
+            let segments = fetch_segments(recording_id, db).await.unwrap_or_default();
+            fill_timestamps(&mut c, &segments);
+            c
+        }
+        Err(e) => {
+            eprintln!("[analyze] failed, falling back to direct ingestion: {}", e);
+            return run_ingestion_core(transcription_text, note_title, Some(recording_id), db, vault_root, app_handle).await;
+        }
+    };
+
+    if !clarifications.has_actionable() {
+        // Nothing worth validating → enchaîne automatiquement (spec/17 §3, aucune
+        // friction). Learned facts (non-blocking) are still written.
+        let adds = clarifications.context_addition_facts();
+        return finalize_ingestion(recording_id, transcription_text, note_title, adds, db, vault_root, app_handle).await;
+    }
+
+    // Something to validate → hand off to the resolution screen (spec/17 §3). The
+    // compte-rendu is written only at `finalize_ingestion`, on the corrected text.
+    let _ = app_handle.emit(
+        "clarifications-ready",
+        json!({
+            "recording_id": recording_id,
+            "note_title": note_title,
+            "text": transcription_text,
+            "clarifications": clarifications,
+        }),
+    );
+    Ok(())
 }
 
 /// Manual "ré-ingérer" trigger, relaunched on a specific `alfred-raw/` note
@@ -334,6 +378,308 @@ pub async fn run_ingestion_for_note(
     let (metadata, body) = crate::notes::frontmatter::parse(&raw, &stem);
 
     run_ingestion_core(&body, &metadata.title, metadata.recording_id.as_deref(), db, vault_root, app_handle).await
+}
+
+// ─── Ingestion augmentée en deux temps (spec/17 §3) ──────────────────────────────
+//
+// Analyse (1 appel Claude) → propositions groupées seuillées → l'utilisateur
+// tranche dans un écran de résolution → finalisation sur le texte corrigé. Jamais
+// d'auto-application d'une correction ; si rien à signaler, on enchaîne tout seul.
+// Derrière le flag config `augmented_ingestion` tant que l'écran n'est pas livré.
+
+/// A doubtful passage Claude proposes to correct, with a re-listen anchor. Only
+/// emitted when Claude has a referent in the context (spec/17 §3) — never a guess.
+#[derive(Debug, Serialize, Deserialize, Clone, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct TranscriptionFix {
+    /// Verbatim doubtful passage from the transcription (the citation).
+    pub quote: String,
+    /// Proposed corrected text.
+    pub correction: String,
+    /// 0..1 confidence (thresholding is Claude's; kept for display/sorting).
+    #[serde(default)]
+    pub confidence: Option<f64>,
+    /// Re-listen window (seconds), located by matching `quote` to segments.
+    #[serde(default)]
+    pub start: Option<f64>,
+    #[serde(default)]
+    pub end: Option<f64>,
+}
+
+/// A task with no identified owner → ask "who?".
+#[derive(Debug, Serialize, Deserialize, Clone, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct UnassignedTask {
+    pub task: String,
+    pub question: String,
+}
+
+/// An important but unclear sentence → proposed understanding to confirm.
+#[derive(Debug, Serialize, Deserialize, Clone, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct UnclearSentence {
+    pub quote: String,
+    pub proposed: String,
+    #[serde(default)]
+    pub start: Option<f64>,
+    #[serde(default)]
+    pub end: Option<f64>,
+}
+
+/// A fact learned about the user's world (e.g. "Marie = cheffe de projet") →
+/// auto-written to `## Appris automatiquement` (spec/17 §4), non-blocking.
+#[derive(Debug, Serialize, Deserialize, Clone, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ContextAddition {
+    pub fact: String,
+}
+
+/// Grouped, thresholded propositions produced by the analysis pass (spec/17 §3).
+#[derive(Debug, Serialize, Deserialize, Clone, Default, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct Clarifications {
+    #[serde(default)]
+    pub transcription_fixes: Vec<TranscriptionFix>,
+    #[serde(default)]
+    pub unassigned_tasks: Vec<UnassignedTask>,
+    #[serde(default)]
+    pub unclear_sentences: Vec<UnclearSentence>,
+    #[serde(default)]
+    pub context_additions: Vec<ContextAddition>,
+}
+
+impl Clarifications {
+    /// Whether anything needs the user to validate before finalizing.
+    /// `context_additions` are auto-written (non-blocking) so they don't count.
+    fn has_actionable(&self) -> bool {
+        !self.transcription_fixes.is_empty()
+            || !self.unassigned_tasks.is_empty()
+            || !self.unclear_sentences.is_empty()
+    }
+
+    fn context_addition_facts(&self) -> Vec<String> {
+        self.context_additions.iter().map(|c| c.fact.clone()).collect()
+    }
+}
+
+const ANALYZE_SYSTEM: &str = r#"Tu es Alfred. On te donne la transcription brute d'un enregistrement (réunion, note vocale, appel) et, éventuellement, le contexte interne de l'utilisateur (entreprise, équipe, vocabulaire). AVANT de rédiger le compte-rendu, tu repères ce qui mérite une VALIDATION humaine. Soumets tes propositions via l'outil `submit_clarifications`.
+
+Sois SÉLECTIF : ne remonte que ce qui est vraiment utile (haute confiance ou vraie importance). Si tout est clair, renvoie des listes vides — c'est un cas normal et souhaitable.
+
+- `transcription_fixes` : un passage probablement MAL TRANSCRIT que tu sais corriger UNIQUEMENT parce que le contexte interne te donne le bon référent (ex. un prénom, un nom de projet, un terme métier). `quote` = le passage douteux recopié mot pour mot depuis la transcription ; `correction` = la version corrigée ; `confidence` entre 0 et 1. N'invente JAMAIS une correction sans référent dans le contexte.
+- `unassigned_tasks` : une tâche à faire clairement énoncée mais SANS responsable identifiable. `task` = la tâche ; `question` = la question à poser (ex. « Qui s'en charge ? »).
+- `unclear_sentences` : une phrase IMPORTANTE mais floue/ambiguë. `quote` = la phrase ; `proposed` = ta compréhension proposée.
+- `context_additions` : un fait durable appris sur l'univers de l'utilisateur (ex. « Marie = cheffe de projet », « le projet Atlas concerne le client Dupont »). `fact` = le fait, en une ligne."#;
+
+fn analyze_tool() -> serde_json::Value {
+    json!([{
+        "name": "submit_clarifications",
+        "description": "Soumets les points à valider avant de finaliser le compte-rendu.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "transcription_fixes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "quote": { "type": "string" },
+                            "correction": { "type": "string" },
+                            "confidence": { "type": "number", "description": "0 à 1" }
+                        },
+                        "required": ["quote", "correction"]
+                    }
+                },
+                "unassigned_tasks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "task": { "type": "string" },
+                            "question": { "type": "string" }
+                        },
+                        "required": ["task", "question"]
+                    }
+                },
+                "unclear_sentences": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "quote": { "type": "string" },
+                            "proposed": { "type": "string" }
+                        },
+                        "required": ["quote", "proposed"]
+                    }
+                },
+                "context_additions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": { "fact": { "type": "string" } },
+                        "required": ["fact"]
+                    }
+                }
+            },
+            "required": ["transcription_fixes", "unassigned_tasks", "unclear_sentences", "context_additions"]
+        }
+    }])
+}
+
+/// One Claude call → `Clarifications` (timestamps not yet filled). Forces the
+/// `submit_clarifications` tool so the response is always structured.
+async fn call_analyze(text: &str, context: Option<&str>, db: &SqlitePool) -> Result<Clarifications> {
+    if text.trim().is_empty() {
+        return Ok(Clarifications::default());
+    }
+    let access = resolve_access(db).await?;
+    let client = reqwest::Client::new();
+    let body = json!({
+        "model": MODEL,
+        "max_tokens": 2048,
+        "thinking": {"type": "disabled"},
+        "system": system_blocks(ANALYZE_SYSTEM, context),
+        "tools": analyze_tool(),
+        "tool_choice": {"type": "tool", "name": "submit_clarifications"},
+        "messages": [{ "role": "user", "content": format!("Transcription:\n{}", text) }]
+    });
+
+    let resp = call_claude_with_retry(&client, &access, &body).await?;
+    let block = resp["content"]
+        .as_array()
+        .and_then(|c| c.iter().find(|b| b["type"] == "tool_use" && b["name"] == "submit_clarifications"))
+        .ok_or_else(|| anyhow!("Claude did not call submit_clarifications: {:?}", resp))?;
+
+    serde_json::from_value(block["input"].clone())
+        .map_err(|e| anyhow!("Invalid submit_clarifications input: {} — {:?}", e, block["input"]))
+}
+
+/// Load a recording's transcription segments (for re-listen timestamps).
+async fn fetch_segments(recording_id: &str, db: &SqlitePool) -> Result<Vec<crate::transcription::WhisperSegment>> {
+    let json: Option<String> = sqlx::query_scalar(
+        "SELECT segments_json FROM transcriptions WHERE recording_id = ?",
+    )
+    .bind(recording_id)
+    .fetch_optional(db)
+    .await?;
+    match json {
+        Some(s) => Ok(serde_json::from_str(&s).unwrap_or_default()),
+        None => Ok(vec![]),
+    }
+}
+
+fn normalize(s: &str) -> String {
+    s.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Locate a quote in the segments → (start, end) seconds, for the "🔊 réécouter"
+/// button (spec/17 §3). Fuzzy: matches on containment or a shared head chunk;
+/// returns `None` bounds when nothing lines up (the fix is still shown, just
+/// without a re-listen anchor).
+fn locate_quote(quote: &str, segments: &[crate::transcription::WhisperSegment]) -> (Option<f64>, Option<f64>) {
+    let q = normalize(quote);
+    if q.is_empty() {
+        return (None, None);
+    }
+    let head: String = q.split_whitespace().take(4).collect::<Vec<_>>().join(" ");
+    let mut start = None;
+    let mut end = None;
+    for seg in segments {
+        let t = normalize(&seg.text);
+        if t.is_empty() {
+            continue;
+        }
+        let hit = q.contains(&t) || t.contains(&q) || (!head.is_empty() && t.contains(&head));
+        if hit {
+            if start.is_none() {
+                start = Some(seg.start);
+            }
+            end = Some(seg.end);
+        }
+    }
+    (start, end)
+}
+
+fn fill_timestamps(clar: &mut Clarifications, segments: &[crate::transcription::WhisperSegment]) {
+    for f in &mut clar.transcription_fixes {
+        let (s, e) = locate_quote(&f.quote, segments);
+        f.start = s;
+        f.end = e;
+    }
+    for u in &mut clar.unclear_sentences {
+        let (s, e) = locate_quote(&u.quote, segments);
+        u.start = s;
+        u.end = e;
+    }
+}
+
+/// Is the augmented two-step ingestion enabled? (Config `augmented_ingestion` =
+/// "true"/"1"; default off — direct ingestion, current behavior.)
+async fn augmented_ingestion_enabled(db: &SqlitePool) -> bool {
+    let v: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = 'augmented_ingestion'")
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+    matches!(v.as_deref(), Some("true") | Some("1"))
+}
+
+/// Analysis pass exposed to the UI (spec/17 §3): fetch the transcription of a
+/// recording, ask Claude for grouped propositions, and locate re-listen windows.
+pub async fn analyze_transcription(
+    recording_id: &str,
+    db: &SqlitePool,
+    vault_root: Option<&Path>,
+) -> Result<Clarifications> {
+    let text: Option<String> =
+        sqlx::query_scalar("SELECT raw_text FROM transcriptions WHERE recording_id = ?")
+            .bind(recording_id)
+            .fetch_optional(db)
+            .await?;
+    let text = text.ok_or_else(|| anyhow!("No transcription for recording {}", recording_id))?;
+
+    let context = match vault_root {
+        Some(root) => crate::notes::context::read_context(root, db).await,
+        None => None,
+    };
+    let mut clar = call_analyze(&text, context.as_deref(), db).await?;
+    let segments = fetch_segments(recording_id, db).await.unwrap_or_default();
+    fill_timestamps(&mut clar, &segments);
+    Ok(clar)
+}
+
+/// Finalization pass (spec/17 §3): write the compte-rendu from the CORRECTED text
+/// (+ the user's answers already folded into it), then auto-write any accepted
+/// learned facts to `## Appris automatiquement` and regenerate the glossary. Also
+/// the auto path when the analysis had nothing to validate.
+pub async fn finalize_ingestion(
+    recording_id: &str,
+    corrected_text: &str,
+    note_title: &str,
+    context_additions: Vec<String>,
+    db: &SqlitePool,
+    vault_root: Option<&Path>,
+    app_handle: &tauri::AppHandle,
+) -> Result<()> {
+    run_ingestion_core(corrected_text, note_title, Some(recording_id), db, vault_root, app_handle).await?;
+
+    if let Some(root) = vault_root {
+        if !context_additions.is_empty() {
+            match crate::notes::context::append_learned_facts(root, db, &context_additions).await {
+                Ok(n) if n > 0 => {
+                    eprintln!("[ingestion] {} fait(s) appris ajouté(s) au contexte", n);
+                    // New context → the glossary may have new proper nouns (spec/17 §1/§4).
+                    if let Err(e) = generate_glossary_from_context(db, Some(root)).await {
+                        eprintln!("[ingestion] glossary regen failed: {}", e);
+                    }
+                    let _ = app_handle.emit("notes-updated", json!({}));
+                }
+                Ok(_) => {}
+                Err(e) => eprintln!("[ingestion] append learned facts failed: {}", e),
+            }
+        }
+    }
+    Ok(())
 }
 
 const STOPWORDS: &[&str] = &[
@@ -668,5 +1014,59 @@ pub async fn test_api_key(service: &str, client: &reqwest::Client) -> Result<()>
             }
         }
         _ => Err(anyhow!("Unknown service: {}", service)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transcription::WhisperSegment;
+
+    fn seg(start: f64, end: f64, text: &str) -> WhisperSegment {
+        WhisperSegment { start, end, text: text.to_string() }
+    }
+
+    #[test]
+    fn cap_glossary_keeps_short_list() {
+        let s = "Transcription en français. Termes et noms propres : Ulysse, Alfred.";
+        assert_eq!(cap_glossary(s), s);
+    }
+
+    #[test]
+    fn cap_glossary_truncates_on_comma_boundary() {
+        let names: Vec<String> = (0..300).map(|i| format!("Nom{}", i)).collect();
+        let long = format!("Prefixe : {}.", names.join(", "));
+        let capped = cap_glossary(&long);
+        assert!(capped.chars().count() <= GLOSSARY_MAX_CHARS);
+        assert!(!capped.ends_with(","));
+        // Kept the head.
+        assert!(capped.starts_with("Prefixe : Nom0"));
+    }
+
+    #[test]
+    fn locate_quote_finds_span() {
+        let segs = vec![
+            seg(0.0, 2.0, "Bonjour tout le monde"),
+            seg(2.0, 5.0, "on parle du projet Atlas"),
+            seg(5.0, 8.0, "avec le client Dupont"),
+        ];
+        let (s, e) = locate_quote("du projet Atlas", &segs);
+        assert_eq!(s, Some(2.0));
+        assert_eq!(e, Some(5.0));
+    }
+
+    #[test]
+    fn locate_quote_absent_returns_none() {
+        let segs = vec![seg(0.0, 2.0, "Bonjour tout le monde")];
+        assert_eq!(locate_quote("phrase absente totalement", &segs), (None, None));
+    }
+
+    #[test]
+    fn clarifications_actionable_ignores_context_only() {
+        let mut c = Clarifications::default();
+        c.context_additions.push(ContextAddition { fact: "Marie = cheffe".into() });
+        assert!(!c.has_actionable());
+        c.unassigned_tasks.push(UnassignedTask { task: "faire X".into(), question: "qui ?".into() });
+        assert!(c.has_actionable());
     }
 }

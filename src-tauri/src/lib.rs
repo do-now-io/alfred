@@ -445,6 +445,44 @@ async fn generate_glossary_from_context(
         .map_err(|e| e.to_string())
 }
 
+/// Augmented ingestion — analysis pass (spec/17 §3): grouped propositions for a
+/// recording's transcription, for the resolution screen.
+#[tauri::command]
+async fn analyze_transcription(
+    recording_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<ai::Clarifications, String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    ai::analyze_transcription(&recording_id, &state.db, vault_root.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Augmented ingestion — finalization pass (spec/17 §3): write the compte-rendu
+/// from the corrected text + fold accepted learned facts into the context.
+#[tauri::command]
+async fn finalize_ingestion(
+    recording_id: String,
+    corrected_text: String,
+    note_title: String,
+    context_additions: Vec<String>,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    ai::finalize_ingestion(
+        &recording_id,
+        &corrected_text,
+        &note_title,
+        context_additions,
+        &state.db,
+        vault_root.as_deref(),
+        &app,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn get_vault_path(
     state: tauri::State<'_, AppState>,
@@ -803,6 +841,8 @@ pub fn run() {
             pick_vault_folder,
             open_context_note,
             generate_glossary_from_context,
+            analyze_transcription,
+            finalize_ingestion,
             // Config & Keychain
             get_config,
             set_config,

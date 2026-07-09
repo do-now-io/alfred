@@ -427,11 +427,26 @@ pub async fn stop_recording(
         .fetch_optional(&db).await?
         .unwrap_or_else(|| "auto".to_string());
 
+    // Threads relevables (spec/17 §2): config override, else run_whisper's min(cores, 4).
+    let threads = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'whisper_threads'")
+        .fetch_optional(&db).await?
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&t| t > 0);
+
+    // Derived glossary (spec/17 §1) injected as Whisper's initial_prompt. Empty
+    // until `generate_glossary_from_context` populates it (task 2).
+    let glossary = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'transcription_glossary'")
+        .fetch_optional(&db).await?
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
     let job = TranscriptionJob {
         recording_id: recording_id.clone(),
         file_path,
         model_size: model,
         language: if lang == "auto" { None } else { Some(lang) },
+        threads,
+        initial_prompt: glossary,
         db,
         app_handle,
         data_dir: data_dir.clone(),

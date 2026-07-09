@@ -15,6 +15,10 @@ pub struct TranscriptionJob {
     pub file_path: PathBuf,
     pub model_size: String,
     pub language: Option<String>,
+    /// Whisper decoding threads (spec/17 §2); `None` → `min(cores, 4)`.
+    pub threads: Option<usize>,
+    /// Derived glossary injected as Whisper's `initial_prompt` (spec/17 §1).
+    pub initial_prompt: Option<String>,
     pub db: SqlitePool,
     pub app_handle: tauri::AppHandle,
     pub data_dir: PathBuf,
@@ -77,10 +81,18 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
     let file_path = job.file_path.clone();
     let model_path_clone = model_path.clone();
     let language = job.language.clone();
+    let threads = job.threads;
+    let initial_prompt = job.initial_prompt.clone();
 
     // Run Whisper inference in a blocking thread (CPU-bound)
     let (raw_text, segments, detected_language) = tokio::task::spawn_blocking(move || {
-        run_whisper(&file_path, &model_path_clone, language.as_deref())
+        run_whisper(
+            &file_path,
+            &model_path_clone,
+            language.as_deref(),
+            threads,
+            initial_prompt.as_deref(),
+        )
     })
     .await??;
 
@@ -207,12 +219,33 @@ fn format_note_title() -> String {
     )
 }
 
+/// Decoding-quality knobs (spec/17 §2). Whisper `small` hallucinates on silences
+/// and settles for a weak first guess with greedy sampling; beam search + these
+/// anti-hallucination thresholds lift quality at ~1.5–2× the cost (absorbed by
+/// threads; transcription is async at `stop`). Values are the whisper.cpp
+/// defaults recommended in the spec — not user-tunable.
+const BEAM_SIZE: i32 = 5;
+const BEAM_PATIENCE: f32 = -1.0;
+const NO_SPEECH_THOLD: f32 = 0.6;
+const ENTROPY_THOLD: f32 = 2.4;
+const LOGPROB_THOLD: f32 = -1.0;
+const TEMPERATURE: f32 = 0.0;
+const TEMPERATURE_INC: f32 = 0.2;
+/// Default thread cap when config `whisper_threads` is unset (spec/04).
+const DEFAULT_THREADS: usize = 4;
+
 /// Returns (full text, segments, language) — the language is the user-forced
 /// hint when set, else the one Whisper detected (spec/04's `transcriptions.language`).
+///
+/// `threads`: overrides the `min(cores, 4)` default (spec/17 — relevable to
+/// absorb beam-search cost). `initial_prompt`: the derived glossary injected to
+/// fix proper nouns at the source (spec/17 §1); ignored when empty.
 fn run_whisper(
     file_path: &PathBuf,
     model_path: &PathBuf,
     language: Option<&str>,
+    threads: Option<usize>,
+    initial_prompt: Option<&str>,
 ) -> Result<(String, Vec<WhisperSegment>, Option<String>)> {
     // Read WAV file
     let reader = hound::WavReader::open(file_path)?;
@@ -237,14 +270,43 @@ fn run_whisper(
 
     #[cfg(feature = "whisper")]
     {
-        // Initialize Whisper
-        let mut params = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
+        // Beam search over greedy (spec/17 §2): better quality/effort ratio.
+        let mut params = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::BeamSearch {
+            beam_size: BEAM_SIZE,
+            patience: BEAM_PATIENCE,
+        });
         params.set_print_special(false);
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
         params.set_translate(false);
-        params.set_n_threads(std::thread::available_parallelism()?.get().min(4) as i32);
+
+        // Threads: config override (relevable to absorb beam cost) else min(cores, 4).
+        let n_threads = threads
+            .filter(|&t| t > 0)
+            .unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|c| c.get())
+                    .unwrap_or(DEFAULT_THREADS)
+                    .min(DEFAULT_THREADS)
+            });
+        params.set_n_threads(n_threads as i32);
+
+        // Anti-hallucination thresholds (spec/17 §2) — Whisper `small` invents
+        // text on silences without these.
+        params.set_no_speech_thold(NO_SPEECH_THOLD);
+        params.set_entropy_thold(ENTROPY_THOLD);
+        params.set_logprob_thold(LOGPROB_THOLD);
+        params.set_temperature(TEMPERATURE);
+        params.set_temperature_inc(TEMPERATURE_INC);
+        params.set_suppress_blank(true);
+        params.set_suppress_nst(true); // suppress non-speech tokens
+
+        // Glossary (spec/17 §1) — corrects proper nouns at the source. Skipped
+        // when empty so we never feed Whisper a stray prompt.
+        if let Some(prompt) = initial_prompt.map(str::trim).filter(|p| !p.is_empty()) {
+            params.set_initial_prompt(prompt);
+        }
 
         // No forced language → "auto" so Whisper detects the spoken language and
         // transcribes in it. Without this, whisper.cpp defaults to "en" and treats
@@ -294,7 +356,7 @@ fn run_whisper(
     // Stub when whisper feature is disabled
     #[allow(unreachable_code)]
     {
-        let _ = (samples_16k, model_path, language);
+        let _ = (samples_16k, model_path, language, threads, initial_prompt);
         Err(anyhow!(
             "Whisper not compiled. Enable the 'whisper' feature or download a model."
         ))

@@ -483,6 +483,28 @@ async fn finalize_ingestion(
     .map_err(|e| e.to_string())
 }
 
+/// Raw WAV bytes for a recording (by its note title), for the "🔊 réécouter"
+/// button of the resolution screen (spec/17 §3). Returns an ArrayBuffer to the
+/// front (efficient — no base64/JSON-array bloat); the UI seeks to the segment.
+#[tauri::command]
+async fn read_recording_wav(
+    note_title: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<tauri::ipc::Response, String> {
+    let vault_root = state
+        .vault_path
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| "Vault non configuré".to_string())?;
+    let folder = transcription::recording_folder(&state.db).await;
+    let path = vault_root.join(folder).join(format!("{}.wav", note_title));
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|e| format!("Audio introuvable ({:?}): {}", path, e))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 #[tauri::command]
 async fn get_vault_path(
     state: tauri::State<'_, AppState>,
@@ -843,6 +865,7 @@ pub fn run() {
             generate_glossary_from_context,
             analyze_transcription,
             finalize_ingestion,
+            read_recording_wav,
             // Config & Keychain
             get_config,
             set_config,

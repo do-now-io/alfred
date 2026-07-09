@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, NavLink, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -16,6 +16,9 @@ import AIActions from "./screens/AIActions";
 import RecordingGuide from "./screens/RecordingGuide";
 import Feedback from "./screens/Feedback";
 import Onboarding from "./screens/Onboarding";
+import Resolve from "./screens/Resolve";
+import { useResolveStore } from "./store/resolveStore";
+import type { Clarifications } from "./bindings/Clarifications";
 import { useRecordingStore } from "./store/recordingStore";
 import { useNotesStore } from "./store/notesStore";
 import { useTourStore, useTourTarget } from "./store/tourStore";
@@ -266,6 +269,7 @@ function Topbar() {
 function AppInner() {
   const setStatus = useRecordingStore((s) => s.setStatus);
   const setAlfredState = useAlfredStatusStore((s) => s.set);
+  const setResolveSession = useResolveStore((s) => s.setSession);
   // Ingestion failures must be VISIBLE: a silent one is indistinguishable from
   // "the feature doesn't work" (compte-rendu + tasks just never appear).
   const [ingestError, setIngestError] = useState<string | null>(null);
@@ -294,8 +298,24 @@ function AppInner() {
       }
     }).then(fn => unsubs.push(fn));
 
+    // Augmented ingestion (spec/17 §3): Claude has propositions to validate before
+    // writing the compte-rendu. Stash the session; a banner invites the user to
+    // the /resolve screen (never auto-navigate — don't yank them mid-task).
+    listen<{ recording_id: string; note_title: string; text: string; clarifications: Clarifications }>(
+      "clarifications-ready",
+      (e) => {
+        setAlfredState("idle");
+        setResolveSession({
+          recordingId: e.payload.recording_id,
+          noteTitle: e.payload.note_title,
+          text: e.payload.text,
+          clarifications: e.payload.clarifications,
+        });
+      }
+    ).then(fn => unsubs.push(fn));
+
     return () => unsubs.forEach(fn => fn());
-  }, [setStatus, setAlfredState]);
+  }, [setStatus, setAlfredState, setResolveSession]);
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
@@ -311,11 +331,13 @@ function AppInner() {
             <Route path="/graph" element={<Graph />} />
             <Route path="/ai-actions" element={<AIActions />} />
             <Route path="/feedback" element={<Feedback />} />
+            <Route path="/resolve" element={<Resolve />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
       </div>
       <GuidedTour />
+      <ResolveBanner />
       {ingestError && (
         <div style={{
           position: "fixed", bottom: 20, right: 20, zIndex: 1500,
@@ -337,6 +359,77 @@ function AppInner() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Invite to the resolution screen when a session is pending (spec/17 §3). Hidden
+// while already on /resolve. Dismiss = drop the session (equivalent to "Ignorer").
+function ResolveBanner() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const session = useResolveStore((s) => s.session);
+  const clear = useResolveStore((s) => s.clear);
+  const [dismissing, setDismissing] = useState(false);
+
+  // "Ignorer et rédiger directement": produce the compte-rendu from the original
+  // text (no corrections, no context additions) so the recording is never left
+  // without one just because the user skipped the review.
+  const dismiss = async () => {
+    if (!session || dismissing) return;
+    setDismissing(true);
+    try {
+      await invoke("finalize_ingestion", {
+        recordingId: session.recordingId,
+        correctedText: session.text,
+        noteTitle: session.noteTitle,
+        contextAdditions: [],
+      });
+    } catch {
+      /* fall through — clearing still unblocks the UI */
+    }
+    clear();
+    setDismissing(false);
+  };
+
+  if (!session || location.pathname === "/resolve") return null;
+
+  const c = session.clarifications;
+  const count =
+    c.transcription_fixes.length + c.unclear_sentences.length + c.unassigned_tasks.length;
+  if (count === 0) return null;
+
+  return (
+    <div style={{
+      position: "fixed", bottom: 20, left: 20, zIndex: 1500,
+      maxWidth: 380, padding: "12px 14px", borderRadius: 12,
+      background: "var(--card-bg)", border: "1px solid var(--accent)",
+      boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+      display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13,
+    }}>
+      <span style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1, fontSize: 16 }}>💬</span>
+      <div style={{ flex: 1, color: "var(--text-primary)", lineHeight: 1.5 }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+          Alfred a {count} point{count > 1 ? "s" : ""} à vérifier
+        </div>
+        <button
+          onClick={() => navigate("/resolve")}
+          style={{
+            background: "var(--accent)", color: "#fff", border: "none",
+            borderRadius: 8, padding: "5px 12px", cursor: "pointer", fontSize: 12.5, fontWeight: 600,
+          }}
+        >
+          Vérifier maintenant
+        </button>
+      </div>
+      <button
+        onClick={dismiss}
+        disabled={dismissing}
+        title="Ignorer et rédiger directement le compte-rendu"
+        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 15, padding: 0, lineHeight: 1 }}
+      >
+        ✕
+      </button>
     </div>
   );
 }

@@ -53,7 +53,6 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 |---|---|---|
 | [ ] | **Qualité de décodage** (spec 17) : beam search + seuils anti-hallucination + threads relevables dans `run_whisper` ; langue forçable par enregistrement | |
 | [ ] | **Glossaire dérivé** (spec 17) : `generate_glossary_from_context` (Claude) depuis `Contexte Alfred.md` → `config.transcription_glossary` → `initial_prompt` de `run_whisper` | |
-| [ ] | **Chunking (~6 min)** (spec 17) : chevauchement + ré-injection glossaire + décalage timestamps ; remplace l'unique `state.full()` | |
 | [ ] | **Ingestion augmentée** (spec 17) : ingestion 2 temps (analyse → résolution groupée + réécoute segment → finalisation) + enrichissement auto « Appris automatiquement » dans `Contexte Alfred.md` | |
 | [ ] | **Onboarding — interview de contexte** conversationnel (Claude) → peuple `Contexte Alfred.md` + 1er glossaire (spec 17/13) | |
 

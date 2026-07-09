@@ -26,8 +26,7 @@ S'ajoutent deux gains **indépendants du contexte** : la **qualité de décodage
 1. **Qualité de décodage** (§2) — beam + seuils : gros gain, 1 fonction, aucun
    couplage. À faire d'abord.
 2. **Glossaire dérivé** (§1) — corrige les noms propres à la source.
-3. **Chunking (~6 min)** (§3) — remplace l'unique `state.full()`.
-4. **Ingestion augmentée** (§4) — plus structurant.
+3. **Ingestion augmentée** (§3) — plus structurant.
 
 ---
 
@@ -45,8 +44,8 @@ S'ajoutent deux gains **indépendants du contexte** : la **qualité de décodage
 - **Budget** : ~**224 tokens** (moitié de `n_text_ctx` = 448 ; tronqué au-delà).
   Noms propres = 3–4 tokens chacun → ~**60–90 termes**. Les plus fréquents / mal
   transcrits **en premier** (la fin saute si troncature).
-- **Injection** : `initial_prompt` = glossaire dans `run_whisper` (spec/04). Avec le
-  chunking (§3), ré-injecté à chaque chunk pour un effet constant sur toute la durée.
+- **Injection** : `initial_prompt` = glossaire dans `run_whisper` (spec/04), sur une
+  **passe unique** de tout le WAV (pas de chunking en v1 — voir Hors v1).
 - ⚠️ **Multilingue** : un glossaire FR peut pousser Whisper à croire que l'audio est
   français. Pour un enregistrement EN, forcer `language: en` (ou adapter le prompt).
 
@@ -69,16 +68,7 @@ le réglage le plus faible.
 La qualité se **propage à l'aval** : un nom mal transcrit fausse le `resume`, les
 points clés et surtout le `responsable` d'une tâche (spec/05).
 
-## §3 — Chunking (~6 min)
-
-Le pipeline envoie encore tout le WAV en **un seul** `state.full()`. En v1 :
-- Découper l'audio 16 kHz en **chunks ~6 min** avec **léger chevauchement** (~2–5 s).
-- **Ré-injecter le glossaire** (§1) à chaque chunk (effet constant sur toute la durée).
-- Concaténer en **décalant les timestamps** de l'offset du chunk (`segments_json`
-  reste aligné → réécoute §4 correcte).
-- Bénéfices : moins d'hallucination, RAM bornée, **progression par chunk** (spec/03).
-
-## §4 — Ingestion augmentée (propositions groupées)
+## §3 — Ingestion augmentée (propositions groupées)
 
 Évolution de l'ingestion (spec/05, Usage 1) en **deux temps** : Claude ne se contente
 plus de résumer, il **signale ce qui mérite validation** avant de finaliser
@@ -99,13 +89,13 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
 **Jamais d'auto-application** d'une correction. Si Claude n'a rien à signaler,
 l'ingestion enchaîne **automatiquement** (aucune friction).
 
-## §5 — Enrichissement du contexte & onboarding
+## §4 — Enrichissement du contexte & onboarding
 
 Sur `Contexte Alfred.md` (spec/16) — **pas de nouvelle note** :
 - **Enrichissement auto** post-ingestion : les `context_addition` sont écrits
   **automatiquement** par Rust dans une section **`## Appris automatiquement`**
   (relisible / corrigeable), sans validation bloquante. Les **corrections de
-  transcription**, elles, restent **validées** (§4), jamais auto-appliquées.
+  transcription**, elles, restent **validées** (§3), jamais auto-appliquées.
 - Toute modif → **régénération du glossaire** (§1, débouncée).
 - **Onboarding** (extension spec/13) : `Contexte Alfred.md` est aujourd'hui un
   template *lazy* rempli à la main. Ajouter une étape **interview conversationnel**
@@ -122,7 +112,7 @@ enregistrement » (léger) de « promouvoir au glossaire » (délibéré).
 - `generate_glossary_from_context() -> String` — Claude dérive la liste plate depuis
   `Contexte Alfred.md`, stocke `config.transcription_glossary`.
 - `run_context_interview(history) -> ...` — tour d'interview (onboarding).
-- Ingestion §4 en deux temps : `analyze_transcription(...) -> Clarifications` puis
+- Ingestion §3 en deux temps : `analyze_transcription(...) -> Clarifications` puis
   `finalize_ingestion(...)`.
 - Réutilise `open_context_note` (spec/16) — pas de nouvelle note.
 
@@ -131,3 +121,7 @@ enregistrement » (léger) de « promouvoir au glossaire » (délibéré).
 - **Onglet « Contexte » dédié** (éditeur convivial par-dessus la note).
 - **Session d'ingestion conversationnelle** multi-tours (au-delà des propositions groupées).
 - Contexte **structuré multi-notes** (une note par personne/projet, graphe spec/07c).
+- **Chunking (~6 min)** du WAV avec ré-injection du glossaire par chunk. Écarté en v1 :
+  whisper.cpp fenêtre déjà en interne à 30 s, une **passe unique** suffit. À
+  reconsidérer si des enregistrements *longs* posent problème (RAM, ou noms propres
+  apparaissant tard, quand l'`initial_prompt` s'est estompé).

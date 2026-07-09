@@ -59,8 +59,8 @@ Aujourd'hui `run_whisper` utilise le réglage le plus faible : `Greedy
   threads relevables pour absorber le beam.
 - **`initial_prompt` = glossaire** dérivé de `Contexte Alfred.md` (spec/16/17) —
   corrige les noms propres à la source (« Ulysse » vs « Le vice »).
-- **Chunking full-file (~6 min)** avec ré-injection du glossaire (remplace l'unique
-  `state.full()`).
+
+Une **passe unique** sur tout le WAV en v1 (pas de chunking — spec/17 Hors v1).
 
 ## Progression
 

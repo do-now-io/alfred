@@ -62,6 +62,20 @@ la version retravaillée vit dans la note.
   défini, sinon la langue **détectée** par Whisper (`full_lang_id_from_state` +
   `get_lang_str`). *(Ancien bug « colonne toujours NULL » corrigé.)*
 
+## Qualité du décodage — 📝 à faire (spec/17)
+
+Aujourd'hui les appels `state.full` (full-file **et** chunks live) utilisent le
+réglage le plus faible : `Greedy { best_of: 1 }`, aucun seuil, pas de glossaire.
+Améliorations spécifiées dans **spec/17** :
+- **Beam search** + **seuils anti-hallucination** (`no_speech_thold`,
+  `entropy_thold`, `logprob_thold`, `temperature` + `inc`, `suppress_blank`) ;
+  threads relevables pour absorber le beam.
+- **`initial_prompt` = glossaire** dérivé de `Contexte Alfred.md` (spec/16/17) —
+  corrige les noms propres à la source (« Ulysse » vs « Le vice »). En live,
+  combiné à la queue du chunk précédent (spec/16).
+- **Chunking full-file (~6 min)** avec ré-injection du glossaire (remplace l'unique
+  `state.full()` du pipeline full-file ; le live a déjà son découpage 8–30 s).
+
 ## Progression
 
 Émet `transcription-progress` à **0 % puis 100 %** seulement (pas de granularité).

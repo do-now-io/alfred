@@ -28,7 +28,12 @@ onboardé). Rejouable via « Revoir l'introduction » (Paramètres). À la fin :
      Mensuel, se termine à la fin du mois si payé (facturation : spec/15).
 6. **Micro** — test de permission (`test_microphone` ; déclenche le prompt macOS ;
    sur Windows, ouverture WASAPI).
-7. **Terminé**.
+7. **Contexte** (📝 à faire, spec/17) — **interview conversationnel** mené par
+   Claude (entreprise, équipe, projets, jargon) qui **peuple `Contexte Alfred.md`**
+   (spec/16, aujourd'hui template rempli à la main) + génère le premier glossaire
+   Whisper. Nécessite l'accès IA (étape 5). Skippable (contexte vide = comportement
+   spec/16 actuel).
+8. **Terminé**.
 
 ## Tournée guidée (post-onboarding)
 

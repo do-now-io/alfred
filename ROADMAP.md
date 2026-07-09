@@ -56,6 +56,16 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [~] | **Amélioration par chunk** (haiku, tool `submit_chunk_fix`, les éditions utilisateur gagnent, circuit breaker) | T |
 | [ ] | **Activation live par défaut** (mic_only) + guards rename/delete + polish + statuts specs | T |
 
+## Phase B3 — Qualité de transcription (spec 17)
+
+| | Tâche | Qui |
+|---|---|---|
+| [ ] | **Qualité de décodage** (spec 17) : beam search + seuils anti-hallucination + threads relevables dans les appels `state.full` (full-file **et** chunks live) ; langue forçable par enregistrement | |
+| [ ] | **Glossaire dérivé** (spec 17) : `generate_glossary_from_context` (Claude) depuis `Contexte Alfred.md` → `config.transcription_glossary` → `initial_prompt` (full-file + combiné à la queue du chunk en live) | |
+| [ ] | **Chunking full-file (~6 min)** (spec 17) : chevauchement + ré-injection glossaire + décalage timestamps ; remplace l'unique `state.full()` du pipeline full-file | |
+| [ ] | **Ingestion augmentée** (spec 17) : ingestion 2 temps (analyse → résolution groupée + réécoute segment → finalisation) + enrichissement auto « Appris automatiquement » dans `Contexte Alfred.md` | |
+| [ ] | **Onboarding — interview de contexte** conversationnel (Claude) → peuple `Contexte Alfred.md` + 1er glossaire (spec 17/13) | |
+
 ## Phase C — Desktop, UX & écrans
 
 | | Tâche | Qui |

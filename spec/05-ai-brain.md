@@ -93,6 +93,18 @@ les prénoms, équipes et termes maison dans le compte-rendu et les tâches.
 **Événement** : `ingestion_completed { ai_mode }` (metrics, spec/15) + `notes-updated`
 (+ `todos-updated` pour la partie SQLite, transitoire).
 
+### Ingestion augmentée — 📝 à faire (spec/17)
+
+Évolution en **deux temps** (complémentaire à l'édition live + amélioration Haiku
+de spec/16, utile surtout pour `system_only`/`mixed`) : Claude **analyse** la
+transcription + `Contexte Alfred.md` et renvoie des **propositions groupées
+seuillées** (corrections avec citation + timestamps, tâches sans responsable,
+phrases importantes floues, faits appris) → l'utilisateur tranche en **un écran**
+(réécoute du segment via WAV `alfred-raw/` + `segments_json`) → **finalisation**.
+**Jamais d'auto-application** ; si rien à signaler, enchaîne automatiquement. Les
+faits appris sont écrits dans `Contexte Alfred.md` (section « Appris
+automatiquement »). Détail : spec/17.
+
 ---
 
 ## Usage 2 — Chat / RAG sur les notes

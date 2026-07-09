@@ -1,8 +1,8 @@
 # spec/05 — IA + Ingestion (API Claude)
 
 > **Statut v1 :** toute l'IA passe par l'**API Claude** (jamais de CLI). Deux modes
-> d'accès (clé perso / proxy AlfredIA). Trois usages : **ingestion**, **chat**,
-> **brief quotidien**.
+> d'accès (clé perso / proxy AlfredIA). Quatre usages : **ingestion**, **chat**,
+> **brief quotidien**, **amélioration de chunk live** (spec/16).
 
 ## Accès & routage — deux modes
 
@@ -22,6 +22,7 @@ seuls l'URL de base et l'en-tête d'auth changent. En-tête commun :
 | **Ingestion** (compte-rendu + tâches) | `claude-sonnet-5` | $3 / $15 (intro $2/$10 → 31/08/2026) |
 | **Chat / RAG** | `claude-sonnet-5` | idem |
 | **Brief quotidien** | `claude-sonnet-5` (ou `claude-haiku-4-5` pour économiser) | Haiku : $1 / $5 |
+| **Amélioration de chunk live** (spec/16) | `claude-haiku-4-5` | $1 / $5 |
 
 **Allowlist du proxy AlfredIA** : `claude-haiku-4-5` + `claude-sonnet-5`
 (`claude-opus-4-8` en option premium, non activé en v1).
@@ -72,6 +73,12 @@ ce code base :
 Le system prompt reprend l'esprit des conseils de captation (spec/03) : rappeler le
 responsable de chaque tâche quand il est identifiable.
 
+**Contexte interne (spec/16)** : si la note `Contexte Alfred.md` existe et n'est
+pas vide, son corps (cap ~4 000 caractères) est injecté comme **second bloc
+system** (le `cache_control: ephemeral` est posé sur le **dernier** bloc → tout
+le préfixe system est caché). Claude s'en sert pour orthographier correctement
+les prénoms, équipes et termes maison dans le compte-rendu et les tâches.
+
 **Écriture (par Rust, jamais par l'IA)** :
 1. Compte-rendu → `alfred-intelligence/{titre}.md` avec frontmatter
    (`type: meeting`, `date`, `recording_id`, `participants`, `project`).
@@ -111,6 +118,23 @@ synthèse hebdo).
 - **Modèle** : `claude-sonnet-5` (ou `claude-haiku-4-5` pour économiser).
 - **Cache** : texte + date stockés en config (`daily_brief`, `daily_brief_last_run`).
   Affichage du texte mis en cache + « Généré le {date} ».
+
+---
+
+## Usage 4 — Amélioration de chunk live — 🚧 (spec/16)
+
+Pendant un enregistrement live, chaque chunk transcrit est **légèrement corrigé**
+par `claude-haiku-4-5` : ponctuation, majuscules, mots incohérents, noms propres
+et vocabulaire maison d'après le **contexte interne**. Interdits : résumer,
+reformuler, ajouter, supprimer, traduire.
+
+- **Sortie structurée** via tool-use forcé `submit_chunk_fix` →
+  `{ texte_corrige }`. Mêmes conventions que ci-dessus (thinking off,
+  non-streaming, retry, cache sur le system prompt — stable toute la session).
+- File **séquentielle** (1 appel en vol), erreurs silencieuses (le chunk reste
+  brut), circuit ouvert après 3 échecs consécutifs.
+- **Une amélioration n'écrase jamais une édition utilisateur** — détail du
+  mécanisme dans spec/16.
 
 ---
 

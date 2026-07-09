@@ -5,11 +5,23 @@
 
 ## Vue d'ensemble
 
-Au `stop_recording`, le WAV est mis en file. Un **worker unique** (pas de
-parallélisme — Whisper est intensif) le transcrit via `whisper-rs` dans
-`spawn_blocking`, stocke les métadonnées en SQLite, **déplace l'audio + crée la
-note dans le vault**, puis déclenche l'IA (extraction de todos + ingestion,
-spec 05).
+Deux pipelines :
+
+1. **Live par chunks (spec/16)** — pour `mic_only` avec vault configuré et
+   `live_transcription` actif : la **note est créée au `start`**, les chunks
+   sont transcrits pendant l'enregistrement (Whisper persistant, session
+   dédiée), le **texte assemblé de la note** (éditions + améliorations Claude
+   comprises) est le transcript final — **pas de re-transcription au stop**.
+   L'ingestion (spec/05) lit le contenu final de la note.
+2. **Full-file au stop** — `system_only`/`mixed`, fallback sans vault, ou live
+   désactivé : au `stop_recording`, le WAV est mis en file. Un **worker unique**
+   (pas de parallélisme — Whisper est intensif) le transcrit via `whisper-rs`
+   dans `spawn_blocking`, stocke les métadonnées en SQLite, **déplace l'audio +
+   crée la note dans le vault**, puis déclenche l'IA (ingestion, spec 05).
+
+En mode live, `transcriptions.raw_text` garde la sémantique « brut » : c'est la
+concaténation des sorties Whisper **originales** (avant édition/amélioration) ;
+la version retravaillée vit dans la note.
 
 ## Whisper = feature Cargo — ✅ activée par défaut
 
@@ -57,6 +69,10 @@ spec 05).
 `transcription-failed`.
 
 ## Sorties dans le vault (au succès, si vault configuré)
+
+*(Pipeline full-file. En mode live — spec/16 — la note existe depuis le `start` ;
+seuls le déplacement du WAV, l'écriture SQLite et le déclenchement de
+l'ingestion s'appliquent au stop.)*
 
 1. **Déplacement du WAV** dans le vault — cible **`alfred-raw/`** (même dossier
    que la note d'enregistrement). **Le WAV est toujours conservé dans

@@ -14,4 +14,7 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub resource_dir: Option<std::path::PathBuf>,
     pub vault_path: Arc<StdMutex<Option<std::path::PathBuf>>>,
+    /// Session de transcription live en cours (spec/16). L'acteur de la session
+    /// libère lui-même ce slot à la fin de sa finalisation.
+    pub live_session: crate::transcription::live::SessionSlot,
 }

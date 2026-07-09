@@ -8,6 +8,8 @@ use tauri::Emitter;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+pub mod live;
+
 pub type TranscriptionSender = mpsc::Sender<TranscriptionJob>;
 
 pub struct TranscriptionJob {
@@ -43,16 +45,25 @@ pub async fn run_transcription_worker(mut rx: mpsc::Receiver<TranscriptionJob>) 
 /// 1. Alfred.app/Contents/Resources/models/  — bundled at build time
 /// 2. $APP_DATA_DIR/models/                  — downloaded by the user
 fn resolve_model_path(job: &TranscriptionJob) -> Result<PathBuf> {
-    let filename = format!("ggml-{}.bin", job.model_size);
+    resolve_model_path_parts(&job.model_size, job.resource_dir.as_ref(), &job.data_dir)
+}
 
-    if let Some(ref res_dir) = job.resource_dir {
+/// Same lookup, callable without a `TranscriptionJob` (live session, spec/16).
+pub(crate) fn resolve_model_path_parts(
+    model_size: &str,
+    resource_dir: Option<&PathBuf>,
+    data_dir: &PathBuf,
+) -> Result<PathBuf> {
+    let filename = format!("ggml-{}.bin", model_size);
+
+    if let Some(res_dir) = resource_dir {
         let bundled = res_dir.join("models").join(&filename);
         if bundled.exists() {
             return Ok(bundled);
         }
     }
 
-    let user_path = job.data_dir.join("models").join(&filename);
+    let user_path = data_dir.join("models").join(&filename);
     if user_path.exists() {
         return Ok(user_path);
     }
@@ -117,21 +128,7 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
     let rec_folder = recording_folder(&job.db).await;
 
     // Move WAV to the recording folder — or delete if no vault configured
-    if let Some(ref vault_root) = job.vault_path {
-        let audio_dir = vault_root.join(&rec_folder);
-        let _ = tokio::fs::create_dir_all(&audio_dir).await;
-        let dest = audio_dir.join(format!("{}.wav", note_title));
-        if tokio::fs::rename(&job.file_path, &dest).await.is_err() {
-            // rename fails across filesystems — fall back to copy + delete
-            if tokio::fs::copy(&job.file_path, &dest).await.is_ok() {
-                let _ = tokio::fs::remove_file(&job.file_path).await;
-            } else {
-                let _ = tokio::fs::remove_file(&job.file_path).await;
-            }
-        }
-    } else if job.file_path.exists() {
-        let _ = tokio::fs::remove_file(&job.file_path).await;
-    }
+    move_wav_to_vault(&job.file_path, job.vault_path.as_deref(), &rec_folder, &note_title).await;
 
     // Create a note in the vault
     if let Some(ref vault_root) = job.vault_path {
@@ -177,6 +174,32 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
     Ok(())
 }
 
+/// Move the finished WAV next to its note in the vault (`alfred-raw/{titre}.wav`,
+/// spec/04) — or delete it when no vault is configured. Shared by the full-file
+/// pipeline and the live session finalize (spec/16).
+pub(crate) async fn move_wav_to_vault(
+    src: &PathBuf,
+    vault_root: Option<&std::path::Path>,
+    rec_folder: &str,
+    note_title: &str,
+) {
+    if let Some(vault_root) = vault_root {
+        let audio_dir = vault_root.join(rec_folder);
+        let _ = tokio::fs::create_dir_all(&audio_dir).await;
+        let dest = audio_dir.join(format!("{}.wav", note_title));
+        if tokio::fs::rename(src, &dest).await.is_err() {
+            // rename fails across filesystems — fall back to copy + delete
+            if tokio::fs::copy(src, &dest).await.is_ok() {
+                let _ = tokio::fs::remove_file(src).await;
+            } else {
+                let _ = tokio::fs::remove_file(src).await;
+            }
+        }
+    } else if src.exists() {
+        let _ = tokio::fs::remove_file(src).await;
+    }
+}
+
 /// Vault-relative folder where recordings (audio + transcription note) are stored.
 pub const DEFAULT_RECORDING_FOLDER: &str = "alfred-raw";
 
@@ -195,7 +218,7 @@ pub async fn recording_folder(db: &SqlitePool) -> String {
         .unwrap_or_else(|| DEFAULT_RECORDING_FOLDER.to_string())
 }
 
-fn format_note_title() -> String {
+pub(crate) fn format_note_title() -> String {
     let now = chrono::Local::now();
     format!(
         "{}-{:02}-{:02} {:02}h{:02}",
@@ -301,7 +324,7 @@ fn run_whisper(
     }
 }
 
-fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>> {
+pub(crate) fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>> {
     use rubato::{FftFixedInOut, Resampler};
 
     let mut resampler = FftFixedInOut::<f32>::new(

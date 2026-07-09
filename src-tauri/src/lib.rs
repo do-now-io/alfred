@@ -18,6 +18,19 @@ use state::AppState;
 
 // ─── Recording commands ────────────────────────────────────────────────────────
 
+/// Live transcription (spec/16) is enabled for `mic_only` when a vault exists.
+/// Étape 3 : opt-in explicite (`live_transcription = "true"`) — passera par
+/// défaut à l'étape « activation » de la ROADMAP.
+async fn live_transcription_enabled(db: &sqlx::SqlitePool) -> bool {
+    sqlx::query_scalar!("SELECT value FROM config WHERE key = 'live_transcription'")
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten()
+        .map(|v| v == "true")
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 async fn start_recording(
     source: String,
@@ -30,9 +43,38 @@ async fn start_recording(
         .map_err(|e| e.to_string())?;
 
     let active_id = state.active_recording_id.clone();
+    let recording_id = uuid::Uuid::new_v4().to_string();
+    let vault_path = state.vault_path.lock().unwrap().clone();
 
-    audio::start_recording(
+    // Session live (spec/16) : note créée immédiatement + chunks pendant
+    // l'enregistrement. En cas d'échec (modèle absent, Whisper non compilé…),
+    // on retombe silencieusement sur le pipeline full-file au stop.
+    let mut live_tap = None;
+    if source == "mic_only" && live_transcription_enabled(&state.db).await {
+        if let Some(vault_root) = vault_path {
+            match transcription::live::start_live_session(
+                recording_id.clone(),
+                state.db.clone(),
+                app.clone(),
+                vault_root,
+                data_dir.clone(),
+                state.resource_dir.clone(),
+                state.live_session.clone(),
+            )
+            .await
+            {
+                Ok(handle) => {
+                    live_tap = Some(handle.tap_tx.clone());
+                    *state.live_session.lock().await = Some(handle);
+                }
+                Err(e) => eprintln!("[live] session not started ({}), falling back to full-file", e),
+            }
+        }
+    }
+
+    let result = audio::start_recording(
         &source,
+        recording_id,
         data_dir,
         state.db.clone(),
         app,
@@ -40,9 +82,19 @@ async fn start_recording(
         active_id,
         state.recording_stop_flag.clone(),
         state.transcription_tx.clone(),
+        live_tap,
     )
-    .await
-    .map_err(|e| e.to_string())
+    .await;
+
+    if let Err(ref e) = result {
+        // La capture n'a pas démarré : la session live n'a plus lieu d'être.
+        if let Some(session) = state.live_session.lock().await.take() {
+            session.abort().await;
+        }
+        return Err(e.to_string());
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -56,6 +108,10 @@ async fn stop_recording(
         .map_err(|e| e.to_string())?;
 
     let vault_path = state.vault_path.lock().unwrap().clone();
+    // Le handle reste dans l'état pendant la finalisation (l'acteur libère le
+    // slot lui-même) : les saves de l'éditeur continuent d'être réconciliés
+    // pendant le drain des derniers chunks.
+    let live_session = state.live_session.lock().await.clone();
     let recording_id = audio::stop_recording(
         &data_dir,
         state.resource_dir.clone(),
@@ -66,6 +122,7 @@ async fn stop_recording(
         state.db.clone(),
         state.transcription_tx.clone(),
         app,
+        live_session,
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -417,6 +474,46 @@ async fn get_vault_graph(
         .map_err(|e| e.to_string())
 }
 
+/// Save réconcilié de la note live (spec/16) : pendant une session, le corps de
+/// l'éditeur passe par l'acteur (les chunks `seq > last_seq` sont ré-appendés,
+/// aucun texte perdu). Hors session — ou pour une autre note — fallback sur le
+/// `update_note_file` classique.
+#[tauri::command]
+async fn save_live_note(
+    path: String,
+    metadata: notes::NoteMetadata,
+    body: String,
+    last_seq: u32,
+    state: tauri::State<'_, AppState>,
+) -> Result<notes::NoteFile, String> {
+    let session = state.live_session.lock().await.clone();
+    if let Some(session) = session {
+        if session.note_path == std::path::Path::new(&path) {
+            match session.user_save(metadata.clone(), body.clone(), last_seq).await {
+                Ok(note) => return Ok(note),
+                // Session terminée entre-temps : on retombe sur l'écriture directe.
+                Err(e) => eprintln!("[live] user_save fallback: {}", e),
+            }
+        }
+    }
+    notes::vault::update_note_file(std::path::Path::new(&path), metadata, &body)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Snapshot de la session live en cours, pour initialiser l'éditeur sans
+/// relire le fichier (spec/16) — `null` hors session.
+#[tauri::command]
+async fn get_live_session(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<transcription::live::LiveSessionSnapshot>, String> {
+    let session = state.live_session.lock().await.clone();
+    match session {
+        Some(s) => Ok(s.snapshot().await.ok()),
+        None => Ok(None),
+    }
+}
+
 /// Opens (creating it with its template if needed) the contexte interne note
 /// (spec/16) — `Contexte Alfred.md` at the vault root by default.
 #[tauri::command]
@@ -719,6 +816,7 @@ pub fn run() {
                 http_client: http_client.clone(),
                 resource_dir,
                 vault_path: Arc::new(StdMutex::new(vault_path.clone())),
+                live_session: Arc::new(tokio::sync::Mutex::new(None)),
             };
 
             app.manage(state);
@@ -789,6 +887,8 @@ pub fn run() {
             set_vault_path,
             pick_vault_folder,
             open_context_note,
+            save_live_note,
+            get_live_session,
             // Config & Keychain
             get_config,
             set_config,

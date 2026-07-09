@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { MdDownload } from "react-icons/md";
 import { useNotesStore } from "../store/notesStore";
 import { useTourStore } from "../store/tourStore";
+import type { NoteFile } from "../bindings/NoteFile";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -435,6 +436,11 @@ export default function Settings() {
 
       <Section title="Notes">
         <VaultPathRow />
+        <ContextNoteRow />
+        <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+          Décris ton entreprise, ton équipe et ton vocabulaire maison : Alfred s'en
+          sert pour corriger les noms propres dans les transcriptions et comptes-rendus.
+        </div>
       </Section>
 
       <Section title="Tâches">
@@ -517,6 +523,36 @@ function VaultPathRow() {
         }}
       >
         Choisir…
+      </button>
+    </SettingRow>
+  );
+}
+
+function ContextNoteRow() {
+  const navigate = useNavigate();
+  const { selectFile } = useNotesStore();
+
+  const handleOpen = async () => {
+    try {
+      const note = await invoke<NoteFile>("open_context_note");
+      await selectFile(note.path);
+      navigate("/notes");
+    } catch (e) {
+      console.error("[settings] open_context_note failed:", e);
+    }
+  };
+
+  return (
+    <SettingRow label="Contexte interne">
+      <button
+        onClick={handleOpen}
+        style={{
+          background: "transparent", color: "var(--accent)",
+          border: "1px solid var(--border)", borderRadius: 6,
+          padding: "4px 10px", cursor: "pointer", fontSize: 12,
+        }}
+      >
+        Ouvrir la note
       </button>
     </SettingRow>
   );

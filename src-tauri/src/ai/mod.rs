@@ -158,9 +158,28 @@ pub async fn intelligence_folder(db: &SqlitePool) -> String {
         .unwrap_or_else(|| DEFAULT_INTELLIGENCE_FOLDER.to_string())
 }
 
+/// System blocks with the optional contexte interne (spec/16) appended, the
+/// `cache_control` marker sitting on the LAST block so the whole stable prefix
+/// is cached — not just the first block.
+fn system_blocks(base_prompt: &str, context: Option<&str>) -> serde_json::Value {
+    let mut blocks = vec![json!({ "type": "text", "text": base_prompt })];
+    if let Some(ctx) = context.map(str::trim).filter(|c| !c.is_empty()) {
+        blocks.push(json!({
+            "type": "text",
+            "text": format!("Contexte interne de l'utilisateur (entreprise, équipe, vocabulaire — sers-t'en pour orthographier correctement les prénoms et termes maison) :\n\n{}", ctx)
+        }));
+    }
+    blocks.last_mut().unwrap()["cache_control"] = json!({ "type": "ephemeral" });
+    json!(blocks)
+}
+
 /// One Claude call → `IngestionOutput`, forcing the `submit_ingestion` tool so the
 /// response is always structured (no fragile "strip the ```json fence" parsing).
-async fn call_ingestion(text: &str, db: &SqlitePool) -> Result<(IngestionOutput, &'static str)> {
+async fn call_ingestion(
+    text: &str,
+    context: Option<&str>,
+    db: &SqlitePool,
+) -> Result<(IngestionOutput, &'static str)> {
     let access = resolve_access(db).await?;
     let client = reqwest::Client::new();
 
@@ -168,11 +187,7 @@ async fn call_ingestion(text: &str, db: &SqlitePool) -> Result<(IngestionOutput,
         "model": MODEL,
         "max_tokens": 4096,
         "thinking": {"type": "disabled"},
-        "system": [{
-            "type": "text",
-            "text": INGESTION_SYSTEM,
-            "cache_control": {"type": "ephemeral"}
-        }],
+        "system": system_blocks(INGESTION_SYSTEM, context),
         "tools": ingestion_tool(),
         "tool_choice": {"type": "tool", "name": "submit_ingestion"},
         "messages": [{
@@ -223,7 +238,13 @@ async fn run_ingestion_core(
         return Ok(());
     }
 
-    let (output, ai_mode) = match call_ingestion(text, db).await {
+    // Contexte interne (spec/16) : helps the ingestion spell names/teams right.
+    let context = match vault_root {
+        Some(root) => crate::notes::context::read_context(root, db).await,
+        None => None,
+    };
+
+    let (output, ai_mode) = match call_ingestion(text, context.as_deref(), db).await {
         Ok(r) => r,
         Err(e) => {
             emit_status("error", Some(e.to_string()));

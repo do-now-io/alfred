@@ -1,3 +1,4 @@
+pub mod context;
 pub mod frontmatter;
 pub mod graph;
 pub mod todo_md;

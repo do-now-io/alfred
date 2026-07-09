@@ -417,6 +417,21 @@ async fn get_vault_graph(
         .map_err(|e| e.to_string())
 }
 
+/// Opens (creating it with its template if needed) the contexte interne note
+/// (spec/16) — `Contexte Alfred.md` at the vault root by default.
+#[tauri::command]
+async fn open_context_note(
+    state: tauri::State<'_, AppState>,
+) -> Result<notes::NoteFile, String> {
+    let root = get_vault_root(&state)?;
+    let path = notes::context::ensure_context_note(&root, &state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+    notes::vault::get_note_file(&path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn get_vault_path(
     state: tauri::State<'_, AppState>,
@@ -773,6 +788,7 @@ pub fn run() {
             get_vault_path,
             set_vault_path,
             pick_vault_folder,
+            open_context_note,
             // Config & Keychain
             get_config,
             set_config,

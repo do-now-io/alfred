@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { MdMic, MdStop, MdAdd, MdClose, MdCheckCircle, MdWarning, MdHourglassEmpty, MdStickyNote2 } from "react-icons/md";
+import { MdMic, MdStop, MdAdd, MdClose, MdCheckCircle, MdWarning, MdHourglassEmpty } from "react-icons/md";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
-import { useLiveSessionStore } from "../store/liveSessionStore";
-import { useNotesStore } from "../store/notesStore";
 import VolumeMeter from "../components/VolumeMeter";
 import alfredLogo from "../assets/alfred-logo.png";
 
@@ -131,14 +129,6 @@ export default function RecordingGuide() {
   const navigate = useNavigate();
   const { status, volume, errorMessage, startRecording, stopRecording } = useRecordingStore();
   const elapsed = useRecordingElapsed();
-  const liveActive = useLiveSessionStore((s) => s.active);
-  const liveNotePath = useLiveSessionStore((s) => s.notePath);
-
-  const openLiveNote = async () => {
-    if (!liveNotePath) return;
-    await useNotesStore.getState().selectFile(liveNotePath);
-    navigate("/notes");
-  };
 
   const isIdle = status === "idle";
   const isRecording = status === "recording";
@@ -158,31 +148,16 @@ export default function RecordingGuide() {
               </div>
               <VolumeMeter volume={volume} size="lg" />
               <div style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>Parlez naturellement — Alfred transcrit ensuite en local.</div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button
-                  onClick={stopRecording}
-                  style={{
-                    background: "var(--danger)", color: "#fff", border: "none", borderRadius: 10,
-                    padding: "10px 24px", cursor: "pointer", fontSize: 14, fontWeight: 600,
-                    display: "inline-flex", alignItems: "center", gap: 8,
-                  }}
-                >
-                  <MdStop size={18} /> Arrêter
-                </button>
-                {liveActive && liveNotePath && (
-                  <button
-                    onClick={openLiveNote}
-                    style={{
-                      background: "none", border: "1px solid var(--border)", borderRadius: 10,
-                      padding: "10px 18px", cursor: "pointer", color: "var(--text-primary)",
-                      fontSize: 13.5, fontWeight: 500,
-                      display: "inline-flex", alignItems: "center", gap: 8,
-                    }}
-                  >
-                    <MdStickyNote2 size={16} /> Ouvrir la note en direct
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={stopRecording}
+                style={{
+                  background: "var(--danger)", color: "#fff", border: "none", borderRadius: 10,
+                  padding: "10px 24px", cursor: "pointer", fontSize: 14, fontWeight: 600,
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                }}
+              >
+                <MdStop size={18} /> Arrêter
+              </button>
             </>
           )}
 

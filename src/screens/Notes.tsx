@@ -1,13 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
 import { MdFolder, MdStickyNote2 } from "react-icons/md";
 import { useNotesStore, findNodeByRef } from "../store/notesStore";
-import { useLiveSessionStore } from "../store/liveSessionStore";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
-import type { NoteFile } from "../bindings/NoteFile";
-import type { LiveChunkEvent } from "../bindings/LiveChunkEvent";
-import type { LiveSessionSnapshot } from "../bindings/LiveSessionSnapshot";
 import FileTree from "../components/notes/FileTree";
 import PropertiesPanel from "../components/notes/PropertiesPanel";
 import NoteEditor, { type NoteEditorHandle } from "../components/notes/NoteEditor";
@@ -37,16 +32,6 @@ export default function Notes() {
   const editorRef = useRef<NoteEditorHandle>(null);
   const [allCollapsed, setAllCollapsed] = useState(false);
 
-  // ── Session live (spec/16) : la note en cours d'enregistrement ──────────────
-  const liveActive = useLiveSessionStore((s) => s.active);
-  const liveNotePath = useLiveSessionStore((s) => s.notePath);
-  const isLive = liveActive && !!selectedFile && selectedFile.path === liveNotePath;
-  const isLiveRef = useRef(isLive);
-  isLiveRef.current = isLive;
-  // Dernier chunk réellement présent dans le doc de l'éditeur — la promesse
-  // faite au backend via save_live_note (il ré-appende tout seq supérieur).
-  const lastSeqRef = useRef(0);
-
   useEffect(() => {
     fetchVaultPath().then(() => {
       fetchTree();
@@ -66,78 +51,12 @@ export default function Notes() {
     }
   }, [selectedFile?.path]);
 
-  // Note live ouverte (spec/16) : initialise le doc depuis le snapshot de la
-  // session (corps autoritaire + last_seq) puis applique les chunks en direct.
-  // Les événements arrivés avant le snapshot sont bufferisés : le snapshot,
-  // pris par l'acteur APRÈS eux, les contient déjà — on ne duplique jamais.
-  useEffect(() => {
-    if (!isLive || !selectedFile) return;
-    const path = selectedFile.path;
-    let disposed = false;
-    let ready = false;
-    let pending: LiveChunkEvent[] = [];
-    let unsub: (() => void) | undefined;
-
-    listen<LiveChunkEvent>("live-transcription-chunk", (e) => {
-      if (disposed) return;
-      if (!ready) {
-        pending.push(e.payload);
-        return;
-      }
-      if (e.payload.seq > lastSeqRef.current) {
-        editorRef.current?.appendLiveText(e.payload.text);
-        lastSeqRef.current = e.payload.seq;
-      }
-    }).then((fn) => {
-      if (disposed) fn();
-      else unsub = fn;
-    });
-
-    invoke<LiveSessionSnapshot | null>("get_live_session").then((snap) => {
-      if (disposed) return;
-      if (snap && snap.note_path === path) {
-        let body = snap.body;
-        let seq = snap.last_seq;
-        for (const p of [...pending].sort((a, b) => a.seq - b.seq)) {
-          if (p.seq > seq) {
-            body += "\n\n" + p.text;
-            seq = p.seq;
-          }
-        }
-        lastSeqRef.current = seq;
-        setLocalMetadata(snap.metadata);
-        setLocalBody(body);
-      }
-      pending = [];
-      ready = true;
-    });
-
-    return () => {
-      disposed = true;
-      unsub?.();
-    };
-  }, [isLive, selectedFile?.path]);
-
   const handleToggleCollapseAll = useCallback(() => {
     setAllCollapsed(editorRef.current?.toggleAll() ?? false);
   }, []);
 
   const debouncedSave = useDebounce(
-    useCallback(async (path: string, metadata: NoteMetadata, body: string) => {
-      // Note live : le save passe par l'acteur de la session, qui ré-appende
-      // les chunks non encore vus (seq > lastSeq) — aucun texte perdu (spec/16).
-      if (isLiveRef.current && path === useLiveSessionStore.getState().notePath) {
-        try {
-          const file = await invoke<NoteFile>("save_live_note", {
-            path, metadata, body,
-            lastSeq: lastSeqRef.current,
-          });
-          useNotesStore.setState({ selectedFile: file });
-          return;
-        } catch (e) {
-          console.error("[live] save_live_note failed, falling back:", e);
-        }
-      }
+    useCallback((path: string, metadata: NoteMetadata, body: string) => {
       updateNote(path, metadata, body);
     }, [updateNote]),
     2000
@@ -230,7 +149,6 @@ export default function Notes() {
               history={history}
               onBack={goBack}
               onOpenHistoryEntry={selectFile}
-              live={isLive}
             />
             <PropertiesPanel metadata={localMetadata} onChange={handleMetadataChange} />
 

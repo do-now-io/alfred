@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use tauri::Emitter;
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
-use crate::transcription::live::{LiveSessionHandle, TapMsg};
 use crate::transcription::{TranscriptionJob, TranscriptionSender};
 
 #[cfg(target_os = "windows")]
@@ -21,7 +21,6 @@ type WriterHandle = Arc<StdMutex<Option<WavWriter<std::io::BufWriter<std::fs::Fi
 
 pub async fn start_recording(
     source: &str,
-    recording_id: String,
     data_dir: PathBuf,
     db: SqlitePool,
     app_handle: tauri::AppHandle,
@@ -29,7 +28,6 @@ pub async fn start_recording(
     active_recording_id: Arc<StdMutex<Option<String>>>,
     stop_flag: Arc<AtomicBool>,
     _transcription_tx: TranscriptionSender,
-    live_tap: Option<std::sync::mpsc::Sender<TapMsg>>,
 ) -> Result<()> {
     // System audio is Windows-only for now (macOS ScreenCaptureKit helper: later).
     #[cfg(not(target_os = "windows"))]
@@ -42,6 +40,7 @@ pub async fn start_recording(
     // Reset stop flag
     stop_flag.store(false, Ordering::SeqCst);
 
+    let recording_id = Uuid::new_v4().to_string();
     let file_path = data_dir.join("recordings").join(format!("{}.wav", recording_id));
     tokio::fs::create_dir_all(file_path.parent().unwrap()).await?;
 
@@ -66,7 +65,7 @@ pub async fn start_recording(
     let app_for_capture = app_handle.clone();
     let handle = tauri::async_runtime::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
-            run_capture(&source_owned, file_path_clone, stop_flag_clone, app_for_capture, live_tap)
+            run_capture(&source_owned, file_path_clone, stop_flag_clone, app_for_capture)
         })
         .await;
 
@@ -93,19 +92,12 @@ pub async fn start_recording(
 }
 
 /// Blocking dispatch by recording source. Produces the final WAV at `final_path`.
-/// `live_tap` (spec/16) only applies to the plain-microphone path.
-fn run_capture(
-    source: &str,
-    final_path: PathBuf,
-    stop_flag: Arc<AtomicBool>,
-    app_handle: tauri::AppHandle,
-    live_tap: Option<std::sync::mpsc::Sender<TapMsg>>,
-) -> Result<()> {
+fn run_capture(source: &str, final_path: PathBuf, stop_flag: Arc<AtomicBool>, app_handle: tauri::AppHandle) -> Result<()> {
     match source {
         "system_only" => {
             #[cfg(target_os = "windows")]
             {
-                let _ = (&app_handle, &live_tap); // no live volume meter / live tap for system audio yet
+                let _ = &app_handle; // no live volume meter for system-audio capture yet
                 wasapi_loopback::record_system_audio(final_path, stop_flag)
             }
             #[cfg(not(target_os = "windows"))]
@@ -116,7 +108,6 @@ fn run_capture(
         "mixed" => {
             #[cfg(target_os = "windows")]
             {
-                let _ = &live_tap; // live is mic_only in v1 (spec/16)
                 record_mixed(final_path, stop_flag, app_handle)
             }
             #[cfg(not(target_os = "windows"))]
@@ -125,7 +116,7 @@ fn run_capture(
             }
         }
         // "mic_only" and anything unknown: microphone.
-        _ => record_microphone(final_path, stop_flag, app_handle, live_tap),
+        _ => record_microphone(final_path, stop_flag, app_handle),
     }
 }
 
@@ -145,7 +136,7 @@ fn record_mixed(final_path: PathBuf, stop_flag: Arc<AtomicBool>, app_handle: tau
     });
 
     // Mic-only RMS is used as the volume meter's proxy for the mixed stream too.
-    let mic_result = record_microphone(mic_path.clone(), stop_flag, app_handle, None);
+    let mic_result = record_microphone(mic_path.clone(), stop_flag, app_handle);
     let sys_result = sys_thread
         .join()
         .map_err(|_| anyhow!("System capture thread panicked"))?;
@@ -176,12 +167,7 @@ fn record_mixed(final_path: PathBuf, stop_flag: Arc<AtomicBool>, app_handle: tau
 /// Capture the default input device into a mono PCM16 WAV at the device's
 /// native rate. Handles f32 / i16 / u16 devices (some WASAPI inputs are i16 —
 /// the old f32-only callback failed at runtime on those).
-fn record_microphone(
-    file_path: PathBuf,
-    stop_flag: Arc<AtomicBool>,
-    app_handle: tauri::AppHandle,
-    live_tap: Option<std::sync::mpsc::Sender<TapMsg>>,
-) -> Result<()> {
+fn record_microphone(file_path: PathBuf, stop_flag: Arc<AtomicBool>, app_handle: tauri::AppHandle) -> Result<()> {
     let host = cpal::default_host();
     let device = host
         .default_input_device()
@@ -222,40 +208,35 @@ fn record_microphone(
     let err_fn = |err| eprintln!("[audio] stream error: {}", err);
     let stream_config: cpal::StreamConfig = config.into();
 
-    // Live transcription tap (spec/16): announce the native rate before samples flow.
-    if let Some(ref tap) = live_tap {
-        let _ = tap.send(TapMsg::Format(sample_rate));
-    }
-
     let stream = match sample_format {
         cpal::SampleFormat::F32 => {
-            let (w, s, l, t) = (writer.clone(), stop_flag.clone(), level.clone(), live_tap.clone());
+            let (w, s, l) = (writer.clone(), stop_flag.clone(), level.clone());
             device.build_input_stream(
                 &stream_config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    write_frames(&w, &s, &l, &t, channels, data.iter().copied());
+                    write_frames(&w, &s, &l, channels, data.iter().copied());
                 },
                 err_fn,
                 None,
             )
         }
         cpal::SampleFormat::I16 => {
-            let (w, s, l, t) = (writer.clone(), stop_flag.clone(), level.clone(), live_tap.clone());
+            let (w, s, l) = (writer.clone(), stop_flag.clone(), level.clone());
             device.build_input_stream(
                 &stream_config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    write_frames(&w, &s, &l, &t, channels, data.iter().map(|v| *v as f32 / i16::MAX as f32));
+                    write_frames(&w, &s, &l, channels, data.iter().map(|v| *v as f32 / i16::MAX as f32));
                 },
                 err_fn,
                 None,
             )
         }
         cpal::SampleFormat::U16 => {
-            let (w, s, l, t) = (writer.clone(), stop_flag.clone(), level.clone(), live_tap.clone());
+            let (w, s, l) = (writer.clone(), stop_flag.clone(), level.clone());
             device.build_input_stream(
                 &stream_config,
                 move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                    write_frames(&w, &s, &l, &t, channels, data.iter().map(|v| (*v as f32 / u16::MAX as f32) * 2.0 - 1.0));
+                    write_frames(&w, &s, &l, channels, data.iter().map(|v| (*v as f32 / u16::MAX as f32) * 2.0 - 1.0));
                 },
                 err_fn,
                 None,
@@ -297,14 +278,12 @@ fn record_microphone(
     Ok(())
 }
 
-/// Downmix interleaved f32 frames to mono, append them as PCM16, update the
-/// shared RMS level (spec/03 "feedback live" volume meter), and duplicate the
-/// mono samples to the live-transcription tap when one is attached (spec/16).
+/// Downmix interleaved f32 frames to mono, append them as PCM16, and update the
+/// shared RMS level (spec/03 "feedback live" volume meter).
 fn write_frames(
     writer: &WriterHandle,
     stop_flag: &Arc<AtomicBool>,
     level: &Arc<AtomicU32>,
-    live_tap: &Option<std::sync::mpsc::Sender<TapMsg>>,
     channels: usize,
     samples: impl Iterator<Item = f32>,
 ) {
@@ -323,12 +302,6 @@ fn write_frames(
     if !mono.is_empty() {
         let rms = (mono.iter().map(|s| s * s).sum::<f32>() / mono.len() as f32).sqrt();
         level.store(rms.to_bits(), Ordering::Relaxed);
-    }
-
-    // Unbounded channel: never blocks the audio callback. The WAV is written
-    // identically with or without the tap — the tap only duplicates.
-    if let Some(tap) = live_tap {
-        let _ = tap.send(TapMsg::Samples(mono.clone()));
     }
 
     let mut guard = writer.lock().unwrap();
@@ -417,7 +390,6 @@ pub async fn stop_recording(
     db: SqlitePool,
     transcription_tx: TranscriptionSender,
     app_handle: tauri::AppHandle,
-    live_session: Option<LiveSessionHandle>,
 ) -> Result<String> {
     let recording_id = active_recording_id
         .lock().unwrap().take()
@@ -445,15 +417,6 @@ pub async fn stop_recording(
     // Verify the file exists before queueing transcription
     if !file_path.exists() {
         return Err(anyhow!("WAV file not found after recording: {:?}", file_path));
-    }
-
-    // Live session (spec/16): the audio was already transcribed chunk by chunk —
-    // hand the WAV to the session's finalize instead of the full-file worker.
-    if let Some(session) = live_session {
-        if session.recording_id == recording_id {
-            session.finalize(file_path).await?;
-            return Ok(recording_id);
-        }
     }
 
     let model = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'whisper_model'")

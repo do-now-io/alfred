@@ -5,23 +5,10 @@
 
 ## Vue d'ensemble
 
-Deux pipelines :
-
-1. **Live par chunks (spec/16)** — pour `mic_only` avec vault configuré et
-   `live_transcription` actif : la **note est créée au `start`**, les chunks
-   sont transcrits pendant l'enregistrement (Whisper persistant, session
-   dédiée), le **texte assemblé de la note** (éditions + améliorations Claude
-   comprises) est le transcript final — **pas de re-transcription au stop**.
-   L'ingestion (spec/05) lit le contenu final de la note.
-2. **Full-file au stop** — `system_only`/`mixed`, fallback sans vault, ou live
-   désactivé : au `stop_recording`, le WAV est mis en file. Un **worker unique**
-   (pas de parallélisme — Whisper est intensif) le transcrit via `whisper-rs`
-   dans `spawn_blocking`, stocke les métadonnées en SQLite, **déplace l'audio +
-   crée la note dans le vault**, puis déclenche l'IA (ingestion, spec 05).
-
-En mode live, `transcriptions.raw_text` garde la sémantique « brut » : c'est la
-concaténation des sorties Whisper **originales** (avant édition/amélioration) ;
-la version retravaillée vit dans la note.
+Au `stop_recording`, le WAV est mis en file. Un **worker unique** (pas de
+parallélisme — Whisper est intensif) le transcrit via `whisper-rs` dans
+`spawn_blocking`, stocke les métadonnées en SQLite, **déplace l'audio + crée la
+note dans le vault**, puis déclenche l'IA (ingestion, spec 05).
 
 ## Whisper = feature Cargo — ✅ activée par défaut
 
@@ -64,17 +51,16 @@ la version retravaillée vit dans la note.
 
 ## Qualité du décodage — 📝 à faire (spec/17)
 
-Aujourd'hui les appels `state.full` (full-file **et** chunks live) utilisent le
-réglage le plus faible : `Greedy { best_of: 1 }`, aucun seuil, pas de glossaire.
-Améliorations spécifiées dans **spec/17** :
+Aujourd'hui `run_whisper` utilise le réglage le plus faible : `Greedy
+{ best_of: 1 }`, aucun seuil, pas de glossaire. Améliorations spécifiées dans
+**spec/17** :
 - **Beam search** + **seuils anti-hallucination** (`no_speech_thold`,
   `entropy_thold`, `logprob_thold`, `temperature` + `inc`, `suppress_blank`) ;
   threads relevables pour absorber le beam.
 - **`initial_prompt` = glossaire** dérivé de `Contexte Alfred.md` (spec/16/17) —
-  corrige les noms propres à la source (« Ulysse » vs « Le vice »). En live,
-  combiné à la queue du chunk précédent (spec/16).
+  corrige les noms propres à la source (« Ulysse » vs « Le vice »).
 - **Chunking full-file (~6 min)** avec ré-injection du glossaire (remplace l'unique
-  `state.full()` du pipeline full-file ; le live a déjà son découpage 8–30 s).
+  `state.full()`).
 
 ## Progression
 
@@ -83,10 +69,6 @@ Améliorations spécifiées dans **spec/17** :
 `transcription-failed`.
 
 ## Sorties dans le vault (au succès, si vault configuré)
-
-*(Pipeline full-file. En mode live — spec/16 — la note existe depuis le `start` ;
-seuls le déplacement du WAV, l'écriture SQLite et le déclenchement de
-l'ingestion s'appliquent au stop.)*
 
 1. **Déplacement du WAV** dans le vault — cible **`alfred-raw/`** (même dossier
    que la note d'enregistrement). **Le WAV est toujours conservé dans

@@ -13,7 +13,7 @@ plus de notes — la table `notes` est **legacy** (migration uniquement).
 
 ```
 <vault>/
-├── Contexte Alfred.md     # contexte interne (entreprise, équipe, vocabulaire — spec 16)
+├── Contexte Alfred.md     # contexte interne (entreprise, équipe, vocabulaire — spec 16/17)
 ├── alfred-raw/            # transcriptions brutes + audio (1 note + 1 .wav par enregistrement)
 └── alfred-intelligence/   # comptes-rendus générés par l'IA (frontmatter riche)
     └── Todo.md            # source de vérité des todos (spec 06)
@@ -21,11 +21,9 @@ plus de notes — la table `notes` est **legacy** (migration uniquement).
 
 - **`Contexte Alfred.md`** (racine, chemin configurable `context_note_path`) :
   rédigé par l'utilisateur, créé lazy avec template (spec/16). Injecté dans
-  l'amélioration de chunk live et dans l'ingestion (spec/05).
-- **Note brute créée dès le `start`** de l'enregistrement en mode live
-  (spec/16) : elle est la surface d'édition pendant la réunion ; en mode
-  full-file (spec/04) elle n'apparaît qu'après transcription. Pendant une
-  session live, `rename`/`delete` sur cette note sont refusés.
+  l'ingestion (spec/05) et source du glossaire Whisper (spec/17).
+- **Note brute d'enregistrement** créée après transcription (spec/04),
+  frontmatter `for_recording` + corps `# Transcription`.
 
 - ✅ Défauts alignés : `recording_folder` → `alfred-raw` (spec/11), compte-rendus
   IA → `alfred-intelligence/{titre}.md`, todos → `alfred-intelligence/Todo.md`

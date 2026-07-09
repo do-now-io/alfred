@@ -44,25 +44,16 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | **Brief quotidien** (`generate/get_daily_brief`) | UC |
 | [x] | **Chat** : historique multi-conversations + liste (persistance SQLite, migration 006 ; liste/reprise/suppression dans le panneau chat) | UC |
 | [~] | **Metrics** : `install_id` anonyme + envoi des événements | UC |
-
-## Phase B2 — Transcription live (spec 16)
-
-| | Tâche | Qui |
-|---|---|---|
-| [x] | **Spec 16** (transcription live + contexte interne) + amendements specs 03/04/05/07 + README | T |
-| [x] | **Contexte interne** : note vault `Contexte Alfred.md` + template + injection ingestion + Settings | T |
-| [x] | **Backend live** : session (acteur écrivain unique), chunker silence 8-30s, Whisper persistant, **note créée au start**, finalize + ingestion sur le contenu final de la note | T |
-| [x] | **Frontend live** : note ouverte au start, chunks dans l'éditeur (CodeMirror), save réconcilié (`save_live_note`/`last_seq`), badge « En direct » | T |
-| [~] | **Amélioration par chunk** (haiku, tool `submit_chunk_fix`, les éditions utilisateur gagnent, circuit breaker) | T |
-| [ ] | **Activation live par défaut** (mic_only) + guards rename/delete + polish + statuts specs | T |
+| [x] | **Contexte interne** : note vault `Contexte Alfred.md` + template + injection ingestion + Settings (spec 16) | T |
+| [x] | **Transcription live** (spec 16) : **abandonnée** — code retiré (revert `transcription/live.rs`, session acteur, événements `live-*`, `save_live_note`/`get_live_session`, miroir CodeMirror) ; le contexte interne subsiste | T/UC |
 
 ## Phase B3 — Qualité de transcription (spec 17)
 
 | | Tâche | Qui |
 |---|---|---|
-| [ ] | **Qualité de décodage** (spec 17) : beam search + seuils anti-hallucination + threads relevables dans les appels `state.full` (full-file **et** chunks live) ; langue forçable par enregistrement | |
-| [ ] | **Glossaire dérivé** (spec 17) : `generate_glossary_from_context` (Claude) depuis `Contexte Alfred.md` → `config.transcription_glossary` → `initial_prompt` (full-file + combiné à la queue du chunk en live) | |
-| [ ] | **Chunking full-file (~6 min)** (spec 17) : chevauchement + ré-injection glossaire + décalage timestamps ; remplace l'unique `state.full()` du pipeline full-file | |
+| [ ] | **Qualité de décodage** (spec 17) : beam search + seuils anti-hallucination + threads relevables dans `run_whisper` ; langue forçable par enregistrement | |
+| [ ] | **Glossaire dérivé** (spec 17) : `generate_glossary_from_context` (Claude) depuis `Contexte Alfred.md` → `config.transcription_glossary` → `initial_prompt` de `run_whisper` | |
+| [ ] | **Chunking (~6 min)** (spec 17) : chevauchement + ré-injection glossaire + décalage timestamps ; remplace l'unique `state.full()` | |
 | [ ] | **Ingestion augmentée** (spec 17) : ingestion 2 temps (analyse → résolution groupée + réécoute segment → finalisation) + enrichissement auto « Appris automatiquement » dans `Contexte Alfred.md` | |
 | [ ] | **Onboarding — interview de contexte** conversationnel (Claude) → peuple `Contexte Alfred.md` + 1er glossaire (spec 17/13) | |
 

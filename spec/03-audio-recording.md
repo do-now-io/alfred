@@ -60,11 +60,6 @@ Le WAV continu reste **LE** fichier audio : un seul fichier jusqu'au `stop`,
 pas de VAD sur le fichier. (L'ancienne spec décrivait une segmentation VAD sur
 silences — non implémentée, hors v1.)
 
-**Tap live (spec/16)** : pour `mic_only`, `write_frames` **duplique** les
-samples mono vers la session de transcription live (canal `TapMsg`), qui fait
-son propre découpage en chunks sur les silences. Le tap ne détourne rien : le
-WAV est écrit à l'identique, avec ou sans session live.
-
 ## Machine à états
 
 `Idle → Recording → (stop) → Processing (transcription, spec 04) → Idle`

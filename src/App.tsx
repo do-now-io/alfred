@@ -20,8 +20,6 @@ import { useRecordingStore } from "./store/recordingStore";
 import { useNotesStore } from "./store/notesStore";
 import { useTourStore, useTourTarget } from "./store/tourStore";
 import { useAlfredStatusStore, alfredStatusLabel } from "./store/alfredStatusStore";
-import { useLiveSessionStore } from "./store/liveSessionStore";
-import type { LiveSessionStarted } from "./bindings/LiveSessionStarted";
 import RecordingBar from "./components/RecordingBar";
 import GuidedTour from "./components/tour/GuidedTour";
 
@@ -266,7 +264,6 @@ function Topbar() {
 // ─── Main layout ──────────────────────────────────────────────────────────────
 
 function AppInner() {
-  const navigate = useNavigate();
   const setStatus = useRecordingStore((s) => s.setStatus);
   const setAlfredState = useAlfredStatusStore((s) => s.set);
   // Ingestion failures must be VISIBLE: a silent one is indistinguishable from
@@ -281,17 +278,6 @@ function AppInner() {
       if (e.payload.status === "recording") setAlfredState("recording");
       else if (e.payload.status === "stopping" || e.payload.status === "processing") setAlfredState("transcribing");
       else if (e.payload.status === "error") setAlfredState("idle");
-    }).then(fn => unsubs.push(fn));
-
-    // Session live (spec/16) : la note brute EST la surface de travail pendant
-    // la réunion — on l'ouvre dès que le backend l'a créée.
-    listen<LiveSessionStarted>("live-session-started", (e) => {
-      useLiveSessionStore.getState().start(e.payload);
-      useNotesStore.getState().selectFile(e.payload.note_path).then(() => navigate("/notes"));
-    }).then(fn => unsubs.push(fn));
-
-    listen<{ recording_id: string }>("live-session-ended", () => {
-      useLiveSessionStore.getState().end();
     }).then(fn => unsubs.push(fn));
 
     // Transcription done → the merged ingestion (spec/05) is now writing the
@@ -309,7 +295,7 @@ function AppInner() {
     }).then(fn => unsubs.push(fn));
 
     return () => unsubs.forEach(fn => fn());
-  }, [setStatus, setAlfredState, navigate]);
+  }, [setStatus, setAlfredState]);
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>

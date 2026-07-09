@@ -52,8 +52,8 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | **Spec 16** (transcription live + contexte interne) + amendements specs 03/04/05/07 + README | T |
 | [x] | **Contexte interne** : note vault `Contexte Alfred.md` + template + injection ingestion + Settings | T |
 | [x] | **Backend live** : session (acteur écrivain unique), chunker silence 8-30s, Whisper persistant, **note créée au start**, finalize + ingestion sur le contenu final de la note | T |
-| [~] | **Frontend live** : note ouverte au start, chunks dans l'éditeur (CodeMirror), save réconcilié (`save_live_note`/`last_seq`), badge « En direct » | T |
-| [ ] | **Amélioration par chunk** (haiku, tool `submit_chunk_fix`, les éditions utilisateur gagnent, circuit breaker) | T |
+| [x] | **Frontend live** : note ouverte au start, chunks dans l'éditeur (CodeMirror), save réconcilié (`save_live_note`/`last_seq`), badge « En direct » | T |
+| [~] | **Amélioration par chunk** (haiku, tool `submit_chunk_fix`, les éditions utilisateur gagnent, circuit breaker) | T |
 | [ ] | **Activation live par défaut** (mic_only) + guards rename/delete + polish + statuts specs | T |
 
 ## Phase C — Desktop, UX & écrans

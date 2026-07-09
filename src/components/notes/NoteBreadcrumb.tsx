@@ -7,6 +7,8 @@ interface Props {
   history: string[]; // previous note paths, most recent last
   onBack: () => void;
   onOpenHistoryEntry: (path: string) => void;
+  /** Enregistrement en cours sur cette note (spec/16) — badge « En direct ». */
+  live?: boolean;
 }
 
 function stem(path: string): string {
@@ -25,7 +27,7 @@ const navButtonStyle = (enabled: boolean): React.CSSProperties => ({
   alignItems: "center",
 });
 
-export default function NoteBreadcrumb({ filePath, vaultPath, history, onBack, onOpenHistoryEntry }: Props) {
+export default function NoteBreadcrumb({ filePath, vaultPath, history, onBack, onOpenHistoryEntry, live }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const canGoBack = history.length > 0;
@@ -102,6 +104,18 @@ export default function NoteBreadcrumb({ filePath, vaultPath, history, onBack, o
           </span>
         </span>
       ))}
+
+      {live && (
+        <span style={{
+          marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5,
+          fontSize: 11, fontWeight: 600, color: "var(--danger)",
+          padding: "2px 8px", borderRadius: 999,
+          border: "1px solid var(--danger)",
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--danger)" }} />
+          En direct
+        </span>
+      )}
     </div>
   );
 }

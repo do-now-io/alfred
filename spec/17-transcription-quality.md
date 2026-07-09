@@ -98,10 +98,13 @@ Sur `Contexte Alfred.md` (spec/16) — **pas de nouvelle note** :
   transcription**, elles, restent **validées** (§3), jamais auto-appliquées.
 - Toute modif → **régénération du glossaire** (§1, débouncée).
 - **Onboarding** (extension spec/13) : `Contexte Alfred.md` est aujourd'hui un
-  template *lazy* rempli à la main. Ajouter une étape **interview conversationnel**
-  (Claude pose des questions ouvertes : entreprise, équipe, projets, jargon) qui
-  **peuple** la note + génère le **premier glossaire**. Skippable (contexte vide =
-  comportement spec/16 actuel).
+  template *lazy* rempli à la main. La **visite guidée post-onboarding** le peuple
+  désormais **à la voix** : le premier enregistrement guidé EST la création du
+  contexte — l'utilisateur se présente en suivant un **téléprompteur** (qui il est,
+  équipe, clients, projets, jargon), Claude structure la transcription dans la note
+  puis dérive le **premier glossaire**. (Remplace l'idée d'interview textuel :
+  parler est plus rapide et couvre plus de jargon.) Skippable (contexte vide =
+  comportement spec/16 actuel). Détail du flux + script : **spec/13**.
 
 ⚠️ **Empoisonnement** : une correction validée à tort promue au glossaire *global*
 biaise **tous** les futurs enregistrements → distinguer « corriger pour cet
@@ -111,7 +114,9 @@ enregistrement » (léger) de « promouvoir au glossaire » (délibéré).
 
 - `generate_glossary_from_context() -> String` — Claude dérive la liste plate depuis
   `Contexte Alfred.md`, stocke `config.transcription_glossary`.
-- `run_context_interview(history) -> ...` — tour d'interview (onboarding).
+- `build_context_from_transcription(recording_id) -> ...` — route « mode contexte »
+  de la visite guidée : Claude structure la transcription dans `Contexte Alfred.md`
+  puis enchaîne `generate_glossary_from_context` (détail spec/13).
 - Ingestion §3 en deux temps : `analyze_transcription(...) -> Clarifications` puis
   `finalize_ingestion(...)`.
 - Réutilise `open_context_note` (spec/16) — pas de nouvelle note.

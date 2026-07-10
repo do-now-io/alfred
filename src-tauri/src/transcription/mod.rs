@@ -306,8 +306,10 @@ const ENTROPY_THOLD: f32 = 2.4;
 const LOGPROB_THOLD: f32 = -1.0;
 const TEMPERATURE: f32 = 0.0;
 const TEMPERATURE_INC: f32 = 0.2;
-/// Default thread cap when config `whisper_threads` is unset (spec/04).
-const DEFAULT_THREADS: usize = 4;
+/// Default thread cap when config `whisper_threads` is unset. Raised from 4 to 8
+/// (spec/17 §2 — beam is CPU-heavy; whisper.cpp scales well up to ~physical
+/// cores). Overridable higher via `whisper_threads` for many-core machines.
+const DEFAULT_THREADS: usize = 8;
 
 /// Returns (full text, segments, language) — the language is the user-forced
 /// hint when set, else the one Whisper detected (spec/04's `transcriptions.language`).

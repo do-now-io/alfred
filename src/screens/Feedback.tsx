@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useLocation } from "react-router-dom";
 import { MdBugReport, MdLightbulb, MdFavorite, MdClose, MdCheckCircle, MdWarning, MdContentPaste } from "react-icons/md";
 
 // Feedback (spec/14) — text + optional images (paste screenshots) + optional
@@ -36,6 +37,10 @@ function readImageFile(file: File): Promise<{ data: string; contentType: string 
 }
 
 export default function Feedback() {
+  const location = useLocation();
+  // Arriving via the widget's « Formulaire détaillé » link carries the view the
+  // user was actually on; a direct visit reports /feedback itself.
+  const originView: string = location.state?.from ?? "/feedback";
   const [category, setCategory] = useState<Category>("bug");
   const [text, setText] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -73,6 +78,7 @@ export default function Feedback() {
         category,
         text: text.trim(),
         contactEmail: contactEmail.trim() || null,
+        view: originView,
         images: images.map((i) => ({ filename: i.filename, contentType: i.contentType, data: i.data })),
       });
       setState("sent");

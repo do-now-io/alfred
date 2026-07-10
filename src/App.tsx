@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
   MdHome, MdCheckBox, MdStickyNote2,
-  MdAutoAwesome, MdSettings, MdHub, MdMic, MdStop, MdOutlineFeedback,
+  MdAutoAwesome, MdSettings, MdHub, MdMic, MdStop,
 } from "react-icons/md";
 import alfredLogo from "./assets/alfred-logo.png";
 import Dashboard from "./screens/Dashboard";
@@ -25,6 +25,7 @@ import { useTourStore, useTourTarget } from "./store/tourStore";
 import { useAlfredStatusStore, alfredStatusLabel } from "./store/alfredStatusStore";
 import RecordingBar from "./components/RecordingBar";
 import GuidedTour from "./components/tour/GuidedTour";
+import FeedbackWidget from "./components/FeedbackWidget";
 
 // ─── Logo — recording trigger AND the app's single status readout ──────────────
 // (spec/03/10, ajusté après test) Top-left Alfred is where you look to know what
@@ -219,7 +220,6 @@ function Sidebar() {
         <NavItem to="/notes" icon={<MdStickyNote2 />} label="Notes" />
         <NavItem to="/graph" icon={<MdHub />} label="Graphe" />
         <NavItem to="/ai-actions" icon={<MdAutoAwesome />} label="Alfred" />
-        <NavItem to="/feedback" icon={<MdOutlineFeedback />} label="Feedback" />
 
         <div style={{ height: 1, background: "var(--border)", margin: "12px 16px" }} />
         <Recents />
@@ -249,6 +249,8 @@ function Topbar() {
       <div style={{ flex: 1 }} />
 
       <RecordingBar />
+
+      <FeedbackWidget />
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
         <div style={{

@@ -29,6 +29,7 @@ pub async fn submit_feedback(
     category: &str,
     text: &str,
     contact_email: Option<&str>,
+    view: Option<&str>,
     images: Vec<FeedbackImage>,
     app_version: &str,
     db: &SqlitePool,
@@ -45,6 +46,7 @@ pub async fn submit_feedback(
         "install_id": install_id(db).await,
         "app_version": app_version,
         "os": std::env::consts::OS,
+        "view": view,
         "images": images,
     });
 

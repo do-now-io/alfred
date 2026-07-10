@@ -457,11 +457,26 @@ async fn update_note_file(
     path: String,
     metadata: notes::NoteMetadata,
     body: String,
-    _state: tauri::State<'_, AppState>,
+    state: tauri::State<'_, AppState>,
 ) -> Result<notes::NoteFile, String> {
-    notes::vault::update_note_file(std::path::Path::new(&path), metadata, &body)
+    let saved = notes::vault::update_note_file(std::path::Path::new(&path), metadata, &body)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Editing the context note (spec/16) → regenerate the Whisper glossary,
+    // debounced (spec/17 §4). No manual "Régénérer" needed. Matched by filename
+    // so it works regardless of the vault-relative folder.
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    if let Some(root) = vault_root {
+        let ctx_rel = notes::context::context_note_path(&state.db).await;
+        let ctx_name = std::path::Path::new(&ctx_rel).file_name();
+        let saved_name = std::path::Path::new(&path).file_name();
+        if ctx_name.is_some() && saved_name == ctx_name {
+            ai::schedule_glossary_regen(state.db.clone(), root);
+        }
+    }
+
+    Ok(saved)
 }
 
 #[tauri::command]

@@ -613,15 +613,38 @@ fn fill_timestamps(clar: &mut Clarifications, segments: &[crate::transcription::
     }
 }
 
-/// Is the augmented two-step ingestion enabled? (Config `augmented_ingestion` =
-/// "true"/"1"; default off — direct ingestion, current behavior.)
+/// Is the augmented two-step ingestion enabled? (Config `augmented_ingestion`.)
+/// Default **ON** (spec/17 §3) — only an explicit "false"/"0" turns it off.
 async fn augmented_ingestion_enabled(db: &SqlitePool) -> bool {
     let v: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = 'augmented_ingestion'")
         .fetch_optional(db)
         .await
         .ok()
         .flatten();
-    matches!(v.as_deref(), Some("true") | Some("1"))
+    !matches!(v.as_deref(), Some("false") | Some("0"))
+}
+
+/// Debounce generation for glossary auto-regen (spec/17 §1/§4).
+static GLOSSARY_REGEN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+const GLOSSARY_REGEN_DEBOUNCE_MS: u64 = 4000;
+
+/// Regenerate the Whisper glossary after a context-note edit, **debounced**: each
+/// call supersedes the previous pending one, so a burst of keystrokes triggers a
+/// single regen ~4 s after the last change (spec/17 §4 — no manual button needed).
+pub fn schedule_glossary_regen(db: SqlitePool, vault_root: std::path::PathBuf) {
+    use std::sync::atomic::Ordering;
+    let my_gen = GLOSSARY_REGEN_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(GLOSSARY_REGEN_DEBOUNCE_MS)).await;
+        // A newer edit came in during the wait → let that one regenerate instead.
+        if GLOSSARY_REGEN_GEN.load(Ordering::SeqCst) != my_gen {
+            return;
+        }
+        match generate_glossary_from_context(&db, Some(&vault_root)).await {
+            Ok(g) => eprintln!("[glossary] auto-regenerated after context edit ({} chars)", g.len()),
+            Err(e) => eprintln!("[glossary] auto-regen failed: {}", e),
+        }
+    });
 }
 
 /// Analysis pass exposed to the UI (spec/17 §3): fetch the transcription of a

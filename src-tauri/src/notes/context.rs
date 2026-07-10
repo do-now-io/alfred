@@ -60,6 +60,49 @@ pub async fn ensure_context_note(vault_root: &Path, db: &SqlitePool) -> Result<P
 /// Heading under which post-ingestion learned facts are auto-written (spec/17 §4).
 const LEARNED_HEADING: &str = "## Appris automatiquement";
 
+/// Does the context note carry real user/AI content beyond the empty template?
+/// (Headings, blank lines and the template's intro paragraph don't count.)
+fn context_has_content(body: &str) -> bool {
+    body.lines().any(|l| {
+        let t = l.trim();
+        !t.is_empty()
+            && !t.starts_with('#')
+            && !t.starts_with("Décris ici") // template intro sentence (spec/16)
+    })
+}
+
+/// Write the spoken-onboarding context (spec/13). If the note is still the empty
+/// template, replace its body with the structured version. If it already has
+/// content, never clobber it — append the structured body under a dated
+/// `## Appris à l'oral (date)` heading instead. Frontmatter is preserved.
+pub async fn write_spoken_context(vault_root: &Path, db: &SqlitePool, structured_body: &str) -> Result<()> {
+    let path = ensure_context_note(vault_root, db).await?;
+    let raw = tokio::fs::read_to_string(&path).await?;
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let (metadata, body) = super::frontmatter::parse(&raw, &stem);
+
+    let new_body = if context_has_content(&body) {
+        let date = chrono::Local::now().format("%Y-%m-%d");
+        // Drop the leading "# Contexte Alfred" title from the structured body when
+        // appending, keep just the sections.
+        let sections = structured_body
+            .lines()
+            .skip_while(|l| l.trim().starts_with("# ") || l.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("{}\n\n## Appris à l'oral ({})\n\n{}\n", body.trim_end(), date, sections.trim())
+    } else {
+        format!("{}\n", structured_body.trim())
+    };
+
+    let content = super::frontmatter::serialize(&metadata, &new_body);
+    tokio::fs::write(&path, content).await?;
+    Ok(())
+}
+
 /// Append `facts` (learned during ingestion, spec/17 §4) under the
 /// `## Appris automatiquement` section of the context note — created lazily,
 /// non-blocking, re-readable/correctable by the user. Deduped against existing

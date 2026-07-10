@@ -19,6 +19,9 @@ pub struct TranscriptionJob {
     pub threads: Option<usize>,
     /// Derived glossary injected as Whisper's `initial_prompt` (spec/17 §1).
     pub initial_prompt: Option<String>,
+    /// "meeting" (default → compte-rendu + tâches) or "context" (visite guidée →
+    /// construit `Contexte Alfred.md` + glossaire, pas de compte-rendu). spec/13.
+    pub purpose: String,
     pub db: SqlitePool,
     pub app_handle: tauri::AppHandle,
     pub data_dir: PathBuf,
@@ -33,6 +36,71 @@ pub struct WhisperSegment {
     pub start: f64,
     pub end: f64,
     pub text: String,
+}
+
+/// Build a `TranscriptionJob` from a ready WAV and push it onto the worker queue.
+/// Reads the decoding config (model, language hint, threads, derived glossary)
+/// shared by every entry point — live `stop_recording` and audio-file import
+/// alike — so the two never drift apart. The WAV at `file_path` must already sit
+/// at `$APP_DATA_DIR/recordings/{recording_id}.wav`.
+pub async fn enqueue_job(
+    recording_id: String,
+    file_path: PathBuf,
+    db: SqlitePool,
+    app_handle: tauri::AppHandle,
+    data_dir: PathBuf,
+    resource_dir: Option<PathBuf>,
+    vault_path: Option<PathBuf>,
+    tx: &TranscriptionSender,
+) -> Result<()> {
+    let model = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'whisper_model'")
+        .fetch_optional(&db).await?
+        .unwrap_or_else(|| "small".to_string());
+
+    let lang = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'language_hint'")
+        .fetch_optional(&db).await?
+        .unwrap_or_else(|| "auto".to_string());
+
+    // Threads relevables (spec/17 §2): config override, else run_whisper's min(cores, 4).
+    let threads = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'whisper_threads'")
+        .fetch_optional(&db).await?
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&t| t > 0);
+
+    // Derived glossary (spec/17 §1) injected as Whisper's initial_prompt. Empty
+    // until `generate_glossary_from_context` populates it.
+    let glossary = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'transcription_glossary'")
+        .fetch_optional(&db).await?
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    // Recording purpose (spec/13) — dynamic query so the `purpose` column
+    // (migration 010) isn't required in the compile-time dev DB.
+    let purpose: String = sqlx::query_scalar("SELECT purpose FROM recordings WHERE id = ?")
+        .bind(&recording_id)
+        .fetch_optional(&db)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "meeting".to_string());
+
+    let job = TranscriptionJob {
+        recording_id,
+        file_path,
+        model_size: model,
+        language: if lang == "auto" { None } else { Some(lang) },
+        threads,
+        initial_prompt: glossary,
+        purpose,
+        db,
+        app_handle,
+        data_dir,
+        resource_dir,
+        vault_path,
+    };
+
+    tx.send(job).await.map_err(|e| anyhow!("{}", e))?;
+    Ok(())
 }
 
 pub async fn run_transcription_worker(mut rx: mpsc::Receiver<TranscriptionJob>) {
@@ -173,15 +241,22 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
         "transcription_id": transcription_id
     }))?;
 
-    // Trigger the merged ingestion (compte-rendu + tasks, spec/05).
+    // Route the downstream by recording purpose (spec/13):
+    //  - "context" → build `Contexte Alfred.md` + glossaire (no compte-rendu).
+    //  - "meeting" (default) → the merged ingestion (compte-rendu + tasks, spec/05).
     let db_clone = job.db.clone();
     let app_clone = job.app_handle.clone();
     let vault_clone = job.vault_path.clone();
     let rec_id = recording_id.clone();
     let text = raw_text.clone();
     let title = note_title.clone();
+    let purpose = job.purpose.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = crate::ai::run_ingestion_for_recording(&rec_id, &text, &title, &db_clone, vault_clone.as_deref(), &app_clone).await {
+        if purpose == "context" {
+            if let Err(e) = crate::ai::build_context_from_transcription(&rec_id, &text, &db_clone, vault_clone.as_deref(), &app_clone).await {
+                eprintln!("Context build error: {}", e);
+            }
+        } else if let Err(e) = crate::ai::run_ingestion_for_recording(&rec_id, &text, &title, &db_clone, vault_clone.as_deref(), &app_clone).await {
             eprintln!("Ingestion error: {}", e);
         }
     });

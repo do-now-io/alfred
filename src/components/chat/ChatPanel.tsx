@@ -7,12 +7,13 @@ import { useTourTarget } from "../../store/tourStore";
 import BriefingContent from "../BriefingContent";
 import type { ChatSource } from "../../bindings/ChatSource";
 
-// The "last-meeting" suggestion doubles as the guided tour's final spotlight
-// target (spec/13) — id kept stable so GuidedTour can find it.
+// The "my-context" suggestion doubles as the guided tour's final spotlight
+// target (spec/13) — id kept stable so GuidedTour can find it (it asks Alfred
+// about the context the tour just recorded).
 const SUGGESTIONS = [
+  { id: "my-context", label: "Que sais-tu de mon équipe et de mes projets ?" },
   { id: "recent-notes", label: "Résume mes notes récentes" },
   { id: "week-work", label: "Sur quoi ai-je travaillé cette semaine ?" },
-  { id: "last-meeting", label: "Retrouve-moi ma dernière réunion enregistrée" },
 ];
 
 const COLUMN_MAX = 760;
@@ -231,7 +232,7 @@ export default function ChatPanel() {
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 function EmptyState({ onPick }: { onPick: (q: string) => void }) {
-  const tourRef = useTourTarget("chat-suggestion-last-meeting");
+  const tourRef = useTourTarget("chat-suggestion-my-context");
   return (
     <div style={{
       paddingTop: 56, display: "flex", flexDirection: "column",
@@ -255,7 +256,7 @@ function EmptyState({ onPick }: { onPick: (q: string) => void }) {
         {SUGGESTIONS.map(s => (
           <button
             key={s.id}
-            ref={s.id === "last-meeting" ? tourRef : undefined}
+            ref={s.id === "my-context" ? tourRef : undefined}
             onClick={() => onPick(s.label)}
             style={{
               background: "var(--active-bg)", border: "1px solid var(--border)",

@@ -9,7 +9,7 @@ use tauri::Emitter;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::transcription::{TranscriptionJob, TranscriptionSender};
+use crate::transcription::TranscriptionSender;
 
 #[cfg(target_os = "windows")]
 pub mod wasapi_loopback;
@@ -419,42 +419,17 @@ pub async fn stop_recording(
         return Err(anyhow!("WAV file not found after recording: {:?}", file_path));
     }
 
-    let model = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'whisper_model'")
-        .fetch_optional(&db).await?
-        .unwrap_or_else(|| "small".to_string());
-
-    let lang = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'language_hint'")
-        .fetch_optional(&db).await?
-        .unwrap_or_else(|| "auto".to_string());
-
-    // Threads relevables (spec/17 §2): config override, else run_whisper's min(cores, 4).
-    let threads = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'whisper_threads'")
-        .fetch_optional(&db).await?
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .filter(|&t| t > 0);
-
-    // Derived glossary (spec/17 §1) injected as Whisper's initial_prompt. Empty
-    // until `generate_glossary_from_context` populates it (task 2).
-    let glossary = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'transcription_glossary'")
-        .fetch_optional(&db).await?
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-
-    let job = TranscriptionJob {
-        recording_id: recording_id.clone(),
+    crate::transcription::enqueue_job(
+        recording_id.clone(),
         file_path,
-        model_size: model,
-        language: if lang == "auto" { None } else { Some(lang) },
-        threads,
-        initial_prompt: glossary,
         db,
         app_handle,
-        data_dir: data_dir.clone(),
+        data_dir.clone(),
         resource_dir,
         vault_path,
-    };
-
-    transcription_tx.send(job).await.map_err(|e| anyhow!("{}", e))?;
+        &transcription_tx,
+    )
+    .await?;
     Ok(recording_id)
 }
 

@@ -11,7 +11,7 @@ pub mod todos;
 pub mod transcription;
 
 use std::sync::{Arc, Mutex as StdMutex};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::{mpsc, Mutex};
 
 use state::AppState;
@@ -21,6 +21,7 @@ use state::AppState;
 #[tauri::command]
 async fn start_recording(
     source: String,
+    purpose: Option<String>,
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -42,7 +43,21 @@ async fn start_recording(
         state.transcription_tx.clone(),
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    // Mark the recording's purpose (spec/13). The row was just inserted with the
+    // default 'meeting'; only the context recording of the guided tour overrides
+    // it. Dynamic query — `purpose` (migration 010) needn't be in the dev DB.
+    if purpose.as_deref() == Some("context") {
+        let id = state.active_recording_id.lock().unwrap().clone();
+        if let Some(id) = id {
+            let _ = sqlx::query("UPDATE recordings SET purpose = 'context' WHERE id = ?")
+                .bind(id)
+                .execute(&state.db)
+                .await;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -87,6 +102,81 @@ async fn stop_recording(
 #[tauri::command]
 async fn test_microphone() -> Result<(), String> {
     audio::test_microphone().await.map_err(|e| e.to_string())
+}
+
+/// Import an existing WAV file and transcribe it through the same pipeline as a
+/// live recording (spec/03 "Import de fichier audio"). Opens a native file picker
+/// (`.wav`), copies the chosen file into `$APP_DATA_DIR/recordings/{id}.wav`,
+/// records a `source='import'` row, and queues transcription. Returns the new
+/// recording id, or `None` if the user cancels the picker.
+#[tauri::command]
+async fn import_audio_file(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Audio WAV", &["wav"])
+        .blocking_pick_file();
+    let Some(picked) = picked else { return Ok(None) };
+    let src_path = picked.into_path().map_err(|e| e.to_string())?;
+
+    // Reject anything hound can't open as a WAV *before* touching the queue, so
+    // the user gets a clear error rather than a silent failure in the worker.
+    {
+        let src = src_path.clone();
+        tokio::task::spawn_blocking(move || hound::WavReader::open(&src).map(|_| ()))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|_| "Fichier WAV illisible ou invalide. Convertissez-le d'abord (ffmpeg -i in.mp4 -vn -ac 1 -ar 16000 out.wav).".to_string())?;
+    }
+
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let recording_id = uuid::Uuid::new_v4().to_string();
+    let dest = data_dir.join("recordings").join(format!("{}.wav", recording_id));
+    tokio::fs::create_dir_all(dest.parent().unwrap())
+        .await
+        .map_err(|e| e.to_string())?;
+    tokio::fs::copy(&src_path, &dest)
+        .await
+        .map_err(|e| format!("Copie du fichier échouée: {}", e))?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let dest_str = dest.to_string_lossy().to_string();
+    sqlx::query!(
+        "INSERT INTO recordings (id, file_path, recorded_at, source, status) VALUES (?, ?, ?, 'import', 'processing')",
+        recording_id, dest_str, now
+    )
+    .execute(&state.db)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let vault_path = state.vault_path.lock().unwrap().clone();
+    transcription::enqueue_job(
+        recording_id.clone(),
+        dest,
+        state.db.clone(),
+        app.clone(),
+        data_dir,
+        state.resource_dir.clone(),
+        vault_path,
+        &state.transcription_tx,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Reuse the live-recording status channel so the butler label shows
+    // "transcription en cours" without any import-specific frontend wiring.
+    let _ = app.emit(
+        "recording-status-changed",
+        serde_json::json!({ "status": "processing", "duration_seconds": 0 }),
+    );
+    metrics::send("recording_completed", serde_json::json!({ "source": "import" }));
+
+    Ok(Some(recording_id))
 }
 
 // ─── Transcription commands ───────────────────────────────────────────────────
@@ -483,6 +573,28 @@ async fn finalize_ingestion(
     .map_err(|e| e.to_string())
 }
 
+/// Build `Contexte Alfred.md` from a recording's transcription (spec/13). Used by
+/// the guided-tour "context" recording (auto-triggered) and reusable by a future
+/// "(re)créer mon contexte à la voix" button. Emits `context-status-changed`.
+#[tauri::command]
+async fn build_context_from_transcription(
+    recording_id: String,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    let text: Option<String> =
+        sqlx::query_scalar("SELECT raw_text FROM transcriptions WHERE recording_id = ?")
+            .bind(&recording_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| e.to_string())?;
+    let text = text.ok_or_else(|| "Aucune transcription pour cet enregistrement".to_string())?;
+    ai::build_context_from_transcription(&recording_id, &text, &state.db, vault_root.as_deref(), &app)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Raw WAV bytes for a recording (by its note title), for the "🔊 réécouter"
 /// button of the resolution screen (spec/17 §3). Returns an ArrayBuffer to the
 /// front (efficient — no base64/JSON-array bloat); the UI seeks to the segment.
@@ -830,6 +942,7 @@ pub fn run() {
             start_recording,
             stop_recording,
             test_microphone,
+            import_audio_file,
             // Transcription
             download_model,
             get_transcription,
@@ -865,6 +978,7 @@ pub fn run() {
             generate_glossary_from_context,
             analyze_transcription,
             finalize_ingestion,
+            build_context_from_transcription,
             read_recording_wav,
             // Config & Keychain
             get_config,

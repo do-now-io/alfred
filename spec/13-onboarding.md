@@ -66,13 +66,15 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    présenter à voix haute pendant que je vous transcris — je m'en servirai pour
    bien orthographier vos collègues, clients et votre jargon. Deux minutes. »* →
    « Allons-y » / « Plus tard ».
-2. **Enregistrement de contexte (téléprompteur)** — spotlight sur la carte
-   d'enregistrement (accueil) ; à côté, un **script défilant** (voir « Script de
-   contexte » ci-dessous) qui dit **quoi dire**, section par section. L'utilisateur
-   lit/paraphrase à son rythme ; le script reste visible pendant toute la prise.
-   Cet enregistrement est lancé en **mode contexte** (`purpose: "context"`, voir
-   backend) → traitement dédié, **pas** d'ingestion réunion. Attend
-   `recording-status-changed → "recording"` puis `→ "stopping"/"processing"`.
+2. **Enregistrement de contexte (téléprompteur)** — un panneau **téléprompteur**
+   affiche le **script** (voir « Script de contexte » ci-dessous), section par
+   section, et porte **ses propres commandes** « Commencer l'enregistrement » /
+   « J'ai terminé » : c'est lui qui lance la prise en **mode contexte**
+   (`purpose: "context"`, voir backend) — et non la carte d'accueil, qui elle
+   démarre une réunion normale. Le script reste visible pendant toute la prise ;
+   l'utilisateur lit/paraphrase à son rythme. Traitement dédié, **pas** d'ingestion
+   réunion. Attend `recording-status-changed → "recording"` puis
+   `→ "stopping"/"processing"`.
 3. **Transcription** — bandeau non bloquant : *« Alfred écoute et met au propre
    ce que vous venez de dire… »* (piloté par `recording-status-changed =
    processing`).

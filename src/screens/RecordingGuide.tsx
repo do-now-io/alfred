@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { MdMic, MdStop, MdAdd, MdClose, MdCheckCircle, MdWarning, MdHourglassEmpty } from "react-icons/md";
+import { MdMic, MdStop, MdAdd, MdClose, MdCheckCircle, MdWarning, MdHourglassEmpty, MdUploadFile } from "react-icons/md";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import VolumeMeter from "../components/VolumeMeter";
 import alfredLogo from "../assets/alfred-logo.png";
@@ -127,7 +127,7 @@ function TipsEditor() {
 
 export default function RecordingGuide() {
   const navigate = useNavigate();
-  const { status, volume, errorMessage, startRecording, stopRecording } = useRecordingStore();
+  const { status, volume, errorMessage, startRecording, stopRecording, importAudioFile } = useRecordingStore();
   const elapsed = useRecordingElapsed();
 
   const isIdle = status === "idle";
@@ -202,6 +202,16 @@ export default function RecordingGuide() {
                 }}
               >
                 <MdMic size={18} /> Démarrer l'enregistrement
+              </button>
+              <button
+                onClick={importAudioFile}
+                style={{
+                  background: "none", color: "var(--text-secondary)", border: "1px solid var(--border)",
+                  borderRadius: 10, padding: "8px 18px", cursor: "pointer", fontSize: 13.5, fontWeight: 500,
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                }}
+              >
+                <MdUploadFile size={17} /> Importer un audio (.wav)
               </button>
             </>
           )}

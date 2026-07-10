@@ -876,6 +876,152 @@ async fn store_glossary(db: &SqlitePool, value: &str) -> Result<()> {
     Ok(())
 }
 
+// ─── Contexte à la voix (onboarding, spec/13) ────────────────────────────────────
+//
+// The guided tour's first recording IS the creation of `Contexte Alfred.md`: the
+// user introduces themselves aloud, Claude structures the transcription into the
+// note's standard sections, then the glossary is derived. No compte-rendu.
+
+const CONTEXT_BUILD_SYSTEM: &str = r#"Tu es Alfred. L'utilisateur vient de se présenter à voix haute pour t'apprendre son univers de travail (qui il est, son entreprise, son équipe, ses clients, ses projets, son vocabulaire métier). On te donne la transcription. Structure-la dans sa fiche de contexte via l'outil `submit_context`.
+
+Consignes :
+- `entreprise` : qui est l'utilisateur, son rôle, son entreprise et ce qu'elle fait, ce qu'il va enregistrer. Quelques phrases ou puces.
+- `equipe` : les collègues cités (prénom + rôle), en liste à puces « - Prénom : rôle ». Vide si rien.
+- `vocabulaire` : noms propres, clients, sigles, outils et jargon cités, en liste à puces. C'est la matière du glossaire de transcription : sois exhaustif sur les noms propres et termes techniques. Vide si rien.
+- `projets` : les projets en cours cités (nom + une ligne), en liste à puces. Vide si rien.
+- Reste fidèle : n'invente pas d'information non dite. Rédige en français. Orthographie au mieux les noms propres (au besoin d'après le son)."#;
+
+fn context_build_tool() -> serde_json::Value {
+    json!([{
+        "name": "submit_context",
+        "description": "Structure la présentation orale dans la fiche de contexte de l'utilisateur.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "entreprise": { "type": "string" },
+                "equipe": { "type": "string" },
+                "vocabulaire": { "type": "string" },
+                "projets": { "type": "string" }
+            },
+            "required": ["entreprise", "equipe", "vocabulaire", "projets"]
+        }
+    }])
+}
+
+#[derive(Debug, Deserialize)]
+struct ContextSections {
+    #[serde(default)]
+    entreprise: String,
+    #[serde(default)]
+    equipe: String,
+    #[serde(default)]
+    vocabulaire: String,
+    #[serde(default)]
+    projets: String,
+}
+
+/// Build `Contexte Alfred.md` from a spoken-introduction transcription and derive
+/// the first glossary (spec/13). Emits `context-status-changed` for the guided
+/// tour. Auto path from `process_job` when a recording's purpose is "context".
+pub async fn build_context_from_transcription(
+    recording_id: &str,
+    transcription_text: &str,
+    db: &SqlitePool,
+    vault_root: Option<&Path>,
+    app_handle: &tauri::AppHandle,
+) -> Result<()> {
+    let emit_status = |status: &str, sections: usize, terms: usize, message: Option<String>| {
+        let _ = app_handle.emit(
+            "context-status-changed",
+            json!({
+                "status": status,
+                "recording_id": recording_id,
+                "sections_filled": sections,
+                "glossary_terms": terms,
+                "message": message,
+            }),
+        );
+    };
+
+    let vault_root = match vault_root {
+        Some(v) => v,
+        None => {
+            // No vault → nothing to write; treat as a graceful no-op done.
+            emit_status("done", 0, 0, None);
+            return Ok(());
+        }
+    };
+
+    match build_context_inner(transcription_text, db, vault_root).await {
+        Ok((sections, terms)) => {
+            let _ = app_handle.emit("notes-updated", json!({}));
+            emit_status("done", sections, terms, None);
+            Ok(())
+        }
+        Err(e) => {
+            emit_status("error", 0, 0, Some(e.to_string()));
+            Err(e)
+        }
+    }
+}
+
+async fn build_context_inner(
+    transcription_text: &str,
+    db: &SqlitePool,
+    vault_root: &Path,
+) -> Result<(usize, usize)> {
+    if transcription_text.trim().is_empty() {
+        return Err(anyhow!("Transcription vide — rien à structurer"));
+    }
+
+    let access = resolve_access(db).await?;
+    let client = reqwest::Client::new();
+    let body = json!({
+        "model": MODEL,
+        "max_tokens": 2048,
+        "thinking": {"type": "disabled"},
+        "system": [{ "type": "text", "text": CONTEXT_BUILD_SYSTEM, "cache_control": {"type": "ephemeral"} }],
+        "tools": context_build_tool(),
+        "tool_choice": {"type": "tool", "name": "submit_context"},
+        "messages": [{ "role": "user", "content": format!("Présentation orale :\n{}", transcription_text) }]
+    });
+
+    let resp = call_claude_with_retry(&client, &access, &body).await?;
+    let block = resp["content"]
+        .as_array()
+        .and_then(|c| c.iter().find(|b| b["type"] == "tool_use" && b["name"] == "submit_context"))
+        .ok_or_else(|| anyhow!("Claude did not call submit_context: {:?}", resp))?;
+    let sections: ContextSections = serde_json::from_value(block["input"].clone())
+        .map_err(|e| anyhow!("Invalid submit_context input: {} — {:?}", e, block["input"]))?;
+
+    // Assemble the body using the same headings as the context-note template
+    // (spec/16) so glossary derivation and manual editing stay consistent.
+    let section = |title: &str, content: &str| {
+        let c = content.trim();
+        format!("## {}\n\n{}\n", title, c)
+    };
+    let body = format!(
+        "# Contexte Alfred\n\n{}\n{}\n{}\n{}",
+        section("Mon entreprise", &sections.entreprise),
+        section("Équipe (prénoms & rôles)", &sections.equipe),
+        section("Vocabulaire maison & noms propres", &sections.vocabulaire),
+        section("Projets en cours", &sections.projets),
+    );
+
+    let filled = [&sections.entreprise, &sections.equipe, &sections.vocabulaire, &sections.projets]
+        .iter()
+        .filter(|s| !s.trim().is_empty())
+        .count();
+
+    crate::notes::context::write_spoken_context(vault_root, db, &body).await?;
+
+    // First glossary from the freshly-written context (spec/17 §1).
+    let glossary = generate_glossary_from_context(db, Some(vault_root)).await.unwrap_or_default();
+    let terms = if glossary.trim().is_empty() { 0 } else { glossary.split(',').count() };
+
+    Ok((filled, terms))
+}
+
 // ─── Brief quotidien (spec/05 usage 3) ──────────────────────────────────────────
 
 const DAILY_BRIEF_SYSTEM: &str = r#"Tu es Alfred, un assistant personnel. À partir des tâches en cours et des notes récentes de l'utilisateur, rédige un résumé Markdown TRÈS COURT (3 à 5 lignes maximum) de ce qu'il faut savoir aujourd'hui : échéances proches, sujets chauds. N'invente rien. Si tu n'as rien de notable à signaler, dis-le en une phrase, chaleureuse et brève."#;

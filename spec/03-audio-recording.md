@@ -54,6 +54,27 @@ transcription au `stop`.
   la plus robuste). En attendant, `system_only`/`mixed` renvoient une erreur.
 - Permissions : voir spec 12 (capture d'écran sur macOS ; rien de spécial Windows).
 
+## Import de fichier audio — ✅ fait
+
+Alfred sait transcrire un **fichier audio existant** (pas seulement une capture
+live) : par ex. un enregistrement fait ailleurs, ou l'audio extrait d'une vidéo.
+
+- **Entrée : WAV uniquement** (PCM 16-bit ou float, mono ou multi-canaux — le
+  module de transcription rééchantillonne à 16 kHz et downmixe au besoin, cf.
+  spec 04). Les autres formats (mp3, m4a, mp4…) sont **hors périmètre du picker** :
+  l'utilisateur convertit d'abord (`ffmpeg -i in.mp4 -vn -ac 1 -ar 16000 out.wav`).
+- **Flux** : le fichier choisi est **copié** dans
+  `$APP_DATA_DIR/recordings/{recording_id}.wav` (nouvel `id`), une ligne
+  `recordings` est créée avec **`source = 'import'`** et `status = 'processing'`,
+  puis le WAV est mis dans **la même file de transcription** que le live
+  (aucun chemin de code séparé). La suite est identique : note dans `alfred-raw/`,
+  déplacement du WAV dans le vault, ingestion (spec 04/05).
+- **UX** : bouton **« Importer un audio »** sur la page de guidage (`/recording`,
+  état idle), à côté de « Démarrer l'enregistrement ». Ouvre le sélecteur de
+  fichier natif (filtré `.wav`). Un WAV illisible renvoie une erreur claire
+  avant toute mise en file.
+- **Metrics** : émet `recording_completed` avec `{ source: "import" }`.
+
 ## Segmentation
 
 Le WAV continu reste **LE** fichier audio : un seul fichier jusqu'au `stop`,
@@ -105,6 +126,9 @@ Après transcription confirmée en DB (spec 04) : supprimer le WAV et passer
 
 - `start_recording(source)` — `"mic_only" | "system_only" | "mixed"`
 - `stop_recording() -> recording_id`
+- `import_audio_file() -> Option<recording_id>` — ouvre le sélecteur de fichier
+  (filtre `.wav`), copie le WAV choisi et le met en file de transcription ;
+  `None` si l'utilisateur annule.
 - `test_microphone()` — ouvre brièvement le micro (déclenche la permission macOS) ; utilisé par l'onboarding.
 
 (Les commandes `list_recordings` / `delete_recording` / `get_recording_status`

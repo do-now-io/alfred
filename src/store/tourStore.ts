@@ -1,16 +1,19 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 
-// Guided tour (spec/13): a real, event-driven walkthrough right after onboarding
-// — record → transcribe → ingest → tasks/notes → ask Alfred. Never a simulation.
+// Guided tour (spec/13): a real, event-driven walkthrough right after onboarding.
+// The first recording IS the creation of `Contexte Alfred.md` — the user
+// introduces themselves aloud (teleprompter), Alfred transcribes, structures the
+// context note and derives the glossary, then answers a question about it.
+// Never a simulation.
 
 export type TourStep =
   | "intro"
-  | "record"
-  | "recording"
+  | "record" // teleprompter + start
+  | "recording" // speaking (teleprompter stays)
   | "transcribing"
-  | "writing"
-  | "done"
+  | "structuring" // Claude builds the context note + glossary
+  | "ready" // context built — recap
   | "ask"
   | "closing";
 

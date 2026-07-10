@@ -15,8 +15,11 @@ interface RecordingStore {
   errorMessage: string | null;
   setStatus: (status: RecordingStatus, durationSeconds: number, volume?: number) => void;
   setError: (message: string) => void;
-  startRecording: (source?: string) => Promise<void>;
+  /** `purpose` = "context" starts the guided-tour context recording (spec/13). */
+  startRecording: (source?: string, purpose?: string) => Promise<void>;
   stopRecording: () => Promise<void>;
+  /** Pick an existing WAV and transcribe it through the live pipeline (spec/03). */
+  importAudioFile: () => Promise<void>;
 }
 
 export const useRecordingStore = create<RecordingStore>((set) => ({
@@ -44,10 +47,10 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
 
   setError: (message) => set({ status: "error", errorMessage: message, startedAt: null, volume: 0 }),
 
-  startRecording: async (source = "mic_only") => {
+  startRecording: async (source = "mic_only", purpose?: string) => {
     try {
       set({ status: "recording", durationSeconds: 0, startedAt: Date.now(), errorMessage: null, volume: 0 });
-      await invoke("start_recording", { source });
+      await invoke("start_recording", { source, purpose });
     } catch (e) {
       set({ status: "error", errorMessage: String(e), startedAt: null, volume: 0 });
     }
@@ -59,6 +62,18 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
       await invoke("stop_recording");
     } catch (e) {
       set({ status: "error", errorMessage: String(e), startedAt: null });
+    }
+  },
+
+  importAudioFile: async () => {
+    try {
+      // Backend opens the file picker; null → user cancelled (leave state as-is).
+      // On success it also emits `recording-status-changed { processing }`, so the
+      // butler label lights up on its own — we just mirror it for instant feedback.
+      const id = await invoke<string | null>("import_audio_file");
+      if (id) set({ status: "processing", startedAt: null, volume: 0, errorMessage: null });
+    } catch (e) {
+      set({ status: "error", errorMessage: String(e), startedAt: null, volume: 0 });
     }
   },
 }));

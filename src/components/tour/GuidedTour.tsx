@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { MdClose } from "react-icons/md";
 import { useTourStore } from "../../store/tourStore";
 import { useChatStore } from "../../store/chatStore";
+import { useRecordingStore, useRecordingElapsed } from "../../store/recordingStore";
+import { useNotesStore } from "../../store/notesStore";
+import type { NoteFile } from "../../bindings/NoteFile";
 import { Spotlight } from "./Spotlight";
+import Teleprompter from "./Teleprompter";
 import alfredLogo from "../../assets/alfred-logo.png";
 
 // The guided tour (spec/13): a real, event-driven walkthrough right after
-// onboarding — record → transcribe → ingest → tasks/notes → ask Alfred.
-// Every step reacts to the real backend pipeline; nothing here is simulated,
-// and nothing here ever blocks the app underneath (no click-trapping overlay).
+// onboarding. The first recording IS the creation of `Contexte Alfred.md` — the
+// user introduces themselves aloud (teleprompter), Alfred transcribes, structures
+// the context note and derives the glossary, then answers a question about it.
+// Every step reacts to the real backend pipeline; nothing here is simulated.
 
 const ACCENT = "var(--accent)";
 
@@ -115,39 +121,17 @@ function SpotlightCard({
   );
 }
 
-const CAPTURE_TIPS = [
-  "Épelez les noms propres ou termes techniques peu courants.",
-  "Quand vous donnez une tâche, nommez la personne responsable.",
-  "Récapitulez les décisions prises à la fin.",
-];
-
-/** Rotates through a list every `ms`, for the duration of the recording step. */
-function useRotatingTip(list: string[], active: boolean, ms = 4500): string {
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    if (!active) return;
-    const t = setInterval(() => setI((n) => (n + 1) % list.length), ms);
-    return () => clearInterval(t);
-  }, [active, list.length, ms]);
-  return list[i];
-}
-
 export default function GuidedTour() {
   const { active, step, error, targets, goto, fail, skip, finish } = useTourStore();
   const navigate = useNavigate();
-  const location = useLocation();
-  const tip = useRotatingTip(CAPTURE_TIPS, active && step === "recording");
   const chatLoading = useChatStore((s) => s.loading);
   const chatMessageCount = useChatStore((s) => s.messages.length);
-
-  // Never fight the router: if the user wanders off during a step that expects
-  // them to be on a specific screen, quietly end the tour rather than yank them
-  // back or block navigation. "/recording" is allowed too: clicking the hero
-  // card also takes you to the guidance page (spec/03) the instant recording starts.
-  useEffect(() => {
-    if (!active || step !== "record") return;
-    if (location.pathname !== "/" && location.pathname !== "/recording") skip();
-  }, [active, step, location.pathname, skip]);
+  const startRecording = useRecordingStore((s) => s.startRecording);
+  const stopRecording = useRecordingStore((s) => s.stopRecording);
+  const selectFile = useNotesStore((s) => s.selectFile);
+  const elapsed = useRecordingElapsed();
+  // Recap numbers from `context-status-changed` (sections filled + glossary size).
+  const [recap, setRecap] = useState<{ sections: number; terms: number }>({ sections: 0, terms: 0 });
 
   // Auto-advance once a chat reply lands, while on the "ask" step.
   useEffect(() => {
@@ -172,13 +156,17 @@ export default function GuidedTour() {
     }).then((fn) => unsubs.push(fn));
 
     listen("transcription-complete", () => {
-      if (step === "transcribing") goto("writing");
+      if (step === "transcribing") goto("structuring");
     }).then((fn) => unsubs.push(fn));
 
-    listen<{ status: string }>("ingestion-status-changed", (e) => {
-      if (step !== "writing") return;
-      if (e.payload.status === "done") goto("done");
-      else fail("La rédaction du compte-rendu a échoué, mais votre transcription brute est bien enregistrée.");
+    listen<{ status: string; sections_filled?: number; glossary_terms?: number }>("context-status-changed", (e) => {
+      if (step !== "structuring") return;
+      if (e.payload.status === "done") {
+        setRecap({ sections: e.payload.sections_filled ?? 0, terms: e.payload.glossary_terms ?? 0 });
+        goto("ready");
+      } else {
+        fail("Alfred n'a pas réussi à construire votre contexte, mais votre transcription est bien enregistrée. Vous pourrez remplir la note de contexte à la main.");
+      }
     }).then((fn) => unsubs.push(fn));
 
     return () => unsubs.forEach((fn) => fn());
@@ -190,14 +178,25 @@ export default function GuidedTour() {
     return <TourModal title="Petit accroc" text={error} primary="Continuer" onPrimary={() => goto("closing")} />;
   }
 
+  const openContextNote = async () => {
+    try {
+      const note = await invoke<NoteFile>("open_context_note");
+      await selectFile(note.path);
+      navigate("/notes");
+    } catch (e) {
+      console.error("[tour] open_context_note failed:", e);
+    }
+    finish();
+  };
+
   switch (step) {
     case "intro":
       return (
         <TourModal
-          title="Une dernière chose…"
-          text="Faisons un essai ensemble, pour de vrai : un enregistrement, un compte-rendu, une question à Alfred. Deux minutes montre en main."
+          title="Apprenons à Alfred qui vous êtes"
+          text="Vous allez vous présenter à voix haute pendant qu'Alfred vous transcrit — il s'en servira pour bien orthographier vos collègues, vos clients et votre jargon. Deux minutes."
           primary="Allons-y"
-          onPrimary={() => { navigate("/"); goto("record"); }}
+          onPrimary={() => goto("record")}
           secondary="Plus tard"
           onSecondary={skip}
         />
@@ -207,9 +206,12 @@ export default function GuidedTour() {
       return (
         <>
           <SkipLink onClick={skip} />
-          <Spotlight target={targets["hero-card"]}>
-            <SpotlightCard text="Cliquez ici pour démarrer, et parlez-lui comme dans une vraie réunion : annoncez le sujet, et si vous donnez une tâche à quelqu'un, nommez-le — Alfred saura à qui la rappeler." />
-          </Spotlight>
+          <Teleprompter
+            recording={false}
+            elapsed={0}
+            onStart={() => startRecording("mic_only", "context")}
+            onStop={() => {}}
+          />
         </>
       );
 
@@ -217,7 +219,7 @@ export default function GuidedTour() {
       return (
         <>
           <SkipLink onClick={skip} />
-          <TourToast icon="🎙️" text={tip} />
+          <Teleprompter recording elapsed={elapsed} onStart={() => {}} onStop={stopRecording} />
         </>
       );
 
@@ -225,40 +227,42 @@ export default function GuidedTour() {
       return (
         <>
           <SkipLink onClick={skip} />
-          <TourToast icon="⏳" text="Alfred est en train de transcrire ce que vous avez dit…" />
+          <TourToast icon="⏳" text="Alfred écoute et met au propre ce que vous venez de dire…" />
         </>
       );
 
-    case "writing":
+    case "structuring":
       return (
         <>
           <SkipLink onClick={skip} />
-          <TourToast icon="✍️" text="Il rédige maintenant un résumé et en tire des tâches…" />
+          <TourToast icon="🗂️" text="Il range tout ça : votre entreprise, votre équipe, vos projets, votre vocabulaire…" />
         </>
       );
 
-    case "done":
+    case "ready":
       return (
-        <>
-          <SkipLink onClick={skip} />
-          <Spotlight target={targets["nav-tasks"]}>
-            <SpotlightCard
-              title="Terminé !"
-              text="Retrouvez vos tâches ici, et vos notes juste en dessous."
-              onNext={() => { navigate("/ai-actions"); goto("ask"); }}
-              nextLabel="Continuer"
-            />
-          </Spotlight>
-        </>
+        <TourModal
+          glow
+          title="Alfred vous connaît maintenant !"
+          text={
+            recap.terms > 0
+              ? `Votre contexte est prêt (${recap.sections} section${recap.sections > 1 ? "s" : ""} remplie${recap.sections > 1 ? "s" : ""}) et ${recap.terms} noms propres ont rejoint le glossaire de transcription.`
+              : "Votre contexte est prêt. Vous pourrez le compléter à tout moment."
+          }
+          primary="Continuer"
+          onPrimary={() => { navigate("/ai-actions"); goto("ask"); }}
+          secondary="Relire / corriger"
+          onSecondary={openContextNote}
+        />
       );
 
     case "ask":
       return (
         <>
           <SkipLink onClick={skip} />
-          <Spotlight target={targets["chat-suggestion-last-meeting"]}>
+          <Spotlight target={targets["chat-suggestion-my-context"]}>
             <SpotlightCard
-              text="Maintenant, demandez-lui de retrouver votre dernière réunion — cliquez sur la suggestion, ou posez votre propre question."
+              text="Vérifiez qu'il a bien retenu : demandez-lui ce qu'il sait de votre équipe et de vos projets — cliquez sur la suggestion, ou posez votre propre question."
               onNext={() => goto("closing")}
               nextLabel="Voir la suite"
             />
@@ -271,7 +275,7 @@ export default function GuidedTour() {
         <TourModal
           glow
           title="Vous êtes équipé"
-          text="Voilà l'essentiel : parlez, Alfred écoute, résume et retient. Le reste, vous le découvrirez en l'utilisant."
+          text="Désormais : parlez, Alfred écoute, résume et retient — et il connaît votre univers. Le reste, vous le découvrirez en l'utilisant."
           primary="Terminer"
           onPrimary={finish}
         />

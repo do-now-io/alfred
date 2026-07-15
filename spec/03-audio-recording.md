@@ -83,7 +83,12 @@ silences — non implémentée, hors v1.)
 
 ## Machine à états
 
-`Idle → Recording → (stop) → Processing (transcription, spec 04) → Idle`
+```
+Idle → Recording → (Terminer) → Revue « prise terminée »
+                                   ├─ Supprimer  → Idle (WAV jeté, rien en aval)
+                                   └─ Continuer  → Processing (traitements cochés) → Idle
+Recording → (Annuler) → Idle (WAV jeté, rien en aval)
+```
 
 Événement émis : `recording-status-changed { status, duration_seconds, volume? }`.
 ✅ Pour la capture micro (`mic_only` et le volet micro de `mixed`), `duration_seconds`
@@ -117,6 +122,38 @@ et `volume` (RMS 0..1) sont émis en direct toutes les ~250 ms — plus de `0` f
   niveau (RMS) + durée dans `recording-status-changed` toutes les ~250 ms,
   affichés à la fois dans le bandeau topbar et en grand sur la page de guidage.
 
+## Arrêt : annuler / continuer + choix des traitements aval — 📝 à faire (feedback tests)
+
+Aujourd'hui « Terminer » **déclenche immédiatement** la transcription puis
+l'ingestion (compte-rendu + tâches) — impossible d'arrêter sans tout enclencher.
+On veut **rendre le pipeline aval optionnel et interruptible** :
+
+- **Annuler pendant l'enregistrement** — un bouton **Annuler** (à côté d'Arrêter,
+  visuellement distinct) stoppe la prise et **jette le WAV** sans rien lancer en
+  aval. Confirmation (« Supprimer cet enregistrement ? ») car l'audio est perdu.
+- **« Terminer » → état « prise terminée » (revue)** — au lieu de lancer direct,
+  on affiche un panneau proposant :
+  - **Supprimer** — jette la prise (équivaut à Annuler après coup).
+  - **Continuer** — lance **seulement** les traitements cochés.
+  - **Choix des traitements aval** (cases **cochées par défaut**) :
+    1. **Transcrire l'audio** (spec/04),
+    2. **Créer le compte-rendu** (spec/05),
+    3. **Créer les tâches** (spec/06).
+
+    **Dépendances** : compte-rendu et tâches nécessitent la transcription →
+    décocher (1) grise (2) et (3). Décocher tout revient à ne garder que le WAV /
+    la note brute.
+
+> **Impact spec/05 (à acter).** Compte-rendu et tâches sortent aujourd'hui d'un
+> **seul appel d'ingestion fusionnée** (`run_ingestion_for_recording`). Le choix
+> **3 cases** (compte-rendu ≠ tâches, décidé au test) impose de **découpler** cette
+> sortie : soit deux appels, soit un appel à **sortie conditionnelle** (n'émettre
+> que la ou les sections demandées). Voir spec/05.
+
+Ce panneau de revue est **le même** que celui du téléprompteur de la visite guidée
+(spec/13 étape 2), au « purpose » près : en mode `context`, pas de cases
+compte-rendu/tâches (le traitement aval est la structuration du contexte).
+
 ## Nettoyage WAV
 
 Après transcription confirmée en DB (spec 04) : supprimer le WAV et passer
@@ -125,7 +162,19 @@ Après transcription confirmée en DB (spec 04) : supprimer le WAV et passer
 ## Commandes Tauri (réel)
 
 - `start_recording(source)` — `"mic_only" | "system_only" | "mixed"`
-- `stop_recording() -> recording_id`
+- `stop_recording() -> recording_id` — **s'arrête sans lancer l'aval** (passe en
+  revue « prise terminée » ; l'aval n'est plus enclenché ici mais par
+  `process_recording`). *Changement de contrat vs actuel (où il enfile la
+  transcription) — à faire.*
+- **`cancel_recording()`** (à ajouter) — arrête + **jette le WAV**, aucun aval
+  (bouton Annuler pendant la prise).
+- **`discard_recording(recording_id)`** (à ajouter) — supprime une prise en revue
+  (bouton Supprimer) ; partagé avec le « Recommencer » du téléprompteur (spec/13).
+- **`process_recording(recording_id, { transcribe, summary, tasks })`** (à ajouter)
+  — lance les traitements aval **cochés** (bouton Continuer). Remplace l'enfilage
+  automatique fait aujourd'hui dans `stop_recording`.
+- **`pause_recording()` / `resume_recording()`** (à ajouter, spec/13) — pause/reprise
+  de la capture.
 - `import_audio_file() -> Option<recording_id>` — ouvre le sélecteur de fichier
   (filtre `.wav`), copie le WAV choisi et le met en file de transcription ;
   `None` si l'utilisateur annule.

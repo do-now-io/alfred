@@ -93,6 +93,25 @@ même note sert de source au **glossaire Whisper** (spec/17).
 **Événement** : `ingestion_completed { ai_mode }` (metrics, spec/15) + `notes-updated`
 (+ `todos-updated` pour la partie SQLite, transitoire).
 
+### Sortie découplée compte-rendu / tâches — 📝 à faire (feedback tests, spec/03)
+
+Le panneau de revue post-enregistrement (spec/03) laisse l'utilisateur **choisir**
+les traitements aval : Transcription / **Compte-rendu** / **Tâches** (cases cochées
+par défaut, décochables **indépendamment**). L'ingestion doit donc pouvoir
+**n'émettre qu'une partie** de sa sortie :
+
+- **Contrat** : `run_ingestion_for_recording` (et `run_ingestion_for_note`) prend un
+  sélecteur, p. ex. `{ summary: bool, tasks: bool }`. N'écrit que ce qui est demandé
+  (compte-rendu seul, tâches seules, ou les deux).
+- **Implémentation** : privilégier **un seul appel** à sortie conditionnelle (le
+  tool `submit_ingestion` garde `resume`/`points_cles`/`taches`, mais Rust n'écrit
+  que les sections demandées) plutôt que deux appels — moins de coût/latence, et le
+  compte-rendu et les tâches restent cohérents entre eux. Ne générer les `taches`
+  côté prompt que si `tasks` est demandé.
+- **Cas limites** : `summary=false, tasks=false` ⇒ ne pas appeler l'ingestion du
+  tout (seule la transcription est produite). Compte-rendu/tâches supposent la
+  transcription faite (dépendance gérée par l'UI, spec/03).
+
 ### Ingestion augmentée — 📝 à faire (spec/17)
 
 Évolution en **deux temps** : Claude **analyse** la

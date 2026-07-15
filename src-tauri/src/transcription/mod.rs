@@ -347,87 +347,91 @@ fn run_whisper(
 
     #[cfg(feature = "whisper")]
     {
-        // Beam search over greedy (spec/17 §2): better quality/effort ratio.
-        let mut params = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::BeamSearch {
-            beam_size: BEAM_SIZE,
-            patience: BEAM_PATIENCE,
-        });
-        params.set_print_special(false);
-        params.set_print_progress(false);
-        params.set_print_realtime(false);
-        params.set_print_timestamps(false);
-        params.set_translate(false);
-
-        // Threads: config override (relevable to absorb beam cost) else min(cores, 4).
-        let n_threads = threads
-            .filter(|&t| t > 0)
-            .unwrap_or_else(|| {
-                std::thread::available_parallelism()
-                    .map(|c| c.get())
-                    .unwrap_or(DEFAULT_THREADS)
-                    .min(DEFAULT_THREADS)
-            });
-        params.set_n_threads(n_threads as i32);
-
-        // Anti-hallucination thresholds (spec/17 §2) — Whisper `small` invents
-        // text on silences without these.
-        params.set_no_speech_thold(NO_SPEECH_THOLD);
-        params.set_entropy_thold(ENTROPY_THOLD);
-        params.set_logprob_thold(LOGPROB_THOLD);
-        params.set_temperature(TEMPERATURE);
-        params.set_temperature_inc(TEMPERATURE_INC);
-        params.set_suppress_blank(true);
-        params.set_suppress_nst(true); // suppress non-speech tokens
-
-        // Glossary (spec/17 §1) — corrects proper nouns at the source. Skipped
-        // when empty so we never feed Whisper a stray prompt.
-        if let Some(prompt) = initial_prompt.map(str::trim).filter(|p| !p.is_empty()) {
-            params.set_initial_prompt(prompt);
-        }
-
-        // No forced language → "auto" so Whisper detects the spoken language and
-        // transcribes in it. Without this, whisper.cpp defaults to "en" and treats
-        // all audio as English (see spec/04-transcription.md).
-        params.set_language(Some(language.unwrap_or("auto")));
-
+        // Load the model once — its weights are shared read-only across all
+        // decoding states, including the parallel chunk workers below.
         let ctx = whisper_rs::WhisperContext::new_with_params(
             model_path.to_str().ok_or_else(|| anyhow!("Invalid model path"))?,
             whisper_rs::WhisperContextParameters::default(),
         )
         .map_err(|e| anyhow!("Failed to load Whisper model: {:?}", e))?;
 
-        let mut state = ctx.create_state().map_err(|e| anyhow!("{:?}", e))?;
-        state
-            .full(params, &samples_16k)
-            .map_err(|e| anyhow!("{:?}", e))?;
+        let secs = samples_16k.len() as f64 / SAMPLE_RATE as f64;
 
-        let num_segments = state.full_n_segments().map_err(|e| anyhow!("{:?}", e))?;
-        let mut raw_parts = Vec::new();
-        let mut segments = Vec::new();
-
-        for i in 0..num_segments {
-            let text = state.full_get_segment_text(i).map_err(|e| anyhow!("{:?}", e))?;
-            let t0 = state.full_get_segment_t0(i).map_err(|e| anyhow!("{:?}", e))? as f64 / 100.0;
-            let t1 = state.full_get_segment_t1(i).map_err(|e| anyhow!("{:?}", e))? as f64 / 100.0;
-            raw_parts.push(text.trim().to_string());
-            segments.push(WhisperSegment {
-                start: t0,
-                end: t1,
-                text: text.trim().to_string(),
+        // Short recordings → single pass (best quality, no chunk-seam risk).
+        if secs <= CHUNK_MIN_TOTAL_SECS {
+            let n_threads = threads.filter(|&t| t > 0).unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|c| c.get())
+                    .unwrap_or(DEFAULT_THREADS)
+                    .min(DEFAULT_THREADS)
             });
+            let (segments, detected) = decode_buffer(&ctx, &samples_16k, language, n_threads, initial_prompt)?;
+            let text = segments.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join(" ");
+            return Ok((text, segments, detected));
         }
 
-        // Language: the forced hint when set, else Whisper's detection (spec/04 bug fix).
-        let detected = match language {
-            Some(l) if l != "auto" => Some(l.to_string()),
-            _ => state
-                .full_lang_id_from_state()
-                .ok()
-                .and_then(whisper_rs::get_lang_str)
-                .map(|s| s.to_string()),
-        };
+        // Long recordings → split at silences and transcribe chunks in parallel
+        // (spec/17 §5). The model is shared; each worker owns its own state. The
+        // glossary is re-injected per chunk, so proper-noun priming never fades
+        // on long files. Chunk timestamps are offset back to absolute time.
+        let ranges = chunk_ranges(&samples_16k);
+        let cores = std::thread::available_parallelism().map(|c| c.get()).unwrap_or(DEFAULT_THREADS);
+        // Total thread budget: `whisper_threads` if set, else all logical cores.
+        let total = threads.filter(|&t| t > 0).unwrap_or(cores);
+        let n_workers = ranges.len().min(((cores + 1) / 2).clamp(1, 6));
+        let threads_per = (total / n_workers).clamp(1, 8);
+        eprintln!(
+            "[transcription] {:.0}s → {} tranches, {} workers × {} threads",
+            secs, ranges.len(), n_workers, threads_per
+        );
 
-        return Ok((raw_parts.join(" "), segments, detected));
+        let results: Vec<std::sync::Mutex<Option<Result<(Vec<WhisperSegment>, Option<String>)>>>> =
+            (0..ranges.len()).map(|_| std::sync::Mutex::new(None)).collect();
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..n_workers {
+                scope.spawn(|| {
+                    use std::sync::atomic::Ordering;
+                    loop {
+                        let i = next.fetch_add(1, Ordering::SeqCst);
+                        if i >= ranges.len() {
+                            break;
+                        }
+                        let (a, b) = ranges[i];
+                        let r = decode_buffer(&ctx, &samples_16k[a..b], language, threads_per, initial_prompt);
+                        *results[i].lock().unwrap() = Some(r);
+                    }
+                });
+            }
+        });
+
+        // Merge chunks in order, offsetting each chunk's timestamps to absolute.
+        // A failed chunk is logged and skipped rather than sinking the whole file.
+        let mut all_segments: Vec<WhisperSegment> = Vec::new();
+        let mut raw_parts: Vec<String> = Vec::new();
+        let mut detected: Option<String> = None;
+        for (i, (a, _)) in ranges.iter().enumerate() {
+            let offset = *a as f64 / SAMPLE_RATE as f64;
+            match results[i].lock().unwrap().take() {
+                Some(Ok((segs, lang))) => {
+                    if detected.is_none() {
+                        detected = lang;
+                    }
+                    for mut s in segs {
+                        s.start += offset;
+                        s.end += offset;
+                        raw_parts.push(s.text.clone());
+                        all_segments.push(s);
+                    }
+                }
+                Some(Err(e)) => eprintln!("[transcription] tranche {} échouée: {}", i, e),
+                None => {}
+            }
+        }
+        if all_segments.is_empty() {
+            return Err(anyhow!("La transcription par tranches a échoué sur toutes les tranches"));
+        }
+        return Ok((raw_parts.join(" "), all_segments, detected));
     }
 
     // Stub when whisper feature is disabled
@@ -438,6 +442,125 @@ fn run_whisper(
             "Whisper not compiled. Enable the 'whisper' feature or download a model."
         ))
     }
+}
+
+// ─── Parallel chunked decoding (spec/17 §5) ──────────────────────────────────────
+
+#[cfg(feature = "whisper")]
+const SAMPLE_RATE: usize = 16_000;
+/// Only split recordings longer than this — short ones stay single-pass (best
+/// quality, no seam risk).
+#[cfg(feature = "whisper")]
+const CHUNK_MIN_TOTAL_SECS: f64 = 900.0; // 15 min
+/// Target chunk length: long enough to keep decoding context, short enough to
+/// fill the worker pool.
+#[cfg(feature = "whisper")]
+const CHUNK_TARGET_SECS: f64 = 480.0; // 8 min
+/// How far each side of a target boundary we hunt for a silence to split on.
+#[cfg(feature = "whisper")]
+const CHUNK_SEARCH_SECS: f64 = 30.0;
+
+/// Decode one 16 kHz mono buffer → (segments with buffer-local timestamps,
+/// detected language). Shared by the single-pass and per-chunk paths. Applies the
+/// beam + anti-hallucination + glossary settings (spec/17 §2/§1).
+#[cfg(feature = "whisper")]
+fn decode_buffer(
+    ctx: &whisper_rs::WhisperContext,
+    samples: &[f32],
+    language: Option<&str>,
+    threads: usize,
+    initial_prompt: Option<&str>,
+) -> Result<(Vec<WhisperSegment>, Option<String>)> {
+    let mut params = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::BeamSearch {
+        beam_size: BEAM_SIZE,
+        patience: BEAM_PATIENCE,
+    });
+    params.set_print_special(false);
+    params.set_print_progress(false);
+    params.set_print_realtime(false);
+    params.set_print_timestamps(false);
+    params.set_translate(false);
+    params.set_n_threads(threads.max(1) as i32);
+    params.set_no_speech_thold(NO_SPEECH_THOLD);
+    params.set_entropy_thold(ENTROPY_THOLD);
+    params.set_logprob_thold(LOGPROB_THOLD);
+    params.set_temperature(TEMPERATURE);
+    params.set_temperature_inc(TEMPERATURE_INC);
+    params.set_suppress_blank(true);
+    params.set_suppress_nst(true);
+    if let Some(prompt) = initial_prompt.map(str::trim).filter(|p| !p.is_empty()) {
+        params.set_initial_prompt(prompt);
+    }
+    // No forced language → "auto" so whisper.cpp detects it (else it defaults to en).
+    params.set_language(Some(language.unwrap_or("auto")));
+
+    let mut state = ctx.create_state().map_err(|e| anyhow!("{:?}", e))?;
+    state.full(params, samples).map_err(|e| anyhow!("{:?}", e))?;
+
+    let num = state.full_n_segments().map_err(|e| anyhow!("{:?}", e))?;
+    let mut segs = Vec::with_capacity(num as usize);
+    for i in 0..num {
+        let text = state.full_get_segment_text(i).map_err(|e| anyhow!("{:?}", e))?;
+        let t0 = state.full_get_segment_t0(i).map_err(|e| anyhow!("{:?}", e))? as f64 / 100.0;
+        let t1 = state.full_get_segment_t1(i).map_err(|e| anyhow!("{:?}", e))? as f64 / 100.0;
+        segs.push(WhisperSegment { start: t0, end: t1, text: text.trim().to_string() });
+    }
+    let detected = match language {
+        Some(l) if l != "auto" => Some(l.to_string()),
+        _ => state
+            .full_lang_id_from_state()
+            .ok()
+            .and_then(whisper_rs::get_lang_str)
+            .map(|s| s.to_string()),
+    };
+    Ok((segs, detected))
+}
+
+/// Sample-index ranges splitting `samples` into ~`CHUNK_TARGET_SECS` chunks, each
+/// boundary nudged to the quietest point within ±`CHUNK_SEARCH_SECS` so we don't
+/// cut mid-word (spec/17 §5).
+#[cfg(feature = "whisper")]
+fn chunk_ranges(samples: &[f32]) -> Vec<(usize, usize)> {
+    let len = samples.len();
+    let target = (CHUNK_TARGET_SECS * SAMPLE_RATE as f64) as usize;
+    let search = (CHUNK_SEARCH_SECS * SAMPLE_RATE as f64) as usize;
+    let mut ranges = Vec::new();
+    let mut start = 0usize;
+    while len - start > target + search {
+        let ideal = start + target;
+        let lo = ideal.saturating_sub(search).max(start + 1);
+        let hi = (ideal + search).min(len);
+        let split = quietest_split(samples, lo, hi).clamp(start + 1, len);
+        if split <= start {
+            break;
+        }
+        ranges.push((start, split));
+        start = split;
+    }
+    ranges.push((start, len));
+    ranges
+}
+
+/// Center index of the lowest-energy ~25 ms frame in `[lo, hi)` — a coarse silence
+/// finder for chunk boundaries.
+#[cfg(feature = "whisper")]
+fn quietest_split(samples: &[f32], lo: usize, hi: usize) -> usize {
+    let frame = SAMPLE_RATE / 40; // 25 ms
+    if hi <= lo + frame {
+        return (lo + hi) / 2;
+    }
+    let mut best = (lo + hi) / 2;
+    let mut best_energy = f32::MAX;
+    let mut p = lo;
+    while p + frame <= hi {
+        let e: f32 = samples[p..p + frame].iter().map(|s| s * s).sum();
+        if e < best_energy {
+            best_energy = e;
+            best = p + frame / 2;
+        }
+        p += frame;
+    }
+    best
 }
 
 fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>> {
@@ -550,4 +673,48 @@ pub async fn get_transcription(recording_id: &str, db: &SqlitePool) -> Result<Op
         "whisper_model": r.whisper_model,
         "processed_at": r.processed_at
     })))
+}
+
+#[cfg(all(test, feature = "whisper"))]
+mod chunk_tests {
+    use super::*;
+
+    #[test]
+    fn short_buffer_is_a_single_range() {
+        // 5 min < CHUNK_TARGET: one range spanning the whole buffer.
+        let samples = vec![0.0f32; 5 * 60 * SAMPLE_RATE];
+        let r = chunk_ranges(&samples);
+        assert_eq!(r, vec![(0, samples.len())]);
+    }
+
+    #[test]
+    fn long_buffer_splits_and_covers_contiguously() {
+        // 30 min → several chunks; ranges must tile [0, len) with no gap/overlap.
+        let len = 30 * 60 * SAMPLE_RATE;
+        let samples = vec![0.1f32; len];
+        let r = chunk_ranges(&samples);
+        assert!(r.len() >= 3, "expected multiple chunks, got {}", r.len());
+        assert_eq!(r[0].0, 0);
+        assert_eq!(r.last().unwrap().1, len);
+        for w in r.windows(2) {
+            assert_eq!(w[0].1, w[1].0, "ranges must be contiguous");
+            assert!(w[0].0 < w[0].1, "ranges must be non-empty");
+        }
+    }
+
+    #[test]
+    fn split_prefers_the_quietest_frame() {
+        // A loud buffer with a silent gap inside the search window → split lands in it.
+        let mut samples = vec![0.5f32; 40 * SAMPLE_RATE];
+        let gap_start = 8 * SAMPLE_RATE; // within ±30s of the 8-min target? no — small test
+        for s in &mut samples[gap_start..gap_start + SAMPLE_RATE] {
+            *s = 0.0;
+        }
+        let split = quietest_split(&samples, 7 * SAMPLE_RATE, 10 * SAMPLE_RATE);
+        assert!(
+            split >= gap_start && split < gap_start + SAMPLE_RATE,
+            "split {} should fall inside the silent gap [{}, {})",
+            split, gap_start, gap_start + SAMPLE_RATE
+        );
+    }
 }

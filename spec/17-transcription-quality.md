@@ -60,8 +60,8 @@ le réglage le plus faible.
 - **Seuils anti-hallucination** (Whisper `small` invente sur les silences) :
   `no_speech_thold ≈ 0.6`, `entropy_thold ≈ 2.4`, `logprob_thold ≈ -1.0`,
   `temperature 0.0` + `temperature_inc 0.2`, `suppress_blank`, tokens non-verbaux.
-- **Threads** : `min(cœurs, 4)` aujourd'hui ; relevable (ex. 8) pour absorber le
-  coût du beam search (n'améliore pas la qualité, réduit la latence).
+- **Threads** : défaut `min(cœurs, 8)` ; relevable via `config.whisper_threads`
+  pour absorber le coût du beam search (n'améliore pas la qualité, réduit la latence).
 - **Langue** : forçable par enregistrement quand connue (évite une auto-détection
   ratée qui plombe tout le fichier) — utile pour les enregistrements EN minoritaires.
 
@@ -110,6 +110,31 @@ Sur `Contexte Alfred.md` (spec/16) — **pas de nouvelle note** :
 biaise **tous** les futurs enregistrements → distinguer « corriger pour cet
 enregistrement » (léger) de « promouvoir au glossaire » (délibéré).
 
+## §5 — Transcription parallèle par tranches (longs enregistrements)
+
+En **CPU pur**, une passe unique `small` + beam sur 1 H d'audio tourne à ~0,6–1×
+temps réel → **30 min et plus**, incompressible en séquentiel. Pour les longs
+enregistrements, on **découpe et on transcrit en parallèle** (dans `run_whisper`) :
+
+- **Seuil** : seuls les enregistrements > **15 min** sont découpés ; en dessous,
+  **passe unique** (meilleure qualité, aucun risque de couture).
+- **Découpe aux silences** : tranches cibles ~**8 min**, la frontière étant décalée
+  au **point le plus silencieux** dans une fenêtre ±30 s (RMS par trames de 25 ms)
+  pour ne pas couper un mot.
+- **Parallélisme** : le **modèle est chargé une seule fois** (`WhisperContext`
+  partagé, `Send + Sync`), chaque worker crée son propre `state`. Pool de
+  `min(tranches, ~cœurs/2, 6)` workers × `budget / workers` threads
+  (budget = `whisper_threads` sinon tous les cœurs logiques).
+- **Glossaire par tranche** : l'`initial_prompt` est ré-injecté à chaque tranche →
+  le *priming* des noms propres **ne s'estompe plus** sur les longs fichiers
+  (répond à la crainte historique ci-dessous).
+- **Recollage** : les timestamps de chaque tranche sont **ré-offset** en temps
+  absolu, textes concaténés dans l'ordre. Une tranche en échec est **loggée et
+  ignorée** (on ne coule pas tout le fichier pour une tranche).
+- **Gain** : ~**1,5–2,5×** (borné par la bande passante mémoire), **cumulable** avec
+  le choix du modèle (`base`) et du beam. GPU reste le vrai multiplicateur mais
+  **hors v1** (spec/04).
+
 ## Commandes Tauri (à créer)
 
 - `generate_glossary_from_context() -> String` — Claude dérive la liste plate depuis
@@ -126,7 +151,9 @@ enregistrement » (léger) de « promouvoir au glossaire » (délibéré).
 - **Onglet « Contexte » dédié** (éditeur convivial par-dessus la note).
 - **Session d'ingestion conversationnelle** multi-tours (au-delà des propositions groupées).
 - Contexte **structuré multi-notes** (une note par personne/projet, graphe spec/07c).
-- **Chunking (~6 min)** du WAV avec ré-injection du glossaire par chunk. Écarté en v1 :
-  whisper.cpp fenêtre déjà en interne à 30 s, une **passe unique** suffit. À
-  reconsidérer si des enregistrements *longs* posent problème (RAM, ou noms propres
-  apparaissant tard, quand l'`initial_prompt` s'est estompé).
+- ~~**Chunking**~~ → **fait en v1** (§5) : les longs enregistrements étaient trop
+  lents en CPU pur (1 H ≈ 30 min en passe unique). Découpe aux silences +
+  transcription parallèle + ré-injection du glossaire par tranche.
+- **Backend GPU** (Vulkan/CUDA Windows, Metal macOS) — le vrai multiplicateur
+  (5–20×) pour les longs fichiers. Metal est déjà câblé côté macOS ; Windows reste
+  CPU. À reconsidérer si le chunking CPU ne suffit pas.

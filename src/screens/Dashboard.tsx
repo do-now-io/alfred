@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { MdUploadFile } from "react-icons/md";
 import { useChatStore } from "../store/chatStore";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import { useNotesStore } from "../store/notesStore";
@@ -15,7 +16,7 @@ import { toggleChecked, groupTasksBySection, type TaskLine } from "../utils/todo
 
 function HeroCard() {
   const navigate = useNavigate();
-  const { status, startRecording, stopRecording } = useRecordingStore();
+  const { status, startRecording, stopRecording, importAudioFile } = useRecordingStore();
   // Guided tour (spec/13) spotlights this exact card as "cliquez ici pour démarrer".
   const tourRef = useTourTarget("hero-card");
 
@@ -37,6 +38,7 @@ function HeroCard() {
   };
 
   return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
     <div
       ref={tourRef}
       onClick={isIdle ? handleStart : undefined}
@@ -114,6 +116,24 @@ function HeroCard() {
           ⏹ Arrêter
         </button>
       )}
+    </div>
+
+    {/* Second entry point: import an existing audio file (spec/03), without
+        having to start a recording first. */}
+    {isIdle && (
+      <button
+        onClick={importAudioFile}
+        style={{
+          alignSelf: "flex-start",
+          background: "none", color: "var(--text-secondary)",
+          border: "1px solid var(--border)", borderRadius: 10,
+          padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 500,
+          display: "inline-flex", alignItems: "center", gap: 8,
+        }}
+      >
+        <MdUploadFile size={16} /> Importer un fichier audio (.wav)
+      </button>
+    )}
     </div>
   );
 }

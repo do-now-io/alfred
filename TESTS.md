@@ -15,6 +15,53 @@ l'app buildée (`npm run tauri dev`, ou installeur). Cocher au fur et à mesure.
 
 ---
 
+## 0. Préparation — réinitialiser & installer
+
+### 0.1 Où Alfred stocke ses données (🪟 Windows)
+| Quoi | Emplacement |
+|---|---|
+| État local (config, onboarding, glossaire, métadonnées, partages) | `%APPDATA%\com.alfred.app\alfred.db` (+ `-wal`/`-shm`) |
+| Clé IA / token AlfredIA | `%APPDATA%\com.alfred.app\secrets.json` |
+| WAV temporaires (avant transfert au vault) | `%APPDATA%\com.alfred.app\recordings\` |
+| **Contenu** (notes, transcriptions, comptes-rendus, tâches, audio) | **le vault** (ex. `…\alfred_vault\` : `Contexte Alfred.md`, `alfred-raw/`, `alfred-intelligence/`) |
+
+### 0.2 Repartir de zéro (⚠️ **fermer Alfred d'abord**)
+```powershell
+# 1) État local. On GARDE secrets.json (ta clé IA) — sinon voir plus bas.
+Remove-Item "$env:APPDATA\com.alfred.app\alfred.db*" -Force -ErrorAction SilentlyContinue
+Remove-Item "$env:APPDATA\com.alfred.app\recordings\*" -Recurse -Force -ErrorAction SilentlyContinue
+
+# 2) Vider le vault (ADAPTE le chemin à ton vault)
+$vault = "C:\Users\ulyss\OneDrive\Bureau\alfred_vault"
+Remove-Item "$vault\alfred-raw\*","$vault\alfred-intelligence\*" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item "$vault\Contexte Alfred.md" -Force -ErrorAction SilentlyContinue
+```
+- Pour **re-tester l'étape « Accès IA »** de l'onboarding à blanc, supprime aussi :
+  `Remove-Item "$env:APPDATA\com.alfred.app\secrets.json" -Force`
+- **Table rase idéale pour tester l'onboarding complet** : supprime `alfred.db*` (ça oublie le vault → l'onboarding redemandera un dossier) puis, dans l'onboarding, **choisis un dossier vide tout neuf**. Alfred y recrée `alfred-raw/`, `alfred-intelligence/`, `Todo.md`.
+- ⚠️ Le vault est dans **OneDrive** → les suppressions se **synchronisent dans le cloud**.
+
+### 0.3 Installer / lancer Alfred
+
+**Option A — Mode dev** (rapide, teste le code courant) :
+1. Prérequis (une seule fois) : **Rust (toolchain MSVC)**, **Node.js**, **CMake**, **MSVC C++ Build Tools**, **libclang.dll** (`pip install --user libclang` ou LLVM).
+2. `./scripts/setup-windows.ps1` (crée la base de compilation + sqlx-cli). Puis `npm install`.
+3. Lancer : `./scripts/dev-windows.ps1` (trouve libclang tout seul) — ou `npm run tauri dev`.
+
+**Option B — Installeur** (teste comme un vrai utilisateur) :
+1. `./scripts/build-windows.ps1` (récupère le modèle Whisper + `tauri build`).
+2. Installeur généré dans **`src-tauri/target/release/bundle/nsis/*.exe`** (et `…/msi/*.msi`).
+3. Lancer le `.exe` → installer → ouvrir depuis le menu Démarrer.
+4. ⚠️ Build **non signé** → SmartScreen affiche un avertissement : *« Informations complémentaires » → « Exécuter quand même »*.
+
+### 0.4 Ordre conseillé des tests
+Onboarding (§1) → Enregistrement (§2) → Transcription (§3) → Ingestion (§4) →
+Ingestion augmentée (§5) → Contexte/glossaire (§6) → Notes (§7) → Tâches (§8) →
+Chat (§9) → Brief (§10) → Partage (§11) → Accès IA (§12) → Réglages/Feedback (§13)
+→ Nav (§14). Le §1 dépend d'un état réinitialisé (0.2).
+
+---
+
 ## 1. Onboarding & visite guidée (spec 13) 💻
 - [ ] **1re ouverture** (état vierge) → l'onboarding s'affiche. 🎯 2 slides d'intro.
 - [ ] Étape **Vault** : choisir un dossier → `alfred-raw/`, `alfred-intelligence/`, `Todo.md` créés. 🎯 pas d'écrasement si déjà présents.

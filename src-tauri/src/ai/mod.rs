@@ -994,16 +994,20 @@ struct ContextSections {
 pub async fn build_context_from_transcription(
     recording_id: &str,
     transcription_text: &str,
+    note_title: Option<&str>,
     db: &SqlitePool,
     vault_root: Option<&Path>,
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
+    // `note_title` (the raw-transcription note name) lets the correction screen
+    // re-listen to the WAV via `read_recording_wav` (spec/13 étape 5).
     let emit_status = |status: &str, sections: usize, terms: usize, message: Option<String>| {
         let _ = app_handle.emit(
             "context-status-changed",
             json!({
                 "status": status,
                 "recording_id": recording_id,
+                "note_title": note_title,
                 "sections_filled": sections,
                 "glossary_terms": terms,
                 "message": message,

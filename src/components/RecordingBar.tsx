@@ -1,4 +1,4 @@
-import { MdMic, MdStop, MdWarning } from "react-icons/md";
+import { MdMic, MdStop, MdWarning, MdClose, MdPause, MdPlayArrow } from "react-icons/md";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import VolumeMeter from "./VolumeMeter";
 
@@ -34,12 +34,23 @@ export default function RecordingBar() {
   const errorMessage = useRecordingStore((s) => s.errorMessage);
   const startRecording = useRecordingStore((s) => s.startRecording);
   const stopRecording = useRecordingStore((s) => s.stopRecording);
+  const cancelRecording = useRecordingStore((s) => s.cancelRecording);
+  const pauseRecording = useRecordingStore((s) => s.pauseRecording);
+  const resumeRecording = useRecordingStore((s) => s.resumeRecording);
   const elapsed = useRecordingElapsed();
 
-  // Only two states surface here: active recording (timer + volume + stop —
-  // spec/10's bandeau) and errors. Transcription/ingestion progress lives on
+  const cancel = () => {
+    // L'audio est perdu (spec/03) — une confirmation s'impose.
+    if (window.confirm("Supprimer cet enregistrement ? L'audio sera perdu.")) {
+      cancelRecording();
+    }
+  };
+
+  // Active take (recording/paused: timer + volume + annuler/pause/stop —
+  // spec/03/10's bandeau) and errors. Transcription/ingestion progress lives on
   // the butler label under the sidebar logo instead.
-  if (status !== "recording" && status !== "error") return null;
+  const activeTake = status === "recording" || status === "paused";
+  if (!activeTake && status !== "error") return null;
 
   return (
     <div
@@ -53,18 +64,32 @@ export default function RecordingBar() {
         border: "1px solid var(--border)",
       }}
     >
-      {status === "recording" && (
+      {activeTake && (
         <>
           <span style={{ color: "var(--danger)", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--danger)", display: "inline-block" }} />
-            REC
+            <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--danger)", display: "inline-block", opacity: status === "paused" ? 0.4 : 1 }} />
+            {status === "paused" ? "PAUSE" : "REC"}
           </span>
           <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 14, color: "var(--text-secondary)" }}>
             {formatDuration(elapsed)}
           </span>
           <VolumeMeter volume={volume} />
+          <button
+            onClick={cancel}
+            title="Annuler — jette l'enregistrement"
+            style={{ ...btn("transparent"), color: "var(--text-muted)", border: "1px solid var(--border)", padding: "4px 8px" }}
+          >
+            <MdClose size={15} />
+          </button>
+          <button
+            onClick={status === "paused" ? resumeRecording : pauseRecording}
+            title={status === "paused" ? "Reprendre" : "Mettre en pause"}
+            style={{ ...btn("transparent"), color: "var(--text-secondary)", border: "1px solid var(--border)", padding: "4px 8px" }}
+          >
+            {status === "paused" ? <MdPlayArrow size={16} /> : <MdPause size={15} />}
+          </button>
           <button onClick={stopRecording} style={btn("var(--danger)")}>
-            <MdStop size={16} /> Arrêter
+            <MdStop size={16} /> Terminer
           </button>
         </>
       )}

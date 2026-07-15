@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { MdMic, MdStop, MdAdd, MdClose, MdCheckCircle, MdWarning, MdHourglassEmpty, MdUploadFile } from "react-icons/md";
+import { MdMic, MdStop, MdAdd, MdClose, MdCheckCircle, MdWarning, MdHourglassEmpty, MdUploadFile, MdPause, MdPlayArrow } from "react-icons/md";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import VolumeMeter from "../components/VolumeMeter";
 import alfredLogo from "../assets/alfred-logo.png";
@@ -127,13 +127,21 @@ function TipsEditor() {
 
 export default function RecordingGuide() {
   const navigate = useNavigate();
-  const { status, volume, errorMessage, startRecording, stopRecording, importAudioFile } = useRecordingStore();
+  const { status, volume, errorMessage, startRecording, stopRecording, cancelRecording, pauseRecording, resumeRecording, importAudioFile } = useRecordingStore();
   const elapsed = useRecordingElapsed();
 
   const isIdle = status === "idle";
-  const isRecording = status === "recording";
+  const isPaused = status === "paused";
+  const isRecording = status === "recording" || isPaused;
+  const isStopped = status === "stopped"; // revue — le panneau modal (App) prend la main
   const isProcessing = status === "stopping" || status === "processing";
   const isError = status === "error";
+
+  const cancel = () => {
+    if (window.confirm("Supprimer cet enregistrement ? L'audio sera perdu.")) {
+      cancelRecording();
+    }
+  };
 
   return (
     <div style={{ height: "100%", overflowY: "auto", display: "flex", justifyContent: "center", padding: "40px 24px" }}>
@@ -143,21 +151,55 @@ export default function RecordingGuide() {
 
           {isRecording && (
             <>
-              <div style={{ fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, color: "var(--danger)" }}>
+              <div style={{ fontVariantNumeric: "tabular-nums", fontSize: 34, fontWeight: 700, color: isPaused ? "var(--text-muted)" : "var(--danger)" }}>
                 {formatDuration(elapsed)}
               </div>
               <VolumeMeter volume={volume} size="lg" />
-              <div style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>Parlez naturellement — Alfred transcrit ensuite en local.</div>
-              <button
-                onClick={stopRecording}
-                style={{
-                  background: "var(--danger)", color: "#fff", border: "none", borderRadius: 10,
-                  padding: "10px 24px", cursor: "pointer", fontSize: 14, fontWeight: 600,
-                  display: "inline-flex", alignItems: "center", gap: 8,
-                }}
-              >
-                <MdStop size={18} /> Arrêter
-              </button>
+              <div style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>
+                {isPaused ? "En pause — reprenez quand vous voulez." : "Parlez naturellement — Alfred transcrit ensuite en local."}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button
+                  onClick={cancel}
+                  title="Annuler — jette l'enregistrement"
+                  style={{
+                    background: "none", color: "var(--text-muted)", border: "1px solid var(--border)",
+                    borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontSize: 13.5,
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                  }}
+                >
+                  <MdClose size={16} /> Annuler
+                </button>
+                <button
+                  onClick={isPaused ? resumeRecording : pauseRecording}
+                  style={{
+                    background: "none", color: "var(--text-secondary)", border: "1px solid var(--border)",
+                    borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontSize: 13.5, fontWeight: 500,
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                  }}
+                >
+                  {isPaused ? <><MdPlayArrow size={17} /> Reprendre</> : <><MdPause size={16} /> Pause</>}
+                </button>
+                <button
+                  onClick={stopRecording}
+                  style={{
+                    background: "var(--danger)", color: "#fff", border: "none", borderRadius: 10,
+                    padding: "10px 24px", cursor: "pointer", fontSize: 14, fontWeight: 600,
+                    display: "inline-flex", alignItems: "center", gap: 8,
+                  }}
+                >
+                  <MdStop size={18} /> Terminer
+                </button>
+              </div>
+            </>
+          )}
+
+          {isStopped && (
+            <>
+              <MdCheckCircle size={30} style={{ color: "var(--accent)" }} />
+              <div style={{ fontSize: 15, color: "var(--text-secondary)" }}>
+                Prise terminée — choisissez ce qu'Alfred doit en faire.
+              </div>
             </>
           )}
 

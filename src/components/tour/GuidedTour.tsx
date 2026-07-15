@@ -1,22 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { MdClose } from "react-icons/md";
-import { useTourStore } from "../../store/tourStore";
-import { useChatStore } from "../../store/chatStore";
+import { useTourStore, type TourStep } from "../../store/tourStore";
 import { useRecordingStore, useRecordingElapsed } from "../../store/recordingStore";
-import { useNotesStore } from "../../store/notesStore";
+import { useResolveStore } from "../../store/resolveStore";
+import { useAlfredStatusStore } from "../../store/alfredStatusStore";
 import type { NoteFile } from "../../bindings/NoteFile";
 import { Spotlight } from "./Spotlight";
 import Teleprompter from "./Teleprompter";
+import { parseContextSections } from "../../screens/Resolve";
 import alfredLogo from "../../assets/alfred-logo.png";
 
 // The guided tour (spec/13): a real, event-driven walkthrough right after
 // onboarding. The first recording IS the creation of `Contexte Alfred.md` — the
-// user introduces themselves aloud (teleprompter), Alfred transcribes, structures
-// the context note and derives the glossary, then answers a question about it.
-// Every step reacts to the real backend pipeline; nothing here is simulated.
+// user introduces themselves aloud (teleprompter with pause + review controls).
+// While the pipeline runs, the tour walks the app (Notes → Tâches → Graphe →
+// Alfred & enregistrer). As soon as the context is ready, a pop-up interrupts
+// the visit — single « Revoir / corriger » button → /resolve in context mode —
+// then the closing card. Every step reacts to the real backend pipeline.
 
 const ACCENT = "var(--accent)";
 
@@ -121,56 +124,82 @@ function SpotlightCard({
   );
 }
 
+/** L'indicateur d'état discret pendant la visite (spec/13 étape 3). */
+function PipelineToast() {
+  const butler = useAlfredStatusStore((s) => s.state);
+  if (butler === "transcribing") {
+    return <TourToast icon="⏳" text="Pendant ce temps, Alfred écoute et met au propre ce que vous venez de dire…" />;
+  }
+  return <TourToast icon="🗂️" text="Alfred range tout ça : votre entreprise, votre équipe, vos projets, votre vocabulaire…" />;
+}
+
+// The app-visit steps (spec/13 étape 3) — spotlight target id + copy + where to be.
+const VISIT_STEPS: Array<{
+  step: TourStep; next: TourStep; target: string; route: string;
+  title: string; text: string;
+}> = [
+  {
+    step: "visit-notes", next: "visit-tasks", target: "nav-notes", route: "/notes",
+    title: "Vos notes",
+    text: "Chaque enregistrement produit sa transcription et son compte-rendu, rangés ici — regroupés par projet.",
+  },
+  {
+    step: "visit-tasks", next: "visit-graph", target: "nav-tasks", route: "/tasks",
+    title: "Vos tâches",
+    text: "Les actions décidées en réunion arrivent toutes seules ici (avec le responsable quand il est nommé). Prioritaire / En cours / À faire — cochez, assignez, archivez.",
+  },
+  {
+    step: "visit-graph", next: "visit-chat", target: "nav-graph", route: "/graph",
+    title: "Le graphe",
+    text: "Vos notes se relient entre elles par projets et participants — pratique pour retrouver le fil d'un sujet.",
+  },
+  {
+    step: "visit-chat", next: "waiting", target: "nav-chat", route: "/ai-actions",
+    title: "Questions à Alfred — et comment enregistrer",
+    text: "Posez vos questions ici, Alfred répond en citant vos notes. Et pour enregistrer : cliquez le logo Alfred (en haut à gauche), la carte d'accueil, ou importez un audio.",
+  },
+];
+
 export default function GuidedTour() {
-  const { active, step, error, targets, goto, fail, skip, finish } = useTourStore();
+  const { active, step, error, targets, recap, goto, setRecap, fail, skip, finish } = useTourStore();
   const navigate = useNavigate();
-  const chatLoading = useChatStore((s) => s.loading);
-  const chatMessageCount = useChatStore((s) => s.messages.length);
   const startRecording = useRecordingStore((s) => s.startRecording);
   const stopRecording = useRecordingStore((s) => s.stopRecording);
-  const selectFile = useNotesStore((s) => s.selectFile);
+  const setResolveSession = useResolveStore((s) => s.setSession);
   const elapsed = useRecordingElapsed();
-  // Recap numbers from `context-status-changed` (sections filled + glossary size).
-  const [recap, setRecap] = useState<{ sections: number; terms: number }>({ sections: 0, terms: 0 });
-
-  // Auto-advance once a chat reply lands, while on the "ask" step.
-  useEffect(() => {
-    if (active && step === "ask" && !chatLoading && chatMessageCount > 0) {
-      goto("closing");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatLoading]);
 
   useEffect(() => {
     if (!active) return;
     const unsubs: Array<() => void> = [];
 
     listen<{ status: string }>("recording-status-changed", (e) => {
-      if (step === "record" && e.payload.status === "recording") goto("recording");
-      if (step === "recording" && (e.payload.status === "stopping" || e.payload.status === "processing")) {
-        goto("transcribing");
-      }
-      if (e.payload.status === "error" && (step === "record" || step === "recording")) {
+      if (e.payload.status === "error" && step === "record") {
         fail("L'enregistrement a rencontré un problème — pas de souci, vous pourrez réessayer plus tard.");
       }
     }).then((fn) => unsubs.push(fn));
 
-    listen("transcription-complete", () => {
-      if (step === "transcribing") goto("structuring");
-    }).then((fn) => unsubs.push(fn));
-
-    listen<{ status: string; sections_filled?: number; glossary_terms?: number }>("context-status-changed", (e) => {
-      if (step !== "structuring") return;
-      if (e.payload.status === "done") {
-        setRecap({ sections: e.payload.sections_filled ?? 0, terms: e.payload.glossary_terms ?? 0 });
-        goto("ready");
-      } else {
-        fail("Alfred n'a pas réussi à construire votre contexte, mais votre transcription est bien enregistrée. Vous pourrez remplir la note de contexte à la main.");
+    // « Contexte prêt » (spec/13 étape 4) : la pop-up INTERROMPT la visite, où
+    // qu'on en soit (étapes visit-* ou waiting).
+    listen<{ status: string; recording_id: string; note_title?: string | null; sections_filled?: number; glossary_terms?: number }>(
+      "context-status-changed",
+      (e) => {
+        if (step === "record" || step === "ready" || step === "correcting" || step === "closing") return;
+        if (e.payload.status === "done") {
+          setRecap({
+            sections: e.payload.sections_filled ?? 0,
+            terms: e.payload.glossary_terms ?? 0,
+            recordingId: e.payload.recording_id,
+            noteTitle: e.payload.note_title ?? null,
+          });
+          goto("ready");
+        } else {
+          fail("Alfred n'a pas réussi à construire votre contexte, mais votre transcription est bien enregistrée. Vous pourrez remplir la note de contexte à la main.");
+        }
       }
-    }).then((fn) => unsubs.push(fn));
+    ).then((fn) => unsubs.push(fn));
 
     return () => unsubs.forEach((fn) => fn());
-  }, [active, step, goto, fail]);
+  }, [active, step, goto, setRecap, fail]);
 
   if (!active) return null;
 
@@ -178,15 +207,25 @@ export default function GuidedTour() {
     return <TourModal title="Petit accroc" text={error} primary="Continuer" onPrimary={() => goto("closing")} />;
   }
 
-  const openContextNote = async () => {
+  // « Revoir / corriger » (spec/13 étape 5) : ouvre /resolve en MODE CONTEXTE —
+  // les 4 sections éditables + réécoute du WAV + Valider. Plus jamais la note
+  // brute dans /notes.
+  const openCorrection = async () => {
     try {
       const note = await invoke<NoteFile>("open_context_note");
-      await selectFile(note.path);
-      navigate("/notes");
+      setResolveSession({
+        mode: "context",
+        recordingId: recap?.recordingId ?? "",
+        noteTitle: recap?.noteTitle ?? null,
+        contextPath: note.path,
+        sections: parseContextSections(note.body),
+      });
+      goto("correcting");
+      navigate("/resolve");
     } catch (e) {
       console.error("[tour] open_context_note failed:", e);
+      fail("Impossible d'ouvrir votre note de contexte — vous pourrez la corriger plus tard depuis les Réglages.");
     }
-    finish();
   };
 
   switch (step) {
@@ -203,72 +242,49 @@ export default function GuidedTour() {
       );
 
     case "record":
+      // Le téléprompteur porte ses propres commandes (spec/13 étape 2) :
+      // Commencer / Pause / J'ai terminé, puis Recommencer / Continuer (revue).
       return (
         <>
           <SkipLink onClick={skip} />
           <Teleprompter
-            recording={false}
-            elapsed={0}
+            elapsed={elapsed}
             onStart={() => startRecording("mic_only", "context")}
-            onStop={() => {}}
+            onStop={stopRecording}
+            onDiscarded={() => { /* on reste sur le téléprompteur, prêt à relancer */ }}
+            onContinued={() => { navigate("/notes"); goto("visit-notes"); }}
           />
         </>
       );
 
-    case "recording":
+    case "waiting":
       return (
         <>
           <SkipLink onClick={skip} />
-          <Teleprompter recording elapsed={elapsed} onStart={() => {}} onStop={stopRecording} />
-        </>
-      );
-
-    case "transcribing":
-      return (
-        <>
-          <SkipLink onClick={skip} />
-          <TourToast icon="⏳" text="Alfred écoute et met au propre ce que vous venez de dire…" />
-        </>
-      );
-
-    case "structuring":
-      return (
-        <>
-          <SkipLink onClick={skip} />
-          <TourToast icon="🗂️" text="Il range tout ça : votre entreprise, votre équipe, vos projets, votre vocabulaire…" />
+          <PipelineToast />
         </>
       );
 
     case "ready":
+      // Un SEUL bouton (feedback tests) : on force le passage par la vérification.
       return (
         <TourModal
           glow
-          title="Alfred vous connaît maintenant !"
+          title="Alfred vous connaît — mais vérifiez ce qu'il a compris"
           text={
-            recap.terms > 0
-              ? `Votre contexte est prêt (${recap.sections} section${recap.sections > 1 ? "s" : ""} remplie${recap.sections > 1 ? "s" : ""}) et ${recap.terms} noms propres ont rejoint le glossaire de transcription.`
-              : "Votre contexte est prêt. Vous pourrez le compléter à tout moment."
+            recap && recap.terms > 0
+              ? `Votre contexte est prêt (${recap.sections} section${recap.sections > 1 ? "s" : ""} remplie${recap.sections > 1 ? "s" : ""}) et ${recap.terms} noms propres ont rejoint le glossaire de transcription. Un coup d'œil pour corriger ce qu'il faut ?`
+              : "Votre contexte est prêt. Un coup d'œil pour corriger ce qu'il faut ?"
           }
-          primary="Continuer"
-          onPrimary={() => { navigate("/ai-actions"); goto("ask"); }}
-          secondary="Relire / corriger"
-          onSecondary={openContextNote}
+          primary="Revoir / corriger"
+          onPrimary={openCorrection}
         />
       );
 
-    case "ask":
-      return (
-        <>
-          <SkipLink onClick={skip} />
-          <Spotlight target={targets["chat-suggestion-my-context"]}>
-            <SpotlightCard
-              text="Vérifiez qu'il a bien retenu : demandez-lui ce qu'il sait de votre équipe et de vos projets — cliquez sur la suggestion, ou posez votre propre question."
-              onNext={() => goto("closing")}
-              nextLabel="Voir la suite"
-            />
-          </Spotlight>
-        </>
-      );
+    case "correcting":
+      // L'écran /resolve (mode contexte) est aux commandes ; il renvoie vers
+      // « closing » au Valider (voir Resolve.tsx). Rien à afficher par-dessus.
+      return null;
 
     case "closing":
       return (
@@ -281,7 +297,29 @@ export default function GuidedTour() {
         />
       );
 
-    default:
-      return null;
+    default: {
+      // Étapes de visite (spec/13 étape 3) — spotlights non bloquants pendant que
+      // le pipeline tourne, avec l'indicateur d'état discret en haut à droite.
+      const visit = VISIT_STEPS.find((v) => v.step === step);
+      if (!visit) return null;
+      return (
+        <>
+          <SkipLink onClick={skip} />
+          <PipelineToast />
+          <Spotlight target={targets[visit.target]}>
+            <SpotlightCard
+              title={visit.title}
+              text={visit.text}
+              onNext={() => {
+                const nextDef = VISIT_STEPS.find((v) => v.step === visit.next);
+                if (nextDef) navigate(nextDef.route);
+                goto(visit.next);
+              }}
+              nextLabel={visit.next === "waiting" ? "Terminer la visite" : "Suivant"}
+            />
+          </Spotlight>
+        </>
+      );
+    }
   }
 }

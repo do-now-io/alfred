@@ -24,6 +24,7 @@ import { useNotesStore } from "./store/notesStore";
 import { useTourStore, useTourTarget } from "./store/tourStore";
 import { useAlfredStatusStore, alfredStatusLabel } from "./store/alfredStatusStore";
 import RecordingBar from "./components/RecordingBar";
+import RecordingReview from "./components/RecordingReview";
 import GuidedTour from "./components/tour/GuidedTour";
 import FeedbackWidget from "./components/FeedbackWidget";
 
@@ -40,8 +41,10 @@ function AlfredLogo() {
   const startRecording = useRecordingStore((s) => s.startRecording);
   const stopRecording = useRecordingStore((s) => s.stopRecording);
   const butler = useAlfredStatusStore((s) => s.state);
+  const target = useAlfredStatusStore((s) => s.target);
+  const selectFile = useNotesStore((s) => s.selectFile);
 
-  const isRecording = recStatus === "recording";
+  const isRecording = recStatus === "recording" || recStatus === "paused";
   const busy = butler !== "idle";
 
   const handleClick = () => {
@@ -54,6 +57,19 @@ function AlfredLogo() {
       navigate("/recording"); // transcription/ingestion en cours — voir la progression
     }
   };
+
+  // « Cliquer l'indicateur majordome navigue vers ce qu'Alfred fait » (spec/10).
+  // Au repos (pas de cible), le libellé n'est pas cliquable.
+  const goToTarget = () => {
+    if (!target) return;
+    if (target.targetPath) {
+      selectFile(target.targetPath);
+      navigate("/notes");
+    } else if (target.targetRoute) {
+      navigate(target.targetRoute);
+    }
+  };
+  const clickableStatus = busy && !!target && (!!target.targetPath || !!target.targetRoute);
 
   const title = isRecording
     ? "Arrêter l'enregistrement"
@@ -103,13 +119,21 @@ function AlfredLogo() {
         ) : null}
       </button>
 
-      {/* Butler status — THE status readout (no duplicate elsewhere). */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 6,
-        fontSize: 12.5, whiteSpace: "nowrap",
-        color: isRecording ? "var(--danger)" : busy ? "var(--accent)" : "var(--text-muted)",
-        transition: "color 0.2s",
-      }}>
+      {/* Butler status — THE status readout (no duplicate elsewhere). Cliquable
+          quand Alfred travaille sur une cible : mène à ce qu'il fait (spec/10). */}
+      <div
+        onClick={clickableStatus ? goToTarget : undefined}
+        title={clickableStatus ? "Voir ce qu'Alfred est en train de traiter" : undefined}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          fontSize: 12.5, whiteSpace: "nowrap",
+          color: isRecording ? "var(--danger)" : busy ? "var(--accent)" : "var(--text-muted)",
+          transition: "color 0.2s",
+          cursor: clickableStatus ? "pointer" : "default",
+          textDecoration: clickableStatus ? "underline dotted" : "none",
+          textUnderlineOffset: 3,
+        }}
+      >
         <span style={{
           width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
           background: "currentColor",
@@ -154,12 +178,21 @@ function NavItem({
 // The 5 most recently *modified* notes — ordered by file mtime, which advances on
 // save/edit but never on a plain view, so merely opening a note won't reorder it.
 
+/** Chemins comparables quel que soit le séparateur (backend Windows ↔ front). */
+function samePath(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  return a.replace(/\\/g, "/") === b.replace(/\\/g, "/");
+}
+
 function Recents() {
   const navigate = useNavigate();
   const recents = useNotesStore(s => s.recents);
   const selectedPath = useNotesStore(s => s.selectedFile?.path ?? null);
   const fetchRecents = useNotesStore(s => s.fetchRecents);
   const selectFile = useNotesStore(s => s.selectFile);
+  // Le point ambre = la note qu'Alfred TRAITE en ce moment (spec/10, feedback
+  // tests) — plus « note sélectionnée » (le highlight suffit pour la sélection).
+  const targetPath = useAlfredStatusStore(s => s.target?.targetPath ?? null);
 
   useEffect(() => {
     fetchRecents();
@@ -177,6 +210,7 @@ function Recents() {
       </div>
       {recents.map((item) => {
         const active = item.path === selectedPath;
+        const processing = samePath(item.path, targetPath);
         return (
           <div key={item.path} style={{
             display: "flex", alignItems: "center", gap: 8,
@@ -191,8 +225,14 @@ function Recents() {
             <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.title}>
               {item.title}
             </span>
-            {active && (
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
+            {processing && (
+              <span
+                title="Alfred travaille sur cette note"
+                style={{
+                  width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", flexShrink: 0,
+                  animation: "alfred-pulse 1.4s ease-in-out infinite",
+                }}
+              />
             )}
           </div>
         );
@@ -217,9 +257,9 @@ function Sidebar() {
       <nav style={{ flex: 1, overflowY: "auto", paddingBottom: 8 }}>
         <NavItem to="/" icon={<MdHome />} label="Aujourd'hui" end />
         <NavItem to="/tasks" icon={<MdCheckBox />} label="Tâches" tourId="nav-tasks" />
-        <NavItem to="/notes" icon={<MdStickyNote2 />} label="Notes" />
-        <NavItem to="/graph" icon={<MdHub />} label="Graphe" />
-        <NavItem to="/ai-actions" icon={<MdAutoAwesome />} label="Alfred" />
+        <NavItem to="/notes" icon={<MdStickyNote2 />} label="Notes" tourId="nav-notes" />
+        <NavItem to="/graph" icon={<MdHub />} label="Graphe" tourId="nav-graph" />
+        <NavItem to="/ai-actions" icon={<MdAutoAwesome />} label="Alfred" tourId="nav-chat" />
 
         <div style={{ height: 1, background: "var(--border)", margin: "12px 16px" }} />
         <Recents />
@@ -271,6 +311,7 @@ function Topbar() {
 function AppInner() {
   const setStatus = useRecordingStore((s) => s.setStatus);
   const setAlfredState = useAlfredStatusStore((s) => s.set);
+  const setAlfredTarget = useAlfredStatusStore((s) => s.setTarget);
   const setResolveSession = useResolveStore((s) => s.setSession);
   // Ingestion failures must be VISIBLE: a silent one is indistinguishable from
   // "the feature doesn't work" (compte-rendu + tasks just never appear).
@@ -279,18 +320,29 @@ function AppInner() {
   useEffect(() => {
     const unsubs: (() => void)[] = [];
 
-    listen<{ status: string; duration_seconds: number; volume?: number }>("recording-status-changed", (e) => {
-      setStatus(e.payload.status as Parameters<typeof setStatus>[0], e.payload.duration_seconds, e.payload.volume);
-      if (e.payload.status === "recording") setAlfredState("recording");
+    listen<{ status: string; duration_seconds: number; volume?: number; recording_id?: string; purpose?: string }>("recording-status-changed", (e) => {
+      setStatus(
+        e.payload.status as Parameters<typeof setStatus>[0],
+        e.payload.duration_seconds,
+        e.payload.volume,
+        e.payload.recording_id,
+        e.payload.purpose,
+      );
+      if (e.payload.status === "recording" || e.payload.status === "paused") setAlfredState("recording");
       else if (e.payload.status === "stopping" || e.payload.status === "processing") setAlfredState("transcribing");
-      else if (e.payload.status === "error") setAlfredState("idle");
+      // "stopped" (revue) : Alfred n'a rien lancé — il attend la décision.
+      else if (e.payload.status === "stopped" || e.payload.status === "error" || e.payload.status === "idle") setAlfredState("idle");
     }).then(fn => unsubs.push(fn));
 
-    // Transcription done → the merged ingestion (spec/05) is now writing the
-    // compte-rendu + tasks; "ingestion-status-changed" is what actually clears it.
-    listen<{ recording_id: string; transcription_id: string }>("transcription-complete", (_e) => {
+    // Transcription done → the downstream (ingestion or context build) is now
+    // running; the note brute existe : elle devient la CIBLE d'Alfred (spec/10 —
+    // point ambre + indicateur cliquable).
+    listen<{ recording_id: string; transcription_id: string; note_path?: string | null }>("transcription-complete", (e) => {
       setStatus("idle", 0);
       setAlfredState("thinking");
+      if (e.payload.note_path) {
+        setAlfredTarget({ targetPath: e.payload.note_path, recordingId: e.payload.recording_id });
+      }
     }).then(fn => unsubs.push(fn));
 
     listen<{ status: string; message?: string }>("ingestion-status-changed", (e) => {
@@ -300,24 +352,33 @@ function AppInner() {
       }
     }).then(fn => unsubs.push(fn));
 
+    // Fin du traitement « mode contexte » (spec/13) — hors visite guidée, il faut
+    // aussi rendre la main au majordome.
+    listen<{ status: string }>("context-status-changed", () => {
+      setAlfredState("idle");
+    }).then(fn => unsubs.push(fn));
+
     // Augmented ingestion (spec/17 §3): Claude has propositions to validate before
     // writing the compte-rendu. Stash the session; a banner invites the user to
     // the /resolve screen (never auto-navigate — don't yank them mid-task).
-    listen<{ recording_id: string; note_title: string; text: string; clarifications: Clarifications }>(
+    listen<{ recording_id: string; note_title: string; text: string; clarifications: Clarifications; summary?: boolean; tasks?: boolean }>(
       "clarifications-ready",
       (e) => {
         setAlfredState("idle");
         setResolveSession({
+          mode: "meeting",
           recordingId: e.payload.recording_id,
           noteTitle: e.payload.note_title,
           text: e.payload.text,
           clarifications: e.payload.clarifications,
+          summary: e.payload.summary ?? true,
+          tasks: e.payload.tasks ?? true,
         });
       }
     ).then(fn => unsubs.push(fn));
 
     return () => unsubs.forEach(fn => fn());
-  }, [setStatus, setAlfredState, setResolveSession]);
+  }, [setStatus, setAlfredState, setAlfredTarget, setResolveSession]);
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
@@ -339,6 +400,7 @@ function AppInner() {
         </main>
       </div>
       <GuidedTour />
+      <ReviewModal />
       <ResolveBanner />
       {ingestError && (
         <div style={{
@@ -365,6 +427,30 @@ function AppInner() {
   );
 }
 
+// Panneau de revue « prise terminée » (spec/03) — modal global : quel que soit
+// l'écran d'où on a cliqué « Terminer » (logo, bandeau, /recording, accueil), le
+// choix Supprimer / Continuer s'affiche. En mode contexte (visite guidée), c'est
+// le téléprompteur qui porte la revue — le modal s'efface.
+function ReviewModal() {
+  const status = useRecordingStore((s) => s.status);
+  const reviewRecordingId = useRecordingStore((s) => s.reviewRecordingId);
+  const reviewPurpose = useRecordingStore((s) => s.reviewPurpose);
+
+  if (status !== "stopped" || !reviewRecordingId || reviewPurpose === "context") return null;
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1800,
+      background: "rgba(0,0,0,0.45)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+    }}>
+      <div className="card" style={{ width: "100%", maxWidth: 420, padding: "26px 28px", boxShadow: "0 12px 48px rgba(0,0,0,0.3)" }}>
+        <RecordingReview purpose="meeting" />
+      </div>
+    </div>
+  );
+}
+
 // Invite to the resolution screen when a session is pending (spec/17 §3). Hidden
 // while already on /resolve. Dismiss = drop the session (equivalent to "Ignorer").
 function ResolveBanner() {
@@ -378,7 +464,7 @@ function ResolveBanner() {
   // text (no corrections, no context additions) so the recording is never left
   // without one just because the user skipped the review.
   const dismiss = async () => {
-    if (!session || dismissing) return;
+    if (!session || session.mode !== "meeting" || dismissing) return;
     setDismissing(true);
     try {
       await invoke("finalize_ingestion", {
@@ -386,6 +472,8 @@ function ResolveBanner() {
         correctedText: session.text,
         noteTitle: session.noteTitle,
         contextAdditions: [],
+        summary: session.summary,
+        tasks: session.tasks,
       });
     } catch {
       /* fall through — clearing still unblocks the UI */
@@ -394,7 +482,8 @@ function ResolveBanner() {
     setDismissing(false);
   };
 
-  if (!session || location.pathname === "/resolve") return null;
+  // Le mode contexte (visite guidée) est piloté par la visite — pas de bannière.
+  if (!session || session.mode !== "meeting" || location.pathname === "/resolve") return null;
 
   const c = session.clarifications;
   const count =

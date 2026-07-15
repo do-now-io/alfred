@@ -2,12 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { MdCheck, MdClose, MdVolumeUp, MdAutoFixHigh, MdPersonOutline, MdHelpOutline, MdLightbulbOutline } from "react-icons/md";
-import { useResolveStore } from "../store/resolveStore";
+import { useResolveStore, type ResolveSession, type ContextResolveSession } from "../store/resolveStore";
+import { useTourStore } from "../store/tourStore";
+import type { NoteFile } from "../bindings/NoteFile";
 import NoteEditor from "../components/notes/NoteEditor";
 
 // Augmented-ingestion resolution screen (spec/17 §3): review Claude's grouped
 // propositions, apply the ones you want (one click), tweak the corrected text
 // freely like any note, then finalize. Nothing is auto-applied.
+//
+// MODE CONTEXTE (spec/13 étape 5) : le même écran sert à corriger le contexte
+// créé à la voix — 4 sections éditables + réécoute du WAV + Valider.
 
 type ItemStatus = "pending" | "applied" | "skipped";
 
@@ -119,9 +124,150 @@ function ResolvedRow({ label, onUndo }: { label: string; onUndo: () => void }) {
   );
 }
 
-export default function Resolve() {
+// ─── Mode contexte (spec/13 étape 5) ─────────────────────────────────────────
+
+const SECTION_DEFS: Array<{ key: keyof ContextResolveSession["sections"]; heading: string; label: string }> = [
+  { key: "entreprise", heading: "Mon entreprise", label: "Mon entreprise" },
+  { key: "equipe", heading: "Équipe (prénoms & rôles)", label: "Équipe (prénoms & rôles)" },
+  { key: "vocabulaire", heading: "Vocabulaire maison & noms propres", label: "Vocabulaire & noms propres" },
+  { key: "projets", heading: "Projets en cours", label: "Projets en cours" },
+];
+
+/** Parse le corps de `Contexte Alfred.md` en 4 sections éditables. */
+export function parseContextSections(body: string): ContextResolveSession["sections"] {
+  const sections = { entreprise: "", equipe: "", vocabulaire: "", projets: "" };
+  let current: keyof typeof sections | null = null;
+  const buf: Record<string, string[]> = {};
+  for (const line of body.split("\n")) {
+    const h = line.trim().match(/^##\s+(.*)$/);
+    if (h) {
+      const def = SECTION_DEFS.find((d) => d.heading === h[1].trim());
+      current = def ? def.key : null;
+      continue;
+    }
+    if (current) (buf[current] ??= []).push(line);
+  }
+  for (const def of SECTION_DEFS) {
+    sections[def.key] = (buf[def.key] ?? []).join("\n").trim();
+  }
+  return sections;
+}
+
+/** Réécoute du WAV de la prise de contexte — lecture simple, pas de segments. */
+function ContextAudio({ noteTitle }: { noteTitle: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    invoke<ArrayBuffer>("read_recording_wav", { noteTitle })
+      .then((buf) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+        setUrl(objectUrl);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [noteTitle]);
+  if (!url) return null;
+  return <audio controls src={url} style={{ width: "100%", height: 36 }} />;
+}
+
+function ResolveContext({ session }: { session: ContextResolveSession }) {
   const navigate = useNavigate();
+  const clear = useResolveStore((s) => s.clear);
+  const [sections, setSections] = useState(session.sections);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const validate = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      // Recompose le corps avec les mêmes titres que le template (spec/16), puis
+      // réécrit la note via update_note_file — qui régénère aussi le glossaire
+      // (hook contexte de update_note_file, spec/17 §4).
+      const note = await invoke<NoteFile>("get_note_file", { path: session.contextPath });
+      const body =
+        "# Contexte Alfred\n\n" +
+        SECTION_DEFS.map((d) => `## ${d.heading}\n\n${(sections[d.key] ?? "").trim()}\n`).join("\n");
+      await invoke("update_note_file", { path: session.contextPath, metadata: note.metadata, body });
+      clear();
+      // Dans la visite guidée → carte de clôture « Vous êtes équipé » (spec/13).
+      const tour = useTourStore.getState();
+      if (tour.active) {
+        tour.goto("closing");
+        navigate("/");
+      } else {
+        navigate("/notes");
+      }
+    } catch (e) {
+      setError(String(e));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ height: "100%", overflowY: "auto", display: "flex", justifyContent: "center", padding: "24px" }}>
+      <div style={{ width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 20, color: "var(--text-primary)" }}>Vérifiez ce qu'Alfred a compris</h1>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)" }}>
+            Voici votre contexte, structuré à partir de votre présentation. Corrigez librement — surtout
+            l'orthographe des noms propres — puis validez.
+          </p>
+        </div>
+
+        {session.noteTitle && (
+          <div style={{ ...card, gap: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
+              <MdVolumeUp /> Réécouter votre présentation
+            </div>
+            <ContextAudio noteTitle={session.noteTitle} />
+          </div>
+        )}
+
+        {error && (
+          <div style={{ padding: "8px 12px", borderRadius: 8, background: "var(--tag-red-bg)", color: "var(--tag-red-text)", fontSize: 13 }}>{error}</div>
+        )}
+
+        {SECTION_DEFS.map((d) => (
+          <div key={d.key} style={card}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{d.label}</div>
+            <textarea
+              value={sections[d.key]}
+              onChange={(e) => setSections((s) => ({ ...s, [d.key]: e.target.value }))}
+              rows={Math.max(3, sections[d.key].split("\n").length + 1)}
+              style={{
+                ...smallInput,
+                resize: "vertical", fontFamily: "inherit", lineHeight: 1.5, minHeight: 72,
+              }}
+            />
+          </div>
+        ))}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", paddingBottom: 24 }}>
+          <button onClick={validate} disabled={saving} style={{ ...actionBtn(true), padding: "9px 22px", fontSize: 14, fontWeight: 600 }}>
+            {saving ? "Enregistrement…" : "Valider"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Mode réunion (spec/17 §3) ────────────────────────────────────────────────
+
+export default function Resolve() {
   const session = useResolveStore((s) => s.session);
+  if (session?.mode === "context") return <ResolveContext session={session} />;
+  return <ResolveMeeting session={session ?? null} />;
+}
+
+function ResolveMeeting({ session }: { session: ResolveSession | null }) {
+  const navigate = useNavigate();
   const clear = useResolveStore((s) => s.clear);
 
   const [text, setText] = useState(session?.text ?? "");
@@ -194,6 +340,9 @@ export default function Resolve() {
         correctedText: text,
         noteTitle: session.noteTitle,
         contextAdditions,
+        // Sélection du panneau de revue (spec/03/05) — honorée à la finalisation.
+        summary: session.summary,
+        tasks: session.tasks,
       });
       clear();
       navigate("/notes");

@@ -222,6 +222,7 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
     }
 
     // Create a note in the vault
+    let mut note_path: Option<String> = None;
     if let Some(ref vault_root) = job.vault_path {
         match crate::notes::vault::create_recording_note(
             &vault_root.join(&rec_folder),
@@ -231,6 +232,13 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
         ).await {
             Ok(_) => {
                 eprintln!("[transcription] vault note created: {}", note_title);
+                note_path = Some(
+                    vault_root
+                        .join(&rec_folder)
+                        .join(format!("{}.md", note_title))
+                        .to_string_lossy()
+                        .to_string(),
+                );
                 let _ = job.app_handle.emit("notes-updated", serde_json::json!({}));
             }
             Err(e) => eprintln!("[transcription] failed to create vault note: {}", e),
@@ -244,9 +252,14 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
         "percent": 100
     }))?;
 
+    // `note_title`/`note_path` let the UI target "where Alfred works" (spec/10)
+    // and re-listen to the WAV (moved next to the note) without extra lookups.
     job.app_handle.emit("transcription-complete", serde_json::json!({
         "recording_id": recording_id,
-        "transcription_id": transcription_id
+        "transcription_id": transcription_id,
+        "note_title": note_title,
+        "note_path": note_path,
+        "purpose": job.purpose,
     }))?;
 
     // Route the downstream by recording purpose (spec/13):
@@ -264,7 +277,7 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
     let (summary, tasks) = (job.summary, job.tasks);
     tauri::async_runtime::spawn(async move {
         if purpose == "context" {
-            if let Err(e) = crate::ai::build_context_from_transcription(&rec_id, &text, &db_clone, vault_clone.as_deref(), &app_clone).await {
+            if let Err(e) = crate::ai::build_context_from_transcription(&rec_id, &text, Some(&title), &db_clone, vault_clone.as_deref(), &app_clone).await {
                 eprintln!("Context build error: {}", e);
             }
         } else if !summary && !tasks {

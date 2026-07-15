@@ -5,6 +5,7 @@ pub mod feedback;
 pub mod keychain;
 pub mod metrics;
 pub mod notes;
+pub mod seed;
 pub mod sharing;
 pub mod state;
 pub mod subscription;
@@ -791,7 +792,7 @@ async fn build_context_from_transcription(
             .await
             .map_err(|e| e.to_string())?;
     let text = text.ok_or_else(|| "Aucune transcription pour cet enregistrement".to_string())?;
-    ai::build_context_from_transcription(&recording_id, &text, &state.db, vault_root.as_deref(), &app)
+    ai::build_context_from_transcription(&recording_id, &text, None, &state.db, vault_root.as_deref(), &app)
         .await
         .map_err(|e| e.to_string())
 }
@@ -939,6 +940,23 @@ async fn set_vault_path(
     notes::vault::scaffold_vault(&pb, &recording_folder, &intelligence_folder, &todo_rel_path)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Sème le contenu de démarrage (spec/13) — tâches checklist, notes de démo,
+/// conversation d'exemple. Idempotent (flag `starter_content_seeded`) : ne
+/// re-sème jamais, même si l'utilisateur a tout supprimé.
+#[tauri::command]
+async fn seed_starter_content(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    seed::seed_starter_content(&state.db, vault_root.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("notes-updated", serde_json::json!({}));
+    let _ = app.emit("todos-updated", serde_json::json!({}));
+    Ok(())
 }
 
 #[tauri::command]
@@ -1276,6 +1294,7 @@ pub fn run() {
             get_vault_path,
             set_vault_path,
             pick_vault_folder,
+            seed_starter_content,
             open_context_note,
             generate_glossary_from_context,
             analyze_transcription,

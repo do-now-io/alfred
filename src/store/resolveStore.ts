@@ -8,16 +8,36 @@ import type { Clarifications } from "../bindings/Clarifications";
  * ever fires when the `augmented_ingestion` flag is on.
  */
 export interface ResolveSession {
+  mode: "meeting";
   recordingId: string;
   noteTitle: string;
   /** The raw transcription — the starting point the user corrects. */
   text: string;
   clarifications: Clarifications;
+  /** Traitements aval cochés au panneau de revue (spec/03/05) — honorés à la finalisation. */
+  summary: boolean;
+  tasks: boolean;
 }
 
+/**
+ * Correction du contexte (spec/13 étape 5) : l'écran /resolve en MODE CONTEXTE —
+ * les 4 sections de `Contexte Alfred.md` éditables + réécoute du WAV + Valider.
+ */
+export interface ContextResolveSession {
+  mode: "context";
+  recordingId: string;
+  /** Titre de la note brute de transcription — clé de `read_recording_wav`. */
+  noteTitle: string | null;
+  /** Chemin absolu de `Contexte Alfred.md` (réécrite au Valider). */
+  contextPath: string;
+  sections: { entreprise: string; equipe: string; vocabulaire: string; projets: string };
+}
+
+export type AnyResolveSession = ResolveSession | ContextResolveSession;
+
 interface ResolveStore {
-  session: ResolveSession | null;
-  setSession: (s: ResolveSession) => void;
+  session: AnyResolveSession | null;
+  setSession: (s: AnyResolveSession) => void;
   clear: () => void;
 }
 

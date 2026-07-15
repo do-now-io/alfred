@@ -98,10 +98,13 @@ export default function Notes() {
       const clarifications = await invoke<Clarifications>("analyze_transcription", { recordingId });
       const tr = await invoke<{ raw_text?: string } | null>("get_transcription", { recordingId });
       setResolveSession({
+        mode: "meeting",
         recordingId,
         noteTitle: localMetadata?.title ?? "",
         text: tr?.raw_text ?? localBody,
         clarifications,
+        summary: true,
+        tasks: true,
       });
       navigate("/resolve");
     } catch (e) {

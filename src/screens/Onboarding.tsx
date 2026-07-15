@@ -325,6 +325,11 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     setFinishing(true);
     try { await invoke("set_config", { key: "onboarding_completed", value: "true" }); }
     catch { /* non-fatal */ }
+    // Contenu de démarrage (spec/13) : tâches checklist, notes de démo,
+    // conversation d'exemple — pour que la visite (et l'arrivée hors visite) ait
+    // de la matière. Idempotent côté backend (flag `starter_content_seeded`).
+    try { await invoke("seed_starter_content"); }
+    catch { /* non-fatal */ }
     onDone();
   };
 

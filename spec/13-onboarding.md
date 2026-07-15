@@ -158,6 +158,43 @@ en sections défilantes :
 Le script est **éditable** plus tard (config, hors v1 pour l'éditeur ; le texte par
 défaut vit côté front). Il reprend l'esprit des conseils de captation (spec/03).
 
+### Contenu de démarrage (seed) — pour que la visite ait de la matière
+
+Pendant la visite (étape 3), on parcourt Notes / Tâches / Graphe / Alfred **alors
+que l'utilisateur vient d'arriver** : ces pages seraient **vides**. On sème donc,
+à l'onboarding, un **contenu de démarrage réel** (écrit dans le vault / la base),
+**gardé** (pas de nettoyage auto) — utile comme checklist de prise en main, que
+l'utilisateur **supprime quand il veut**.
+
+- **Semis unique et idempotent** : au scaffolding du vault (ou au 1er lancement de
+  la visite), garder un drapeau de config (ex. `starter_content_seeded = "true"`).
+  **Ne jamais re-semer** ensuite — si l'utilisateur supprime le contenu, il ne
+  revient pas.
+- **Tâches** (`Todo.md`, spec/06) — checklist de démarrage qui **démontre les
+  interactions** (favori = section **Prioritaire** ; statut = sections Prioritaire /
+  En cours / À faire ; `checked` = fait ; `responsable` = assignation). Ex. :
+  - *Prioritaire* : « Faire le tour d'Alfred » (assignée à l'utilisateur).
+  - *En cours* : « Faire un premier enregistrement ».
+  - *À faire* : « Vérifier / compléter mon contexte », « Inviter un collègue »
+    (assignée à un prénom d'exemple).
+  - une tâche déjà **cochée** pour montrer l'état « fait ».
+- **Notes** (`alfred-intelligence/`, spec/07) — **2 notes de démo** (fausses
+  données) avec **frontmatter `project` + `participants`** renseigné, pour que la
+  **vue « Projets »** et le **graphe** aient de la matière (liens entre notes /
+  participants). Ton clairement « exemple » pour ne pas se confondre avec du vrai
+  contenu.
+- **Graphe** (spec/07c) — **pas de seed dédié** : il se peuple **tout seul** à
+  partir des 2 notes de démo (projets / participants partagés).
+- **Alfred / chat** (spec/07b) — **les deux** : (a) une **fausse conversation
+  passée** dans l'historique (SQLite chat, spec/05/10) montrant un échange type ;
+  (b) une **question suggérée** mise en avant (spotlight) que l'utilisateur peut
+  cliquer — dont celle sur le contexte fraîchement créé (*« Que sais-tu de mon
+  équipe et de mes projets ? »*).
+
+> **Note produit** : ce contenu de démarrage sert aussi **hors visite** (un
+> utilisateur qui passe la visite arrive quand même sur des pages non vides). Le
+> semis est donc rattaché à l'**onboarding**, pas à la visite elle-même.
+
 ### Nouvel événement backend
 
 `context-status-changed { status: "done" | "error", recording_id, sections_filled?,

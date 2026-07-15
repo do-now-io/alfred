@@ -57,6 +57,13 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | **Onboarding — contexte à la voix** : visite guidée où le 1er enregistrement (téléprompteur) crée `Contexte Alfred.md` → `build_context_from_transcription` (structure la note) + 1er glossaire ; event `context-status-changed`. `start_recording(purpose)` + migration 010 `recordings.purpose` + routage `process_job`. Front : `Teleprompter`, étapes tour reshapées, suggestion chat contexte (spec 17/13) | UC |
 | [x] | **Transcription parallèle par tranches** (spec 17 §5) : CPU pur trop lent sur les longs fichiers (1H ≈ 30 min en passe unique). Découpe aux silences (>15 min) + workers parallèles (modèle partagé, `state`/worker) + ré-injection du glossaire par tranche + recollage des timestamps. ~1,5–2,5×, cumulable avec modèle/beam. GPU = hors v1 | UC |
 
+## Phase B4 — Partage de notes (spec 18)
+
+| | Tâche | Qui |
+|---|---|---|
+| [ ] | **Backend partage** (spec 18) : `POST /share` (stocke le `.md`, renvoie `{slug, url, manage_token}`) + `GET /s/{slug}` (rendu Markdown→HTML sanitisé, `noindex`, CSS inline) + `DELETE /share/{slug}` (`manage_token`) + table Postgres `shares` ; auth par clé app (byo + AlfredIA) | |
+| [ ] | **Desktop partage** (spec 18) : bouton **Partager** (Notes + Tâches) + commandes `share_note`/`unshare_note`/`get_share_link`/`share_todos` + table SQLite locale `note_shares` + confirmation 1re fois (le contenu quitte le vault) + copie presse-papier / ouvrir dans le navigateur | |
+
 ## Phase C — Desktop, UX & écrans
 
 | | Tâche | Qui |

@@ -62,7 +62,8 @@ par nous).
 | 14  | Feedback                    | ✅ | **Construit.** Onglet texte + images (collage) + email de contact ; catégories bug/feature/praise ; stockage Postgres via backend (consultation SQL) |
 | 15  | Backend AlfredIA + Metrics  | ✅ | **Construit + validé en prod.** Rust/axum, **Coolify** (self-hosted), `api.alfred.do-now.io`, **Postgres**, Stripe 20€/mois (+ annuel) ; proxy, loopback, metrics, feedback |
 | 16  | Contexte interne            | ✅ | **Construit.** Note `Contexte Alfred.md` (contexte maison) injectée dans l'ingestion + Settings ; source du glossaire (spec 17). **Transcription live abandonnée** (code retiré) |
-| 17  | Glossaire & qualité de transcription | 📝 | **Spec faite, rien de codé.** Glossaire (initial_prompt) dérivé de `Contexte Alfred.md` ; beam + seuils anti-hallucination ; ingestion augmentée (propositions groupées). Passe unique (chunking hors v1) |
+| 17  | Glossaire & qualité de transcription | ✅ | **Construit.** Glossaire (initial_prompt) dérivé de `Contexte Alfred.md` (régén auto) ; beam + seuils anti-hallucination ; **transcription parallèle par tranches** (longs fichiers) ; ingestion augmentée + écran `/resolve` ; contexte à la voix (onboarding) |
+| 18  | Partage de notes            | 📝 | **Spec à créer, rien de codé.** Bouton *Partager* → upload du `.md` sur le backend AlfredIA (spec 15) → URL publique par lien + viewer Markdown côté serveur. Minimal, tout en Postgres |
 | —   | Ingest « run Claude » (CLI) | ❌ | **Supprimé** — remplacé par l'ingestion API (spec 05) |
 
 ## Deux modes d'accès à l'IA

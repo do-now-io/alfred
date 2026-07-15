@@ -27,6 +27,26 @@ propres et termes métier. C'est aussi la **source du glossaire Whisper** (spec/
 - **UI** : ligne « Contexte interne » dans Settings (section Notes) → commande
   `open_context_note` (crée si absente) puis ouverture dans `/notes`.
 
+### Écriture par la voix (`write_spoken_context`) — remplacement, pas empilement
+
+Quand le contexte est créé/reconstruit à la voix (visite guidée spec/13,
+`build_context_from_transcription`) :
+
+- **Note encore au template** (jamais éditée par l'utilisateur — sections vides,
+  seule la phrase d'intro et les titres par défaut sont présents) → **remplacer
+  entièrement** le contenu par les sections structurées. **Pas** de conservation des
+  blocs vides, **pas** de section « Appris à l'oral ».
+
+  > **Bug corrigé (feedback tests) :** `context_has_content` considérait le template
+  > (phrase d'intro + titres) comme « du contenu » et prenait le chemin *append*,
+  > d'où des **sections vides dupliquées en tête** + une section « Appris à l'oral »
+  > sous laquelle le vrai contenu était empilé. Le template (intro comprise) ne doit
+  > **jamais** compter comme du contenu utilisateur.
+
+- **Note déjà remplie par l'utilisateur** (vrai contenu saisi) → ne pas écraser :
+  ajouter les nouveautés sous une section datée « Appris à l'oral (AAAA-MM-JJ) »
+  (comportement conservé pour une re-création ultérieure).
+
 ## Usages
 
 1. **Ingestion** (spec/05, Usage 1) : le corps de la note (sans frontmatter,

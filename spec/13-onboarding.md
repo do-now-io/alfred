@@ -68,39 +68,65 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    « Allons-y » / « Plus tard ».
 2. **Enregistrement de contexte (téléprompteur)** — un panneau **téléprompteur**
    affiche le **script** (voir « Script de contexte » ci-dessous), section par
-   section, et porte **ses propres commandes** « Commencer l'enregistrement » /
-   « J'ai terminé » : c'est lui qui lance la prise en **mode contexte**
-   (`purpose: "context"`, voir backend) — et non la carte d'accueil, qui elle
-   démarre une réunion normale. Le script reste visible pendant toute la prise ;
-   l'utilisateur lit/paraphrase à son rythme. Traitement dédié, **pas** d'ingestion
-   réunion. Attend `recording-status-changed → "recording"` puis
-   `→ "stopping"/"processing"`.
-3. **Transcription** — bandeau non bloquant : *« Alfred écoute et met au propre
-   ce que vous venez de dire… »* (piloté par `recording-status-changed =
-   processing`).
-4. **Structuration du contexte** — dès `transcription-complete`, le bandeau
-   change : *« Il range tout ça : votre entreprise, votre équipe, vos projets,
-   votre vocabulaire… »* (Claude structure la transcription dans `Contexte
-   Alfred.md` puis dérive le glossaire — voir backend).
-5. **Contexte prêt** — dès `context-status-changed { status: "done" }` (nouvel
-   événement) pour **ce** `recording_id` : *« Alfred vous connaît maintenant ! »*
-   — aperçu des sections remplies (entreprise / équipe / projets / vocabulaire) +
-   *« {n} noms propres ajoutés au glossaire »*. Boutons **« Relire / corriger »**
-   (ouvre `Contexte Alfred.md` dans `/notes`) et **« Continuer »**.
-6. **Demander à Alfred** — direction l'onglet **Alfred**, spotlight sur une
-   suggestion cliquable qui interroge le **contexte fraîchement créé** :
-   *« Que sais-tu de mon équipe et de mes projets ? »* (ajoutée aux suggestions du
-   chat, spec/07b). Montre qu'Alfred a bien retenu. Attend une réponse (ou avance
-   manuellement si l'utilisateur tape sa propre question).
-7. **Clôture** — carte chaleureuse, ton majordome : *« Vous êtes équipé »* /
-   *« Désormais : parlez, Alfred écoute, résume et retient — et il connaît votre
-   univers. Le reste, vous le découvrirez en l'utilisant. »* → « Terminer ».
+   section, et porte **ses propres commandes** : c'est lui qui lance la prise en
+   **mode contexte** (`purpose: "context"`, voir backend) — et non la carte
+   d'accueil, qui elle démarre une réunion normale. Le script reste visible pendant
+   toute la prise ; l'utilisateur lit/paraphrase à son rythme. Traitement dédié,
+   **pas** d'ingestion réunion.
+
+   **Contrôles enrichis** (feedback tests — l'utilisateur doit pouvoir se
+   reprendre, pas être piégé dès qu'il clique « stop ») :
+   - **Commencer l'enregistrement** (lance la prise).
+   - **Pause / Reprendre** pendant la prise (le chrono se fige, la capture
+     s'interrompt sans clôturer la prise). *Dépend d'un support pause/reprise de la
+     capture audio — voir spec/03 ; à ajouter.*
+   - **J'ai terminé** → **ne lance PAS directement** la transcription. On passe dans
+     un état intermédiaire « prise terminée » offrant :
+     - **Recommencer** — jette la prise et repart à zéro (nouvel enregistrement de
+       contexte, l'audio précédent est écarté).
+     - **Continuer** — valide la prise et lance seulement là la
+       transcription/traitement (mode contexte).
+
+   Attend `recording-status-changed → "recording"` (et `"paused"` le cas échéant)
+   puis, après **Continuer**, `→ "stopping"/"processing"`.
+3. **Visite de l'app pendant la transcription** — la transcription du contexte est
+   **longue** ; au lieu d'un simple bandeau d'attente, la visite **occupe ce temps
+   utile** en faisant découvrir l'app, étape par étape (spotlights non bloquants),
+   pendant que le traitement tourne en arrière-plan :
+   1. **Notes** — où retrouver les comptes-rendus, regroupés par projet (spec/07).
+   2. **Tâches** — `Todo.md` agrégé (sections Prioritaire / En cours / À faire, spec/06).
+   3. **Graphe** — les liens entre notes (spec/07c).
+   4. **Questions à Alfred & comment enregistrer** — le chat (poser une question,
+      suggestions, spec/07b) **et** comment lancer un enregistrement (logo/carte
+      d'accueil, import audio, spec/03).
+
+   Un **indicateur d'état discret** rappelle en permanence qu'Alfred « écoute et met
+   au propre… » puis « range tout ça… » (piloté par `recording-status-changed =
+   processing`, puis `transcription-complete` → structuration).
+4. **Contexte prêt (pop-up)** — **dès** `context-status-changed { status: "done" }`
+   pour **ce** `recording_id`, une pop-up **interrompt la visite** (où qu'on en
+   soit) : *« Alfred vous connaît maintenant — mais vérifiez ce qu'il a compris. »*
+   + aperçu (sections remplies + *« {n} noms propres ajoutés au glossaire »*).
+   **Un seul bouton : « Revoir / corriger »** (l'ancien bouton « Continuer » est
+   **retiré** — on veut forcer le passage par la vérification). Si la visite se
+   termine avant que le contexte soit prêt, on reste sur l'indicateur d'état jusqu'à
+   l'événement.
+5. **Correction du contexte (écran /resolve)** — « Revoir / corriger » ouvre un
+   **écran de correction dédié** — **réutilise l'écran `/resolve`** de l'ingestion
+   augmentée (spec/17) en **mode contexte** : les 4 sections structurées
+   (entreprise / équipe / vocabulaire & noms propres / projets) sont **éditables**,
+   avec ce qu'Alfred a compris et la **réécoute du WAV** (`read_recording_wav`),
+   puis **Valider**. On n'ouvre **plus** la note brute dans `/notes`.
+6. **Clôture** — après validation, carte chaleureuse, ton majordome : *« Vous êtes
+   équipé »* / *« Désormais : parlez, Alfred écoute, résume et retient — et il
+   connaît votre univers. Le reste, vous le découvrirez en l'utilisant. »* →
+   « Terminer ».
 
 **Dégradation gracieuse** : si l'enregistrement/transcription/structuration échoue
 (`status: "error"`), message d'excuse avec l'erreur + « Continuer quand même » →
 clôture directe (le contexte reste alors vide = template, comportement spec/16).
-La tournée ne force jamais la navigation hors des étapes qui en ont explicitement
-besoin (2 et 6) ; si l'utilisateur navigue ailleurs de lui-même, elle s'efface
+La visite ne force jamais la navigation hors des étapes qui en ont explicitement
+besoin (2 et 5) ; si l'utilisateur navigue ailleurs de lui-même, elle s'efface
 silencieusement (traité comme un skip) plutôt que de le rediriger de force.
 
 ### Script de contexte (téléprompteur)
@@ -125,7 +151,9 @@ en sections défilantes :
 >    qu'une machine écorcherait. *Ex. pour un DevOps : « je dis Kube pour Kubernetes,
 >    et j'utilise Grafana, GitHub, Terraform, ArgoCD… ».*
 >
-> Fini ? Cliquez sur **stop**. Vous pourrez tout relire et corriger juste après.
+> Besoin d'une pause ? Mettez en pause et reprenez quand vous voulez. Une fois
+> terminé, vous pourrez **recommencer** si besoin, ou **continuer** — puis tout
+> relire et corriger juste après.
 
 Le script est **éditable** plus tard (config, hors v1 pour l'éditeur ; le texte par
 défaut vit côté front). Il reprend l'esprit des conseils de captation (spec/03).
@@ -186,8 +214,12 @@ Archivé). Idempotent.
 (spec/15) · `test_microphone` · `get_config` / `set_config` (`onboarding_completed`,
 `tour_completed`) · `start_recording(purpose = "meeting" | "context")` /
 `stop_recording` (tournée guidée, via le store d'enregistrement existant) ·
-`build_context_from_transcription` (route « mode contexte » → structure `Contexte
-Alfred.md` + `generate_glossary_from_context`, spec/17).
+**`pause_recording` / `resume_recording`** (à ajouter — contrôles téléprompteur,
+dépend du support pause de la capture, spec/03) · **`discard_recording`** (à
+ajouter — bouton « Recommencer ») · `build_context_from_transcription` (route
+« mode contexte » → structure `Contexte Alfred.md` +
+`generate_glossary_from_context`, spec/17) · `read_recording_wav` (réécoute dans
+l'écran /resolve mode contexte).
 
 ## Hors v1 / plus tard
 

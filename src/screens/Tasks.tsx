@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { MdCheckBox, MdFolderOff, MdUnfoldLess, MdUnfoldMore } from "react-icons/md";
 import NoteEditor, { type NoteEditorHandle } from "../components/notes/NoteEditor";
+import ShareButton from "../components/ShareButton";
 import { useNotesStore } from "../store/notesStore";
 
 const btnStyle = (active: boolean): React.CSSProperties => ({
@@ -118,6 +119,13 @@ export default function Tasks() {
                 : <MdUnfoldLess style={{ verticalAlign: "middle", marginRight: 4 }} />}
               {allCollapsed ? "Tout déplier" : "Tout replier"}
             </button>
+          )}
+          {showContent && (
+            <ShareButton
+              getLink={() => invoke<string | null>("get_todos_share_link")}
+              share={() => invoke<string>("share_todos")}
+              unshare={() => invoke<void>("unshare_todos")}
+            />
           )}
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{relLabel}</span>
         </div>

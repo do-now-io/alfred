@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { MdFolder, MdStickyNote2, MdFactCheck } from "react-icons/md";
 import { useNotesStore, findNodeByRef } from "../store/notesStore";
 import { useResolveStore } from "../store/resolveStore";
+import ShareButton from "../components/ShareButton";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
 import type { Clarifications } from "../bindings/Clarifications";
 import FileTree from "../components/notes/FileTree";
@@ -184,9 +185,9 @@ export default function Notes() {
               onBack={goBack}
               onOpenHistoryEntry={selectFile}
             />
-            {/* Recording notes: re-open the correction screen (spec/17 §3). */}
-            {localMetadata.recording_id && (
-              <div style={{ padding: "6px 16px", display: "flex", justifyContent: "flex-end", borderBottom: "1px solid var(--border)" }}>
+            {/* Note actions: share (any note) + re-open correction (recordings). */}
+            <div style={{ padding: "6px 16px", display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center", borderBottom: "1px solid var(--border)" }}>
+              {localMetadata.recording_id && (
                 <button
                   onClick={handleReview}
                   disabled={analyzing}
@@ -201,8 +202,14 @@ export default function Notes() {
                 >
                   <MdFactCheck size={15} /> {analyzing ? "Analyse…" : "Vérifier / corriger"}
                 </button>
-              </div>
-            )}
+              )}
+              <ShareButton
+                resetKey={selectedFile.path}
+                getLink={() => invoke<string | null>("get_share_link", { notePath: selectedFile.path })}
+                share={() => invoke<string>("share_note", { notePath: selectedFile.path })}
+                unshare={() => invoke<void>("unshare_note", { notePath: selectedFile.path })}
+              />
+            </div>
             <PropertiesPanel metadata={localMetadata} onChange={handleMetadataChange} />
 
             <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>

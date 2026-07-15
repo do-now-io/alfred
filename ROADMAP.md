@@ -61,8 +61,8 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 
 | | Tâche | Qui |
 |---|---|---|
-| [ ] | **Backend partage** (spec 18) : `POST /share` (stocke le `.md`, renvoie `{slug, url, manage_token}`) + `GET /s/{slug}` (rendu Markdown→HTML sanitisé, `noindex`, CSS inline) + `DELETE /share/{slug}` (`manage_token`) + table Postgres `shares` ; auth par clé app (byo + AlfredIA) | |
-| [ ] | **Desktop partage** (spec 18) : bouton **Partager** (Notes + Tâches) + commandes `share_note`/`unshare_note`/`get_share_link`/`share_todos` + table SQLite locale `note_shares` + confirmation 1re fois (le contenu quitte le vault) + copie presse-papier / ouvrir dans le navigateur | |
+| [x] | **Backend partage** (spec 18) : `POST /share` + `GET /s/{slug}` (rendu comrak **mode sûr**, `noindex`, CSP stricte, CSS inline clair/sombre) + `PUT`/`DELETE /share/{slug}` (`manage_token` hashé) + migration `0006_shares` (Postgres) ; auth clé app optionnelle (byo + AlfredIA) ; tests XSS/GFM | UC |
+| [x] | **Desktop partage** (spec 18) : composant `ShareButton` (Notes + Tâches) + commandes `share_note`/`unshare_note`/`get_share_link` (+ `share_todos`/`get_todos_share_link`/`unshare_todos`) + migration locale `011_note_shares` + confirmation 1re fois (le contenu quitte le vault) + copie presse-papier ; re-partage = **même URL** (PUT) | UC |
 
 ## Phase C — Desktop, UX & écrans
 

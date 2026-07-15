@@ -53,7 +53,7 @@ Auth par **clé applicative embarquée** (en-tête, comme `/feedback` et `/metri
 | `POST /share` | `{ title, markdown, install_id, app_version, os }` → `{ slug, url, manage_token }`. Génère le slug, stocke en Postgres. Rejette si `> SHARE_MAX_BYTES`. |
 | `GET /s/{slug}` | Rend le Markdown en **HTML sanitisé** (page auto-portante, CSS inline, `noindex`). **404** si absent/révoqué. |
 | `DELETE /share/{slug}` | Corps/en-tête `manage_token` (comparé au hash stocké) → supprime. |
-| `PUT /share/{slug}` *(option)* | `manage_token` → met à jour le Markdown sur la **même** URL (re-partage après édition). Sinon, chaque partage = **nouvelle** URL. |
+| `PUT /share/{slug}` | `manage_token` → met à jour le Markdown sur la **même** URL (re-partage après édition — le lien déjà envoyé reste valide et à jour). |
 
 ## Données (PostgreSQL)
 

@@ -5,6 +5,7 @@ pub mod feedback;
 pub mod keychain;
 pub mod metrics;
 pub mod notes;
+pub mod sharing;
 pub mod state;
 pub mod subscription;
 pub mod todos;
@@ -612,6 +613,91 @@ async fn build_context_from_transcription(
         .map_err(|e| e.to_string())
 }
 
+// ─── Note sharing (spec/18) ──────────────────────────────────────────────────
+
+/// Share a note: upload its Markdown (frontmatter stripped — internal metadata
+/// like `recording_id` never leaves the vault) and return the public URL. Idempotent
+/// per note: re-sharing updates the same URL.
+#[tauri::command]
+async fn share_note(
+    note_path: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let raw = tokio::fs::read_to_string(&note_path)
+        .await
+        .map_err(|e| format!("Lecture de la note: {}", e))?;
+    let stem = std::path::Path::new(&note_path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let (metadata, body) = notes::frontmatter::parse(&raw, &stem);
+    sharing::upload_share(&state.db, &state.http_client, &note_path, &metadata.title, &body)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Absolute path of the aggregated task list (`Todo.md`) — the local share key.
+async fn todos_key(state: &tauri::State<'_, AppState>) -> Result<(std::path::PathBuf, String), String> {
+    let vault_root = state
+        .vault_path
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| "Vault non configuré".to_string())?;
+    let rel = todos::todo_file_path(&state.db).await;
+    let path = vault_root.join(&rel);
+    let key = path.to_string_lossy().to_string();
+    Ok((path, key))
+}
+
+/// Share the aggregated task list (`Todo.md`).
+#[tauri::command]
+async fn share_todos(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let (path, key) = todos_key(&state).await?;
+    let markdown = tokio::fs::read_to_string(&path)
+        .await
+        .map_err(|e| format!("Lecture des tâches: {}", e))?;
+    sharing::upload_share(&state.db, &state.http_client, &key, "Tâches", &markdown)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Public URL of the shared task list, if any.
+#[tauri::command]
+async fn get_todos_share_link(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
+    let (_, key) = todos_key(&state).await?;
+    Ok(sharing::share_link(&state.db, &key).await)
+}
+
+/// Stop sharing the task list.
+#[tauri::command]
+async fn unshare_todos(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let (_, key) = todos_key(&state).await?;
+    sharing::remove_share(&state.db, &state.http_client, &key)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Stop sharing a note (revoke the public link).
+#[tauri::command]
+async fn unshare_note(
+    note_path: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    sharing::remove_share(&state.db, &state.http_client, &note_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// The public URL if this note (or Todo.md path) is currently shared, else null.
+#[tauri::command]
+async fn get_share_link(
+    note_path: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    Ok(sharing::share_link(&state.db, &note_path).await)
+}
+
 /// Raw WAV bytes for a recording (by its note title), for the "🔊 réécouter"
 /// button of the resolution screen (spec/17 §3). Returns an ArrayBuffer to the
 /// front (efficient — no base64/JSON-array bloat); the UI seeks to the segment.
@@ -997,6 +1083,12 @@ pub fn run() {
             finalize_ingestion,
             build_context_from_transcription,
             read_recording_wav,
+            share_note,
+            share_todos,
+            unshare_note,
+            get_share_link,
+            get_todos_share_link,
+            unshare_todos,
             // Config & Keychain
             get_config,
             set_config,

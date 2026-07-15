@@ -69,6 +69,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | | Tâche | Qui |
 |---|---|---|
 | [~] | **Accueil « Alfred »** : brief ✅ + bloc tâches dépliable (par sections Prioritaire/En cours/À faire) ✅ + input chat + exemples ✅ (teaser qui envoie vers `/ai-actions` ; **historique/liste de conversations sur la page** reste à faire, cf tâche Chat) | UC |
+| [ ] | **Indicateur d'état = où Alfred travaille (spec/10, feedback tests)** : (a) le **point ambre** d'une note = la note qu'Alfred **traite** (transcription/analyse/contexte), plus « note sélectionnée » (highlight suffit) ; (b) **indicateur majordome cliquable** → navigue vers la cible en cours. Ajouter une **cible active** à `alfredStatusStore` (`targetPath`/`targetRoute`/`recordingId`) alimentée par les events | |
 | [x] | **Indicateur d'état** (topbar, labels majordome) + **bandeau d'enregistrement** (timer + volume live + stop) | UC |
 | [x] | Déclenchement via **logo** (hover micro) + **page de guidage** d'enregistrement (`/recording`, conseils de captation éditables) | UC |
 | [x] | **Import de fichier audio** (spec/03) : commande `import_audio_file` (picker WAV → copie `recordings/<uuid>.wav`, `source='import'`, réutilise la file de transcription via `transcription::enqueue_job` partagé avec `stop_recording`) + migration 009 (CHECK `source` élargi) + bouton « Importer un audio » sur `/recording` **et sur l'accueil** (sous la carte d'enregistrement, état repos — `/recording` n'étant atteignable qu'en enregistrant) | UC |

@@ -67,6 +67,37 @@ de « analyse » (une seule ingestion fusionnée, spec/05) — pas de 5ᵉ état
 sans événement réel derrière. Labels codés en dur pour l'instant (pas encore
 éditables dans l'app).
 
+### Indicateur d'état = où Alfred travaille — 📝 à faire (feedback tests)
+
+Deux évolutions demandées pour que l'état ne dise pas seulement *quoi*, mais aussi
+*sur quoi* :
+
+1. **Le point ambre d'une note = la note qu'Alfred traite en ce moment** (et **non**
+   « note sélectionnée »). Aujourd'hui, dans les **Récents** (`App.tsx`, `Recents()`)
+   et les listes de notes, le point ambre double le **highlight** de la note ouverte
+   (`item.path === selectedPath`) — redondant. On le **réaffecte** : le point marque
+   la note sur laquelle Alfred est en train de travailler —
+   - **transcription** → la note brute d'enregistrement (`alfred-raw/`, celle datée
+     en cours de transcription),
+   - **analyse (ingestion)** → la note / le compte-rendu en cours de rédaction,
+   - **contexte** (visite guidée, spec/13) → `Contexte Alfred.md`.
+
+   La sélection reste indiquée par le seul **highlight**. Le point n'apparaît que
+   quand une cible existe (la note brute apparaît à `transcription-complete` ; avant,
+   pas de point).
+2. **Cliquer l'indicateur majordome navigue vers ce qu'Alfred fait.** Le libellé
+   sous le logo (« Je cogite… », « Je prends note… », …) devient **cliquable** et
+   amène sur la cible courante (la note en cours de traitement, ou l'écran concerné :
+   `/notes` sur la note, `/resolve` si une session de correction est ouverte, etc.).
+   Au repos (« À votre service »), non cliquable.
+
+**Impact technique** : `alfredStatusStore` ne porte aujourd'hui qu'un `state`. Il
+faut lui ajouter une **cible active** — p. ex. `{ state, targetPath?, targetRoute?,
+recordingId? }` — alimentée par les mêmes événements (`recording-status-changed`,
+`transcription-complete`, `ingestion-status-changed`, `context-status-changed`),
+en résolvant le `recording_id` → chemin de note dès qu'elle existe. Le point ambre
+et le clic lisent cette cible.
+
 ## Page Alfred (`/`) — trois blocs
 
 1. **« Aujourd'hui »** — ✅ brief quotidien (spec/05, `generate_daily_brief`/

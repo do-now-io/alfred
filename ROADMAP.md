@@ -40,7 +40,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | IA : passer aux modèles **Sonnet 5 / Haiku 4.5** ; **sorties structurées** ; **routage 2 modes** ; thinking off (fait pour l'ingestion ; chat.rs pas encore aligné sur `thinking: disabled`) | UC |
 | [x] | **Ingestion** (fusionnée) : 1 appel → compte-rendu (`alfred-intelligence/`) + tâches (`Todo.md` + SQLite en double écriture, cf tâche suivante) | UC |
 | [x] | **Todos → vault** : `Todo.md` seule source de vérité — table SQLite supprimée (migration 007), double écriture de l'ingestion retirée, commandes refondues sur le fichier (id = titre normalisé), code mort frontend (todoStore/TodoItem) supprimé | UC |
-| [ ] | Notes : frontmatter **`project` + `participants`** ; structure `alfred-raw`/`alfred-intelligence` ; regroupement par projet ; **plus de `.claude`/skills** dans le vault | |
+| [x] | Notes : frontmatter **`project` + `participants`** (peuplés par l'ingestion) ; structure `alfred-raw`/`alfred-intelligence` ✅ ; **regroupement par projet** (vue « Projets » dans l'arbre, dossiers virtuels — `get_notes_by_project`) ✅ ; **plus de `.claude`/skills** ✅. *Rangement physique par projet = hors v1* | UC |
 | [x] | **Brief quotidien** (`generate/get_daily_brief`) | UC |
 | [x] | **Chat** : historique multi-conversations + liste (persistance SQLite, migration 006 ; liste/reprise/suppression dans le panneau chat) | UC |
 | [~] | **Metrics** : `install_id` anonyme + envoi des événements | UC |

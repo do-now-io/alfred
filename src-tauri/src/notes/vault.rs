@@ -171,6 +171,53 @@ pub fn list_recent_notes(root: &Path, limit: usize) -> Result<Vec<RecentNote>> {
     Ok(recents)
 }
 
+/// A note plus its `project` frontmatter, for the "group by project" view (spec/07).
+#[derive(Debug, Serialize, Deserialize, Clone, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ProjectNote {
+    pub path: String,
+    pub title: String,
+    /// `null` → shown under "Sans projet".
+    pub project: Option<String>,
+    #[serde(rename = "type")]
+    pub note_type: String,
+}
+
+/// Every `.md` note in the vault with its title/project/type, for virtual
+/// grouping by project in the Notes UI (spec/07 — no file is moved). Reads each
+/// note's frontmatter; fine for the small vaults of ~10 users.
+pub fn list_notes_with_project(root: &Path) -> Result<Vec<ProjectNote>> {
+    if !root.exists() {
+        return Err(anyhow!("Vault folder does not exist: {:?}", root));
+    }
+    let notes = WalkDir::new(root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().is_file()
+                && e.path().extension().map(|x| x == "md").unwrap_or(false)
+                && !e
+                    .path()
+                    .components()
+                    .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+        })
+        .filter_map(|e| {
+            let path = e.path();
+            let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            let raw = std::fs::read_to_string(path).ok()?;
+            let meta = frontmatter::parse(&raw, &stem).0;
+            let project = meta.project.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+            Some(ProjectNote {
+                path: path.to_string_lossy().to_string(),
+                title: meta.title,
+                project,
+                note_type: meta.note_type,
+            })
+        })
+        .collect();
+    Ok(notes)
+}
+
 // ─── File I/O ─────────────────────────────────────────────────────────────────
 
 pub async fn get_note_file(path: &Path) -> Result<NoteFile> {

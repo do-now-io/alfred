@@ -91,6 +91,8 @@ Consignes :
 - `resume` : compte-rendu structuré en Markdown (points clés abordés), en français, concis.
 - `points_cles` : liste des points clés abordés, en phrases courtes.
 - `taches` : chaque tâche à faire identifiée dans la transcription. Quand un responsable est nommé (prénom), rappelle-le dans `responsable` — c'est important, ne l'invente pas s'il n'est pas mentionné. `echeance` au format YYYY-MM-DD si une date est mentionnée, sinon omets-la.
+- `participants` : les prénoms des personnes présentes / citées comme participant à l'échange (pas les personnes simplement mentionnées). Liste vide si indéterminable.
+- `project` : le nom du projet concerné, UNIQUEMENT s'il est clairement identifiable (nommé dans la transcription ou reconnaissable via le contexte interne). Omets-le sinon — ne devine pas.
 - N'invente rien : si la transcription est trop courte ou vide de contenu exploitable, renvoie un résumé bref, une liste de points clés vide, et aucune tâche."#;
 
 fn ingestion_tool() -> serde_json::Value {
@@ -119,6 +121,15 @@ fn ingestion_tool() -> serde_json::Value {
                         },
                         "required": ["titre"]
                     }
+                },
+                "participants": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Prénoms des participants à l'échange"
+                },
+                "project": {
+                    "type": "string",
+                    "description": "Nom du projet concerné, seulement si clairement identifiable"
                 }
             },
             "required": ["resume", "points_cles", "taches"]
@@ -133,6 +144,10 @@ struct IngestionOutput {
     points_cles: Vec<String>,
     #[serde(default)]
     taches: Vec<IngestedTask>,
+    #[serde(default)]
+    participants: Vec<String>,
+    #[serde(default)]
+    project: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -256,7 +271,8 @@ async fn run_ingestion_core(
     if let Some(vault_root) = vault_root {
         // 1. Compte-rendu → alfred-intelligence/{titre}.md
         let folder = vault_root.join(intelligence_folder(db).await);
-        let metadata = crate::notes::NoteMetadata::for_meeting_report(note_title, recording_id, vec![], None);
+        let project = output.project.as_deref().map(str::trim).filter(|p| !p.is_empty()).map(str::to_string);
+        let metadata = crate::notes::NoteMetadata::for_meeting_report(note_title, recording_id, output.participants.clone(), project);
         let mut body = output.resume.clone();
         if !output.points_cles.is_empty() {
             body.push_str("\n\n## Points clés\n");

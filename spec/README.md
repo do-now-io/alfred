@@ -50,7 +50,7 @@ par nous).
 | 04  | Transcription               | ✅ | Whisper **par défaut** (Windows + macOS), `small` **embarqué** ; **qualité décodage** (beam + seuils) + **glossaire** + **transcription parallèle par tranches** sur les longs fichiers (spec 17) ; langue détectée stockée. Reste (mineur) : progression par segment (0/100 seulement) |
 | 05  | AI Brain + Ingestion        | ✅ | **Ingestion fusionnée** (compte-rendu + tâches) ✅ ; **ingestion augmentée** (analyse → écran `/resolve`) ✅ ; **chat (RAG)** + historique ✅ ; **brief quotidien** ✅ ; 2 modes d'accès ; **contexte interne** (spec 16) ✅ |
 | 06  | Todos                       | ✅ | `Todo.md` = source unique ; table SQLite supprimée (migration 007) ; commandes refondues sur le fichier |
-| 07  | Notes (vault)               | 🚧 | Structure `alfred-*` ✅ ; skills/`.claude` retirés (Phase D) ✅ ; **reste : regroupement par `project`** (dossiers virtuels) + frontmatter `participants`/`project` peuplés |
+| 07  | Notes (vault)               | ✅ | Structure `alfred-*` ✅ ; skills/`.claude` retirés ✅ ; **frontmatter `project`/`participants` peuplés par l'ingestion** ✅ ; **regroupement par projet** (vue « Projets », dossiers virtuels) ✅. *Rangement physique par projet = hors v1* |
 | 07b | Notes — Chat (RAG)          | ✅ | Construit (`ask_notes`) + spec faite |
 | 07c | Notes — Graphe              | ✅ | Construit (`get_vault_graph`) + spec faite |
 | 08  | Suggestions                 | 🕓 | **Hors v1** — code retiré (Phase D) |

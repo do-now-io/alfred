@@ -514,6 +514,19 @@ async fn get_recent_notes(
         .map_err(|e| e.to_string())
 }
 
+/// Every note with its `project` frontmatter, for the "group by project" view
+/// (spec/07). Grouping is virtual — no file is moved.
+#[tauri::command]
+async fn get_notes_by_project(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<notes::vault::ProjectNote>, String> {
+    let root = get_vault_root(&state)?;
+    tokio::task::spawn_blocking(move || notes::vault::list_notes_with_project(&root))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn get_vault_graph(
     state: tauri::State<'_, AppState>,
@@ -1073,6 +1086,7 @@ pub fn run() {
             delete_note_file,
             rename_note_file,
             get_recent_notes,
+            get_notes_by_project,
             get_vault_graph,
             get_vault_path,
             set_vault_path,

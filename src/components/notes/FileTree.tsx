@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { MdMoveToInbox, MdAutorenew, MdCheck, MdErrorOutline } from "react-icons/md";
+import { MdMoveToInbox, MdAutorenew, MdCheck, MdErrorOutline, MdStickyNote2, MdFolderSpecial } from "react-icons/md";
 import type { VaultNode } from "../../bindings/VaultNode";
+import type { ProjectNote } from "../../bindings/ProjectNote";
 import { useNotesStore } from "../../store/notesStore";
 import FileTreeNode from "./FileTreeNode";
 
@@ -20,6 +21,40 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
   const [newName, setNewName] = useState("");
   const [ingest, setIngest] = useState<IngestState>("idle");
   const [ingestError, setIngestError] = useState<string | null>(null);
+  const [view, setView] = useState<"folders" | "projects">("folders");
+  const [projectNotes, setProjectNotes] = useState<ProjectNote[]>([]);
+
+  // Project view (spec/07): virtual grouping by frontmatter `project`, no file
+  // moved. Reload when switching to it or when the vault changes (`tree` advances
+  // on every notes-updated, so this also refreshes after an ingestion).
+  useEffect(() => {
+    if (view !== "projects" || !vaultPath) return;
+    let cancelled = false;
+    invoke<ProjectNote[]>("get_notes_by_project")
+      .then((n) => { if (!cancelled) setProjectNotes(n); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [view, vaultPath, tree]);
+
+  // Group notes by project; named projects alpha, "Sans projet" last.
+  const projectGroups = useMemo(() => {
+    const map = new Map<string, ProjectNote[]>();
+    for (const n of projectNotes) {
+      const key = n.project?.trim() || "";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(n);
+    }
+    return [...map.entries()]
+      .map(([project, notes]) => ({
+        project,
+        notes: notes.sort((a, b) => a.title.localeCompare(b.title)),
+      }))
+      .sort((a, b) => {
+        if (a.project === "") return 1; // "Sans projet" last
+        if (b.project === "") return -1;
+        return a.project.localeCompare(b.project);
+      });
+  }, [projectNotes]);
 
   const handleCreate = async () => {
     if (!vaultPath) return;
@@ -100,6 +135,27 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
         )}
       </div>
 
+      {/* View toggle: physical folders vs virtual grouping by project (spec/07). */}
+      {vaultPath && (
+        <div style={{ display: "flex", gap: 4, padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
+          {([["folders", "Dossiers", <MdStickyNote2 key="f" />], ["projects", "Projets", <MdFolderSpecial key="p" />]] as const).map(([id, label, icon]) => (
+            <button
+              key={id}
+              onClick={() => setView(id)}
+              style={{
+                flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
+                background: view === id ? "var(--active-bg)" : "transparent",
+                color: view === id ? "var(--accent)" : "var(--text-secondary)",
+                border: "1px solid var(--border)", borderRadius: 6,
+                padding: "4px 0", cursor: "pointer", fontSize: 12,
+              }}
+            >
+              {icon} {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Tree */}
       <div style={{ flex: 1, overflowY: "auto", padding: "4px 4px" }}>
         {!vaultPath && (
@@ -109,7 +165,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
           </div>
         )}
 
-        {tree && tree.children.map(node => (
+        {vaultPath && view === "folders" && tree && tree.children.map(node => (
           <FileTreeNode
             key={node.path}
             node={node}
@@ -120,6 +176,46 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
             onRename={handleRename}
           />
         ))}
+
+        {vaultPath && view === "projects" && (
+          projectGroups.length === 0 ? (
+            <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.6 }}>
+              Aucune note.
+            </div>
+          ) : projectGroups.map(({ project, notes }) => (
+            <div key={project || "__none__"} style={{ marginBottom: 6 }}>
+              <div style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "5px 8px", fontSize: 11, fontWeight: 700,
+                color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em",
+              }}>
+                <MdFolderSpecial size={13} style={{ color: project ? "var(--accent)" : "var(--text-muted)" }} />
+                {project || "Sans projet"}
+                <span style={{ marginLeft: "auto", opacity: 0.7 }}>{notes.length}</span>
+              </div>
+              {notes.map((n) => {
+                const active = n.path === selectedPath;
+                return (
+                  <div
+                    key={n.path}
+                    onClick={() => onSelect(n.path)}
+                    title={n.title}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 7,
+                      padding: "5px 8px 5px 22px", cursor: "pointer", fontSize: 13,
+                      borderRadius: 6, color: active ? "var(--accent)" : "var(--text-secondary)",
+                      background: active ? "var(--active-bg)" : "transparent",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}
+                  >
+                    <MdStickyNote2 size={14} style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.title}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ))
+        )}
       </div>
 
       {/* Rename dialog */}

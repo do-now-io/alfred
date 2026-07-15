@@ -46,24 +46,24 @@ par nous).
 | 00  | Architecture                | 🚧 | Refonte : backend/proxy, vault, IA=API, sans calendrier ni CLI |
 | 01  | Data Model                  | 🚧 | SQLite = config/état ; todos → vault ; calendrier hors v1 |
 | 02  | Calendar                    | 🕓 | **Hors v1** — code retiré (Phase D : modules `auth`/`calendar` supprimés, tables droppées) |
-| 03  | Audio Recording             | 🚧 | Micro + **audio système Windows** (WASAPI loopback + mixed) faits ; macOS système à coder ; trigger logo/bandeau ; page de guidage ; feedback live (volume, timer) |
-| 04  | Transcription               | 🚧 | Whisper **par défaut** (Windows + macOS), modèle `small` **embarqué** au build ; **qualité décodage + glossaire** à construire (spec 17 ; passe unique, pas de chunking) |
-| 05  | AI Brain + Ingestion        | 🚧 | **Ingestion fusionnée** ✅ (compte-rendu + tâches, tool-use structuré) ; **chat (RAG)** ✅ ; **brief quotidien** ❌ pas commencé ; 2 modes d'accès ; **contexte interne** ✅ (spec 16) ; **ingestion augmentée** à construire (spec 17) |
+| 03  | Audio Recording             | 🚧 | Micro ✅ + **audio système Windows** (WASAPI loopback + mixed) ✅ + **import fichier audio (WAV)** ✅ ; trigger logo/bandeau + page de guidage + feedback live (volume, timer) ✅ ; **reste : audio système macOS** (helper Swift) |
+| 04  | Transcription               | ✅ | Whisper **par défaut** (Windows + macOS), `small` **embarqué** ; **qualité décodage** (beam + seuils) + **glossaire** + **transcription parallèle par tranches** sur les longs fichiers (spec 17) ; langue détectée stockée. Reste (mineur) : progression par segment (0/100 seulement) |
+| 05  | AI Brain + Ingestion        | ✅ | **Ingestion fusionnée** (compte-rendu + tâches) ✅ ; **ingestion augmentée** (analyse → écran `/resolve`) ✅ ; **chat (RAG)** + historique ✅ ; **brief quotidien** ✅ ; 2 modes d'accès ; **contexte interne** (spec 16) ✅ |
 | 06  | Todos                       | ✅ | `Todo.md` = source unique ; table SQLite supprimée (migration 007) ; commandes refondues sur le fichier |
-| 07  | Notes (vault)               | 🚧 | Structure `alfred-*` ; supprimer skills/`.claude` ; regroupement par `project` (dossiers virtuels) |
+| 07  | Notes (vault)               | 🚧 | Structure `alfred-*` ✅ ; skills/`.claude` retirés (Phase D) ✅ ; **reste : regroupement par `project`** (dossiers virtuels) + frontmatter `participants`/`project` peuplés |
 | 07b | Notes — Chat (RAG)          | ✅ | Construit (`ask_notes`) + spec faite |
 | 07c | Notes — Graphe              | ✅ | Construit (`get_vault_graph`) + spec faite |
 | 08  | Suggestions                 | 🕓 | **Hors v1** — code retiré (Phase D) |
 | 09  | Phone Calls (Vapi)          | 🕓 | **Hors v1** — code retiré (Phase D) |
-| 10  | Accueil « Alfred » & UI     | 🚧 | **Spec faite.** Page Alfred (brief + tâches + chat avec historique/liste) ; bandeau enregistrement ; indicateur d'état ; nav réduite ; recherche retirée |
+| 10  | Accueil « Alfred » & UI     | 🚧 | Brief + tâches (sections) + bandeau d'enregistrement + indicateur d'état + nav réduite (recherche retirée) ✅ ; **reste : historique/liste de conversations sur la page** |
 | 11  | Settings                    | ✅ | **Construit.** Accès IA (clé perso / AlfredIA) ; Whisper ; enregistrement ; vault ; Todo ; Vapi/Google/Places/calendrier/ingest CLI retirés ; défauts `alfred-*` |
 | 12  | Permissions                 | 🚧 | **Spec faite.** Cross-platform ; micro + capture système ; retirer apple-events/calendrier ; signature macOS/Windows |
-| 13  | Onboarding                  | 🚧 | **Spec faite.** Intro (2 slides) ; détection/intégration vault + création dossiers ; choix clé perso / AlfredIA ; test micro ; Whisper → Paramètres |
-| 14  | Feedback                    | ✅ | **Construit.** Onglet texte + images (collage) + email de contact ; catégories bug/feature/praise ; stockage Postgres via backend (consultation SQL) |
+| 13  | Onboarding                  | 🚧 | Intro (2 slides) + détection/création vault + choix clé perso / AlfredIA + test micro ✅ ; **visite guidée = contexte à la voix** (téléprompteur → `Contexte Alfred.md` + glossaire, spec 17) ✅ ; **reste : finitions du wizard** |
+| 14  | Feedback                    | ✅ | **Construit.** Onglet texte + images (collage) + email de contact ; catégories bug/feature/praise ; stockage Postgres via backend. 🟡 **widget discret topbar** en cours (Tanguy) |
 | 15  | Backend AlfredIA + Metrics  | ✅ | **Construit + validé en prod.** Rust/axum, **Coolify** (self-hosted), `api.alfred.do-now.io`, **Postgres**, Stripe 20€/mois (+ annuel) ; proxy, loopback, metrics, feedback |
 | 16  | Contexte interne            | ✅ | **Construit.** Note `Contexte Alfred.md` (contexte maison) injectée dans l'ingestion + Settings ; source du glossaire (spec 17). **Transcription live abandonnée** (code retiré) |
 | 17  | Glossaire & qualité de transcription | ✅ | **Construit.** Glossaire (initial_prompt) dérivé de `Contexte Alfred.md` (régén auto) ; beam + seuils anti-hallucination ; **transcription parallèle par tranches** (longs fichiers) ; ingestion augmentée + écran `/resolve` ; contexte à la voix (onboarding) |
-| 18  | Partage de notes            | 📝 | **Spec à créer, rien de codé.** Bouton *Partager* → upload du `.md` sur le backend AlfredIA (spec 15) → URL publique par lien + viewer Markdown côté serveur. Minimal, tout en Postgres |
+| 18  | Partage de notes            | ✅ | **Construit** (à déployer/tester en réel). `POST /share` + `GET /s/{slug}` (rendu comrak **mode sûr**, `noindex`, CSP) + `PUT`/`DELETE` ; bouton **Partager** (Notes + Tâches) → URL publique par lien, révocable, re-partage = même URL. Tout en Postgres |
 | —   | Ingest « run Claude » (CLI) | ❌ | **Supprimé** — remplacé par l'ingestion API (spec 05) |
 
 ## Deux modes d'accès à l'IA
@@ -86,7 +86,13 @@ Les 3 risques qui gataient le lancement sont **levés** :
 2. ✅ **Audio système Windows** (WASAPI loopback + mixed) — fait, testé. Reste **macOS** (helper Swift ScreenCaptureKit), non commencé.
 3. ✅ **Whisper par défaut, cross-platform** — feature par défaut + modèle `small` embarqué, installeurs Windows testés (transcription offline dès le 1er lancement).
 
-**Nouveau risque en tête** : la **Phase C (UX/écrans)** est quasi entièrement à construire (Accueil, Onboarding, nav, bandeau d'enregistrement, Feedback) — c'est elle qui bloque une v1 montrable aux ~10 users, le moteur (Phases A/B) étant largement en avance.
+Le **moteur** (capture, transcription, IA, notes, backend) et la **Phase C (UX/écrans)** sont désormais **largement construits**. **Ce qui reste pour une v1 livrable** :
+
+1. ⚠️ **Packaging & signature** — **macOS** (entitlements + Developer ID + notarisation) et **Windows** (signature Authenticode) : **le plus gros bloc restant** (Phase E), gate la distribution aux ~10 users.
+2. ⚠️ **Audio système macOS** (helper Swift ScreenCaptureKit) — non commencé.
+3. 🟡 **Finitions UX** : onboarding (wizard), accueil (historique chat sur la page), widget feedback.
+4. 🟡 **Déployer + tester** le partage de notes (spec 18).
+5. ❌ Optionnel : regroupement des notes **par projet** (spec 07).
 
 ## Suivi des tâches
 

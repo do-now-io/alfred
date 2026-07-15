@@ -1,8 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { MdFolder, MdStickyNote2 } from "react-icons/md";
+import { invoke } from "@tauri-apps/api/core";
+import { useNavigate } from "react-router-dom";
+import { MdFolder, MdStickyNote2, MdFactCheck } from "react-icons/md";
 import { useNotesStore, findNodeByRef } from "../store/notesStore";
+import { useResolveStore } from "../store/resolveStore";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
+import type { Clarifications } from "../bindings/Clarifications";
 import FileTree from "../components/notes/FileTree";
 import PropertiesPanel from "../components/notes/PropertiesPanel";
 import NoteEditor, { type NoteEditorHandle } from "../components/notes/NoteEditor";
@@ -26,6 +30,10 @@ export default function Notes() {
     fetchTree, selectFile, goBack, updateNote,
     fetchVaultPath, setVaultPath, pickVaultFolder,
   } = useNotesStore();
+
+  const navigate = useNavigate();
+  const setResolveSession = useResolveStore((s) => s.setSession);
+  const [analyzing, setAnalyzing] = useState(false);
 
   const [localMetadata, setLocalMetadata] = useState<NoteMetadata | null>(null);
   const [localBody, setLocalBody] = useState("");
@@ -75,6 +83,32 @@ export default function Notes() {
   const handlePickVault = async () => {
     const picked = await pickVaultFolder();
     if (picked) await setVaultPath(picked);
+  };
+
+  // Re-open the correction screen for a recording note (spec/17 §3): re-run the
+  // analysis on its transcription and hydrate the /resolve session. Lets the user
+  // review after quitting/relaunching (the live session isn't persisted). Costs
+  // one Claude analysis call.
+  const handleReview = async () => {
+    const recordingId = localMetadata?.recording_id;
+    if (!recordingId || analyzing) return;
+    setAnalyzing(true);
+    try {
+      const clarifications = await invoke<Clarifications>("analyze_transcription", { recordingId });
+      const tr = await invoke<{ raw_text?: string } | null>("get_transcription", { recordingId });
+      setResolveSession({
+        recordingId,
+        noteTitle: localMetadata?.title ?? "",
+        text: tr?.raw_text ?? localBody,
+        clarifications,
+      });
+      navigate("/resolve");
+    } catch (e) {
+      console.error("[notes] analyze_transcription failed:", e);
+      window.alert(`Analyse impossible : ${e}`);
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleWikilink = useCallback((ref: string) => {
@@ -150,6 +184,25 @@ export default function Notes() {
               onBack={goBack}
               onOpenHistoryEntry={selectFile}
             />
+            {/* Recording notes: re-open the correction screen (spec/17 §3). */}
+            {localMetadata.recording_id && (
+              <div style={{ padding: "6px 16px", display: "flex", justifyContent: "flex-end", borderBottom: "1px solid var(--border)" }}>
+                <button
+                  onClick={handleReview}
+                  disabled={analyzing}
+                  title="Relancer l'analyse et rouvrir l'écran de correction"
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    background: "transparent", color: "var(--accent)",
+                    border: "1px solid var(--border)", borderRadius: 8,
+                    padding: "5px 12px", cursor: analyzing ? "default" : "pointer",
+                    fontSize: 12.5, opacity: analyzing ? 0.6 : 1,
+                  }}
+                >
+                  <MdFactCheck size={15} /> {analyzing ? "Analyse…" : "Vérifier / corriger"}
+                </button>
+              </div>
+            )}
             <PropertiesPanel metadata={localMetadata} onChange={handleMetadataChange} />
 
             <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>

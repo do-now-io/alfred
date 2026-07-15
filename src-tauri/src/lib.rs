@@ -41,6 +41,7 @@ async fn start_recording(
         state.recording_handle.clone(),
         active_id,
         state.recording_stop_flag.clone(),
+        state.recording_pause_flag.clone(),
         state.transcription_tx.clone(),
     )
     .await
@@ -61,6 +62,9 @@ async fn start_recording(
     Ok(())
 }
 
+/// « Terminer » (spec/03) — arrête la prise et la passe en revue « prise
+/// terminée ». **Ne lance plus l'aval** : c'est `process_recording` qui enfile
+/// les traitements cochés.
 #[tauri::command]
 async fn stop_recording(
     state: tauri::State<'_, AppState>,
@@ -71,16 +75,13 @@ async fn stop_recording(
         .app_data_dir()
         .map_err(|e| e.to_string())?;
 
-    let vault_path = state.vault_path.lock().unwrap().clone();
     let recording_id = audio::stop_recording(
         &data_dir,
-        state.resource_dir.clone(),
-        vault_path,
         state.active_recording_id.clone(),
         state.recording_stop_flag.clone(),
+        state.recording_pause_flag.clone(),
         state.recording_handle.clone(),
         state.db.clone(),
-        state.transcription_tx.clone(),
         app,
     )
     .await
@@ -98,6 +99,150 @@ async fn stop_recording(
     );
 
     Ok(recording_id)
+}
+
+/// Bouton « Annuler » pendant la prise (spec/03) : arrête + jette le WAV, aucun aval.
+#[tauri::command]
+async fn cancel_recording(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    audio::cancel_recording(
+        &data_dir,
+        state.active_recording_id.clone(),
+        state.recording_stop_flag.clone(),
+        state.recording_pause_flag.clone(),
+        state.recording_handle.clone(),
+        state.db.clone(),
+        app,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Supprime une prise en revue « prise terminée » (bouton Supprimer / le
+/// « Recommencer » du téléprompteur, spec/03/13) : WAV jeté + ligne DB supprimée.
+#[tauri::command]
+async fn discard_recording(
+    recording_id: String,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    audio::discard_recording_files(&data_dir, &recording_id, &state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit(
+        "recording-status-changed",
+        serde_json::json!({ "status": "idle", "duration_seconds": 0 }),
+    );
+    Ok(())
+}
+
+/// Bouton « Continuer » du panneau de revue (spec/03) : lance seulement les
+/// traitements cochés. `transcribe=false` → on ne garde que le WAV (déplacé dans
+/// le vault) ; compte-rendu/tâches supposent la transcription (garde-fou côté UI,
+/// re-vérifié ici).
+#[tauri::command]
+async fn process_recording(
+    recording_id: String,
+    transcribe: bool,
+    summary: bool,
+    tasks: bool,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let file_path = data_dir.join("recordings").join(format!("{}.wav", recording_id));
+    if !file_path.exists() {
+        return Err(format!("WAV introuvable pour cette prise: {:?}", file_path));
+    }
+
+    if !transcribe {
+        // Rien d'aval : on préserve juste l'audio dans le vault (spec/03 « ne
+        // garder que le WAV ») et on clôt la prise.
+        let vault_path = state.vault_path.lock().unwrap().clone();
+        if let Some(vault_root) = vault_path {
+            let folder = vault_root.join(transcription::recording_folder(&state.db).await);
+            tokio::fs::create_dir_all(&folder).await.map_err(|e| e.to_string())?;
+            let now = chrono::Local::now();
+            let title = format!(
+                "{}-{:02}-{:02} {:02}h{:02}",
+                chrono::Datelike::year(&now),
+                chrono::Datelike::month(&now),
+                chrono::Datelike::day(&now),
+                chrono::Timelike::hour(&now),
+                chrono::Timelike::minute(&now)
+            );
+            let dest = folder.join(format!("{}.wav", title));
+            if tokio::fs::rename(&file_path, &dest).await.is_err() {
+                if tokio::fs::copy(&file_path, &dest).await.is_ok() {
+                    let _ = tokio::fs::remove_file(&file_path).await;
+                }
+            }
+        }
+        sqlx::query!("UPDATE recordings SET status = 'done' WHERE id = ?", recording_id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| e.to_string())?;
+        let _ = app.emit(
+            "recording-status-changed",
+            serde_json::json!({ "status": "idle", "duration_seconds": 0 }),
+        );
+        return Ok(());
+    }
+
+    sqlx::query!("UPDATE recordings SET status = 'processing' WHERE id = ?", recording_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let vault_path = state.vault_path.lock().unwrap().clone();
+    transcription::enqueue_job(
+        recording_id.clone(),
+        file_path,
+        state.db.clone(),
+        app.clone(),
+        data_dir,
+        state.resource_dir.clone(),
+        vault_path,
+        summary,
+        tasks,
+        &state.transcription_tx,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let _ = app.emit(
+        "recording-status-changed",
+        serde_json::json!({ "status": "processing", "duration_seconds": 0, "recording_id": recording_id }),
+    );
+    Ok(())
+}
+
+/// Pause de la capture (spec/03/13) : les frames sont jetées, le chrono se fige,
+/// la prise reste ouverte. L'état `paused` est émis par la boucle de capture.
+#[tauri::command]
+async fn pause_recording(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    if state.active_recording_id.lock().unwrap().is_none() {
+        return Err("Aucun enregistrement en cours".to_string());
+    }
+    state
+        .recording_pause_flag
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
+async fn resume_recording(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    if state.active_recording_id.lock().unwrap().is_none() {
+        return Err("Aucun enregistrement en cours".to_string());
+    }
+    state
+        .recording_pause_flag
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
 }
 
 #[tauri::command]
@@ -182,6 +327,9 @@ async fn import_audio_file(
         data_dir,
         state.resource_dir.clone(),
         vault_path,
+        // Import = pipeline complet (pas de panneau de revue sur un import).
+        true,
+        true,
         &state.transcription_tx,
     )
     .await
@@ -605,6 +753,8 @@ async fn finalize_ingestion(
     corrected_text: String,
     note_title: String,
     context_additions: Vec<String>,
+    summary: Option<bool>,
+    tasks: Option<bool>,
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -614,6 +764,8 @@ async fn finalize_ingestion(
         &corrected_text,
         &note_title,
         context_additions,
+        summary.unwrap_or(true),
+        tasks.unwrap_or(true),
         &state.db,
         vault_root.as_deref(),
         &app,
@@ -822,13 +974,22 @@ async fn get_recording_folder(
 #[tauri::command]
 async fn run_ingest(
     note_path: String,
+    summary: Option<bool>,
+    tasks: Option<bool>,
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let vault_root = state.vault_path.lock().unwrap().clone();
-    ai::run_ingestion_for_note(std::path::Path::new(&note_path), &state.db, vault_root.as_deref(), &app)
-        .await
-        .map_err(|e| e.to_string())
+    ai::run_ingestion_for_note(
+        std::path::Path::new(&note_path),
+        summary.unwrap_or(true),
+        tasks.unwrap_or(true),
+        &state.db,
+        vault_root.as_deref(),
+        &app,
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1034,6 +1195,7 @@ pub fn run() {
                 recording_handle: Arc::new(Mutex::new(None)),
                 active_recording_id: Arc::new(StdMutex::new(None)),
                 recording_stop_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                recording_pause_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 transcription_tx,
                 http_client: http_client.clone(),
                 resource_dir,
@@ -1075,6 +1237,11 @@ pub fn run() {
             // Recording
             start_recording,
             stop_recording,
+            cancel_recording,
+            discard_recording,
+            process_recording,
+            pause_recording,
+            resume_recording,
             test_microphone,
             import_audio_file,
             // Transcription

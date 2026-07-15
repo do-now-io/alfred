@@ -61,13 +61,19 @@ pub async fn ensure_context_note(vault_root: &Path, db: &SqlitePool) -> Result<P
 const LEARNED_HEADING: &str = "## Appris automatiquement";
 
 /// Does the context note carry real user/AI content beyond the empty template?
-/// (Headings, blank lines and the template's intro paragraph don't count.)
+/// Headings, blank lines and EVERY line of the template (intro paragraph
+/// included) don't count — the untouched template must never take the append
+/// path (spec/16 bug « blocs vides » : l'intro fait deux lignes, filtrer sur
+/// « Décris ici » ne couvrait que la première).
 fn context_has_content(body: &str) -> bool {
+    let template_lines: std::collections::HashSet<&str> = CONTEXT_TEMPLATE
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     body.lines().any(|l| {
         let t = l.trim();
-        !t.is_empty()
-            && !t.starts_with('#')
-            && !t.starts_with("Décris ici") // template intro sentence (spec/16)
+        !t.is_empty() && !t.starts_with('#') && !template_lines.contains(t)
     })
 }
 
@@ -175,6 +181,30 @@ pub async fn append_learned_facts(
     let content = super::frontmatter::serialize(&metadata, &format!("{}\n", new_body));
     tokio::fs::write(&path, content).await?;
     Ok(to_add.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn untouched_template_has_no_content() {
+        // The full template — intro paragraph (2 lines!) + empty headings —
+        // must NOT count as user content (spec/16 bug « blocs vides »).
+        assert!(!context_has_content(CONTEXT_TEMPLATE));
+    }
+
+    #[test]
+    fn empty_or_headings_only_has_no_content() {
+        assert!(!context_has_content(""));
+        assert!(!context_has_content("# Contexte Alfred\n\n## Mon entreprise\n"));
+    }
+
+    #[test]
+    fn real_user_line_counts_as_content() {
+        let body = format!("{}\nJe travaille chez Do-Now.\n", CONTEXT_TEMPLATE);
+        assert!(context_has_content(&body));
+    }
 }
 
 /// The context body to inject into prompts: frontmatter stripped, capped at

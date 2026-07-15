@@ -22,6 +22,10 @@ pub struct TranscriptionJob {
     /// "meeting" (default → compte-rendu + tâches) or "context" (visite guidée →
     /// construit `Contexte Alfred.md` + glossaire, pas de compte-rendu). spec/13.
     pub purpose: String,
+    /// Traitements aval cochés au panneau de revue (spec/03/05) : compte-rendu
+    /// et/ou tâches. Les deux à `false` → transcription seule, aucun appel IA.
+    pub summary: bool,
+    pub tasks: bool,
     pub db: SqlitePool,
     pub app_handle: tauri::AppHandle,
     pub data_dir: PathBuf,
@@ -51,6 +55,8 @@ pub async fn enqueue_job(
     data_dir: PathBuf,
     resource_dir: Option<PathBuf>,
     vault_path: Option<PathBuf>,
+    summary: bool,
+    tasks: bool,
     tx: &TranscriptionSender,
 ) -> Result<()> {
     let model = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'whisper_model'")
@@ -92,6 +98,8 @@ pub async fn enqueue_job(
         threads,
         initial_prompt: glossary,
         purpose,
+        summary,
+        tasks,
         db,
         app_handle,
         data_dir,
@@ -243,7 +251,9 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
 
     // Route the downstream by recording purpose (spec/13):
     //  - "context" → build `Contexte Alfred.md` + glossaire (no compte-rendu).
-    //  - "meeting" (default) → the merged ingestion (compte-rendu + tasks, spec/05).
+    //  - "meeting" (default) → the merged ingestion, limited to the sections
+    //    checked in the review panel (spec/03/05). Nothing checked → no AI call;
+    //    `ingestion-status-changed done` is still emitted so the UI settles.
     let db_clone = job.db.clone();
     let app_clone = job.app_handle.clone();
     let vault_clone = job.vault_path.clone();
@@ -251,12 +261,18 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
     let text = raw_text.clone();
     let title = note_title.clone();
     let purpose = job.purpose.clone();
+    let (summary, tasks) = (job.summary, job.tasks);
     tauri::async_runtime::spawn(async move {
         if purpose == "context" {
             if let Err(e) = crate::ai::build_context_from_transcription(&rec_id, &text, &db_clone, vault_clone.as_deref(), &app_clone).await {
                 eprintln!("Context build error: {}", e);
             }
-        } else if let Err(e) = crate::ai::run_ingestion_for_recording(&rec_id, &text, &title, &db_clone, vault_clone.as_deref(), &app_clone).await {
+        } else if !summary && !tasks {
+            let _ = app_clone.emit(
+                "ingestion-status-changed",
+                serde_json::json!({ "status": "done", "recording_id": rec_id, "message": null }),
+            );
+        } else if let Err(e) = crate::ai::run_ingestion_for_recording(&rec_id, &text, &title, summary, tasks, &db_clone, vault_clone.as_deref(), &app_clone).await {
             eprintln!("Ingestion error: {}", e);
         }
     });

@@ -191,19 +191,32 @@ fn system_blocks(base_prompt: &str, context: Option<&str>) -> serde_json::Value 
 
 /// One Claude call → `IngestionOutput`, forcing the `submit_ingestion` tool so the
 /// response is always structured (no fragile "strip the ```json fence" parsing).
+/// `want_tasks: false` (spec/05 « sortie découplée ») → the prompt asks for an
+/// empty `taches` list (the tool schema is unchanged; Rust won't write tasks
+/// either way, this just avoids paying for output we'll drop).
 async fn call_ingestion(
     text: &str,
     context: Option<&str>,
+    want_tasks: bool,
     db: &SqlitePool,
 ) -> Result<(IngestionOutput, &'static str)> {
     let access = resolve_access(db).await?;
     let client = reqwest::Client::new();
 
+    let system_prompt = if want_tasks {
+        INGESTION_SYSTEM.to_string()
+    } else {
+        format!(
+            "{}\n- IMPORTANT : l'utilisateur n'a PAS demandé l'extraction de tâches — renvoie `taches` comme liste vide, quoi que contienne la transcription.",
+            INGESTION_SYSTEM
+        )
+    };
+
     let body = json!({
         "model": MODEL,
         "max_tokens": 4096,
         "thinking": {"type": "disabled"},
-        "system": system_blocks(INGESTION_SYSTEM, context),
+        "system": system_blocks(&system_prompt, context),
         "tools": ingestion_tool(),
         "tool_choice": {"type": "tool", "name": "submit_ingestion"},
         "messages": [{
@@ -226,13 +239,17 @@ async fn call_ingestion(
     Ok((output, access.mode))
 }
 
-/// Shared engine: run the ingestion call, then write everything (Rust does the
-/// writing, never the AI). `recording_id` is `None` when re-ingesting a note that
-/// isn't linked to a recording (spec/05 "note_path" entry point).
+/// Shared engine: run the ingestion call, then write ONLY the requested sections
+/// (spec/05 « sortie découplée ») — Rust does the writing, never the AI.
+/// `recording_id` is `None` when re-ingesting a note that isn't linked to a
+/// recording (spec/05 "note_path" entry point). `summary=false && tasks=false`
+/// → no AI call at all (only the transcription exists).
 async fn run_ingestion_core(
     text: &str,
     note_title: &str,
     recording_id: Option<&str>,
+    summary: bool,
+    tasks: bool,
     db: &SqlitePool,
     vault_root: Option<&Path>,
     app_handle: &tauri::AppHandle,
@@ -249,7 +266,7 @@ async fn run_ingestion_core(
         );
     };
 
-    if text.trim().is_empty() {
+    if text.trim().is_empty() || (!summary && !tasks) {
         emit_status("done", None);
         return Ok(());
     }
@@ -260,7 +277,7 @@ async fn run_ingestion_core(
         None => None,
     };
 
-    let (output, ai_mode) = match call_ingestion(text, context.as_deref(), db).await {
+    let (output, ai_mode) = match call_ingestion(text, context.as_deref(), tasks, db).await {
         Ok(r) => r,
         Err(e) => {
             emit_status("error", Some(e.to_string()));
@@ -269,24 +286,27 @@ async fn run_ingestion_core(
     };
 
     if let Some(vault_root) = vault_root {
-        // 1. Compte-rendu → alfred-intelligence/{titre}.md
-        let folder = vault_root.join(intelligence_folder(db).await);
-        let project = output.project.as_deref().map(str::trim).filter(|p| !p.is_empty()).map(str::to_string);
-        let metadata = crate::notes::NoteMetadata::for_meeting_report(note_title, recording_id, output.participants.clone(), project);
-        let mut body = output.resume.clone();
-        if !output.points_cles.is_empty() {
-            body.push_str("\n\n## Points clés\n");
-            for p in &output.points_cles {
-                body.push_str(&format!("- {}\n", p));
+        // 1. Compte-rendu → alfred-intelligence/{titre}.md — only when requested.
+        if summary {
+            let folder = vault_root.join(intelligence_folder(db).await);
+            let project = output.project.as_deref().map(str::trim).filter(|p| !p.is_empty()).map(str::to_string);
+            let metadata = crate::notes::NoteMetadata::for_meeting_report(note_title, recording_id, output.participants.clone(), project);
+            let mut body = output.resume.clone();
+            if !output.points_cles.is_empty() {
+                body.push_str("\n\n## Points clés\n");
+                for p in &output.points_cles {
+                    body.push_str(&format!("- {}\n", p));
+                }
+            }
+            match crate::notes::vault::create_intelligence_note(&folder, note_title, metadata, &body).await {
+                Ok(_) => eprintln!("[ingestion] compte-rendu created: {}", note_title),
+                Err(e) => eprintln!("[ingestion] failed to write compte-rendu: {}", e),
             }
         }
-        match crate::notes::vault::create_intelligence_note(&folder, note_title, metadata, &body).await {
-            Ok(_) => eprintln!("[ingestion] compte-rendu created: {}", note_title),
-            Err(e) => eprintln!("[ingestion] failed to write compte-rendu: {}", e),
-        }
 
-        // 2. Tâches → Todo.md (spec/06 — the todos source of truth), deduped.
-        if !output.taches.is_empty() {
+        // 2. Tâches → Todo.md (spec/06 — the todos source of truth), deduped —
+        //    only when requested.
+        if tasks && !output.taches.is_empty() {
             let todo_rel_path = crate::todos::todo_file_path(db).await;
             let tasks: Vec<IngestTask> = output
                 .taches
@@ -327,12 +347,14 @@ pub async fn run_ingestion_for_recording(
     recording_id: &str,
     transcription_text: &str,
     note_title: &str,
+    summary: bool,
+    tasks: bool,
     db: &SqlitePool,
     vault_root: Option<&Path>,
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
     if !augmented_ingestion_enabled(db).await {
-        return run_ingestion_core(transcription_text, note_title, Some(recording_id), db, vault_root, app_handle).await;
+        return run_ingestion_core(transcription_text, note_title, Some(recording_id), summary, tasks, db, vault_root, app_handle).await;
     }
 
     // Augmented: analyze first. Any analysis failure falls back to a direct
@@ -349,7 +371,7 @@ pub async fn run_ingestion_for_recording(
         }
         Err(e) => {
             eprintln!("[analyze] failed, falling back to direct ingestion: {}", e);
-            return run_ingestion_core(transcription_text, note_title, Some(recording_id), db, vault_root, app_handle).await;
+            return run_ingestion_core(transcription_text, note_title, Some(recording_id), summary, tasks, db, vault_root, app_handle).await;
         }
     };
 
@@ -357,11 +379,12 @@ pub async fn run_ingestion_for_recording(
         // Nothing worth validating → enchaîne automatiquement (spec/17 §3, aucune
         // friction). Learned facts (non-blocking) are still written.
         let adds = clarifications.context_addition_facts();
-        return finalize_ingestion(recording_id, transcription_text, note_title, adds, db, vault_root, app_handle).await;
+        return finalize_ingestion(recording_id, transcription_text, note_title, adds, summary, tasks, db, vault_root, app_handle).await;
     }
 
     // Something to validate → hand off to the resolution screen (spec/17 §3). The
     // compte-rendu is written only at `finalize_ingestion`, on the corrected text.
+    // The review-panel selection rides along so finalize honours it (spec/05).
     let _ = app_handle.emit(
         "clarifications-ready",
         json!({
@@ -369,6 +392,8 @@ pub async fn run_ingestion_for_recording(
             "note_title": note_title,
             "text": transcription_text,
             "clarifications": clarifications,
+            "summary": summary,
+            "tasks": tasks,
         }),
     );
     Ok(())
@@ -379,6 +404,8 @@ pub async fn run_ingestion_for_recording(
 /// already carries a `recording_id`, keeps that link.
 pub async fn run_ingestion_for_note(
     note_path: &Path,
+    summary: bool,
+    tasks: bool,
     db: &SqlitePool,
     vault_root: Option<&Path>,
     app_handle: &tauri::AppHandle,
@@ -393,7 +420,7 @@ pub async fn run_ingestion_for_note(
         .unwrap_or_default();
     let (metadata, body) = crate::notes::frontmatter::parse(&raw, &stem);
 
-    run_ingestion_core(&body, &metadata.title, metadata.recording_id.as_deref(), db, vault_root, app_handle).await
+    run_ingestion_core(&body, &metadata.title, metadata.recording_id.as_deref(), summary, tasks, db, vault_root, app_handle).await
 }
 
 // ─── Ingestion augmentée en deux temps (spec/17 §3) ──────────────────────────────
@@ -696,11 +723,13 @@ pub async fn finalize_ingestion(
     corrected_text: &str,
     note_title: &str,
     context_additions: Vec<String>,
+    summary: bool,
+    tasks: bool,
     db: &SqlitePool,
     vault_root: Option<&Path>,
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
-    run_ingestion_core(corrected_text, note_title, Some(recording_id), db, vault_root, app_handle).await?;
+    run_ingestion_core(corrected_text, note_title, Some(recording_id), summary, tasks, db, vault_root, app_handle).await?;
 
     if let Some(root) = vault_root {
         if !context_additions.is_empty() {

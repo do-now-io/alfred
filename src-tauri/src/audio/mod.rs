@@ -27,6 +27,7 @@ pub async fn start_recording(
     recording_handle: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
     active_recording_id: Arc<StdMutex<Option<String>>>,
     stop_flag: Arc<AtomicBool>,
+    pause_flag: Arc<AtomicBool>,
     _transcription_tx: TranscriptionSender,
 ) -> Result<()> {
     // System audio is Windows-only for now (macOS ScreenCaptureKit helper: later).
@@ -37,8 +38,9 @@ pub async fn start_recording(
         ));
     }
 
-    // Reset stop flag
+    // Reset stop & pause flags
     stop_flag.store(false, Ordering::SeqCst);
+    pause_flag.store(false, Ordering::SeqCst);
 
     let recording_id = Uuid::new_v4().to_string();
     let file_path = data_dir.join("recordings").join(format!("{}.wav", recording_id));
@@ -56,26 +58,23 @@ pub async fn start_recording(
 
     *active_recording_id.lock().unwrap() = Some(recording_id.clone());
 
-    let app = app_handle.clone();
     let file_path_clone = file_path.clone();
     let stop_flag_clone = stop_flag.clone();
+    let pause_flag_clone = pause_flag.clone();
     let source_owned = source.to_string();
 
-    // spawn_blocking runs the synchronous capture off the async executor
+    // spawn_blocking runs the synchronous capture off the async executor.
+    // No status is emitted when the capture ends: `stop_recording` (revue) and
+    // `cancel_recording` (idle) each announce the state they lead to (spec/03).
     let app_for_capture = app_handle.clone();
     let handle = tauri::async_runtime::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
-            run_capture(&source_owned, file_path_clone, stop_flag_clone, app_for_capture)
+            run_capture(&source_owned, file_path_clone, stop_flag_clone, pause_flag_clone, app_for_capture)
         })
         .await;
 
         match result {
-            Ok(Ok(())) => {
-                let _ = app.emit(
-                    "recording-status-changed",
-                    serde_json::json!({ "status": "processing", "duration_seconds": 0 }),
-                );
-            }
+            Ok(Ok(())) => {}
             Ok(Err(e)) => eprintln!("Recording error: {}", e),
             Err(e) => eprintln!("Recording task panicked: {:?}", e),
         }
@@ -92,13 +91,13 @@ pub async fn start_recording(
 }
 
 /// Blocking dispatch by recording source. Produces the final WAV at `final_path`.
-fn run_capture(source: &str, final_path: PathBuf, stop_flag: Arc<AtomicBool>, app_handle: tauri::AppHandle) -> Result<()> {
+fn run_capture(source: &str, final_path: PathBuf, stop_flag: Arc<AtomicBool>, pause_flag: Arc<AtomicBool>, app_handle: tauri::AppHandle) -> Result<()> {
     match source {
         "system_only" => {
             #[cfg(target_os = "windows")]
             {
                 let _ = &app_handle; // no live volume meter for system-audio capture yet
-                wasapi_loopback::record_system_audio(final_path, stop_flag)
+                wasapi_loopback::record_system_audio(final_path, stop_flag, pause_flag)
             }
             #[cfg(not(target_os = "windows"))]
             {
@@ -108,7 +107,7 @@ fn run_capture(source: &str, final_path: PathBuf, stop_flag: Arc<AtomicBool>, ap
         "mixed" => {
             #[cfg(target_os = "windows")]
             {
-                record_mixed(final_path, stop_flag, app_handle)
+                record_mixed(final_path, stop_flag, pause_flag, app_handle)
             }
             #[cfg(not(target_os = "windows"))]
             {
@@ -116,7 +115,7 @@ fn run_capture(source: &str, final_path: PathBuf, stop_flag: Arc<AtomicBool>, ap
             }
         }
         // "mic_only" and anything unknown: microphone.
-        _ => record_microphone(final_path, stop_flag, app_handle),
+        _ => record_microphone(final_path, stop_flag, pause_flag, app_handle),
     }
 }
 
@@ -125,18 +124,19 @@ fn run_capture(source: &str, final_path: PathBuf, stop_flag: Arc<AtomicBool>, ap
 /// clock-sync issues between the two streams. If one capture fails, the other
 /// is salvaged as-is.
 #[cfg(target_os = "windows")]
-fn record_mixed(final_path: PathBuf, stop_flag: Arc<AtomicBool>, app_handle: tauri::AppHandle) -> Result<()> {
+fn record_mixed(final_path: PathBuf, stop_flag: Arc<AtomicBool>, pause_flag: Arc<AtomicBool>, app_handle: tauri::AppHandle) -> Result<()> {
     let mic_path = final_path.with_extension("mic.wav");
     let sys_path = final_path.with_extension("sys.wav");
 
     let sys_flag = stop_flag.clone();
+    let sys_pause = pause_flag.clone();
     let sys_path_thread = sys_path.clone();
     let sys_thread = std::thread::spawn(move || {
-        wasapi_loopback::record_system_audio(sys_path_thread, sys_flag)
+        wasapi_loopback::record_system_audio(sys_path_thread, sys_flag, sys_pause)
     });
 
     // Mic-only RMS is used as the volume meter's proxy for the mixed stream too.
-    let mic_result = record_microphone(mic_path.clone(), stop_flag, app_handle);
+    let mic_result = record_microphone(mic_path.clone(), stop_flag, pause_flag, app_handle);
     let sys_result = sys_thread
         .join()
         .map_err(|_| anyhow!("System capture thread panicked"))?;
@@ -167,7 +167,7 @@ fn record_mixed(final_path: PathBuf, stop_flag: Arc<AtomicBool>, app_handle: tau
 /// Capture the default input device into a mono PCM16 WAV at the device's
 /// native rate. Handles f32 / i16 / u16 devices (some WASAPI inputs are i16 —
 /// the old f32-only callback failed at runtime on those).
-fn record_microphone(file_path: PathBuf, stop_flag: Arc<AtomicBool>, app_handle: tauri::AppHandle) -> Result<()> {
+fn record_microphone(file_path: PathBuf, stop_flag: Arc<AtomicBool>, pause_flag: Arc<AtomicBool>, app_handle: tauri::AppHandle) -> Result<()> {
     let host = cpal::default_host();
     let device = host
         .default_input_device()
@@ -210,33 +210,33 @@ fn record_microphone(file_path: PathBuf, stop_flag: Arc<AtomicBool>, app_handle:
 
     let stream = match sample_format {
         cpal::SampleFormat::F32 => {
-            let (w, s, l) = (writer.clone(), stop_flag.clone(), level.clone());
+            let (w, s, p, l) = (writer.clone(), stop_flag.clone(), pause_flag.clone(), level.clone());
             device.build_input_stream(
                 &stream_config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    write_frames(&w, &s, &l, channels, data.iter().copied());
+                    write_frames(&w, &s, &p, &l, channels, data.iter().copied());
                 },
                 err_fn,
                 None,
             )
         }
         cpal::SampleFormat::I16 => {
-            let (w, s, l) = (writer.clone(), stop_flag.clone(), level.clone());
+            let (w, s, p, l) = (writer.clone(), stop_flag.clone(), pause_flag.clone(), level.clone());
             device.build_input_stream(
                 &stream_config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    write_frames(&w, &s, &l, channels, data.iter().map(|v| *v as f32 / i16::MAX as f32));
+                    write_frames(&w, &s, &p, &l, channels, data.iter().map(|v| *v as f32 / i16::MAX as f32));
                 },
                 err_fn,
                 None,
             )
         }
         cpal::SampleFormat::U16 => {
-            let (w, s, l) = (writer.clone(), stop_flag.clone(), level.clone());
+            let (w, s, p, l) = (writer.clone(), stop_flag.clone(), pause_flag.clone(), level.clone());
             device.build_input_stream(
                 &stream_config,
                 move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                    write_frames(&w, &s, &l, channels, data.iter().map(|v| (*v as f32 / u16::MAX as f32) * 2.0 - 1.0));
+                    write_frames(&w, &s, &p, &l, channels, data.iter().map(|v| (*v as f32 / u16::MAX as f32) * 2.0 - 1.0));
                 },
                 err_fn,
                 None,
@@ -251,17 +251,33 @@ fn record_microphone(file_path: PathBuf, stop_flag: Arc<AtomicBool>, app_handle:
 
     // Block until stop is requested, emitting duration + volume every ~250ms
     // (spec/03 "feedback live") on top of the existing 50ms poll cadence.
+    // While paused (spec/03/13), frames are dropped by `write_frames` and the
+    // timer freezes: `paused_total` accumulates the paused wall-clock time,
+    // subtracted from the elapsed duration.
     let started_at = std::time::Instant::now();
     let mut last_emit = std::time::Instant::now();
+    let mut paused_total = std::time::Duration::ZERO;
+    let mut paused_since: Option<std::time::Instant> = None;
     while !stop_flag.load(Ordering::Relaxed) {
         std::thread::sleep(std::time::Duration::from_millis(50));
+        let paused = pause_flag.load(Ordering::Relaxed);
+        match (paused, paused_since) {
+            (true, None) => paused_since = Some(std::time::Instant::now()),
+            (false, Some(since)) => {
+                paused_total += since.elapsed();
+                paused_since = None;
+            }
+            _ => {}
+        }
         if last_emit.elapsed() >= std::time::Duration::from_millis(250) {
             last_emit = std::time::Instant::now();
+            let paused_now = paused_since.map(|s| s.elapsed()).unwrap_or_default();
+            let effective = started_at.elapsed().saturating_sub(paused_total + paused_now);
             let volume = f32::from_bits(level.load(Ordering::Relaxed)).min(1.0);
             let _ = app_handle.emit("recording-status-changed", serde_json::json!({
-                "status": "recording",
-                "duration_seconds": started_at.elapsed().as_secs(),
-                "volume": volume
+                "status": if paused { "paused" } else { "recording" },
+                "duration_seconds": effective.as_secs(),
+                "volume": if paused { 0.0 } else { volume }
             }));
         }
     }
@@ -279,15 +295,17 @@ fn record_microphone(file_path: PathBuf, stop_flag: Arc<AtomicBool>, app_handle:
 }
 
 /// Downmix interleaved f32 frames to mono, append them as PCM16, and update the
-/// shared RMS level (spec/03 "feedback live" volume meter).
+/// shared RMS level (spec/03 "feedback live" volume meter). Paused → frames are
+/// dropped (the capture stream keeps running, nothing is written).
 fn write_frames(
     writer: &WriterHandle,
     stop_flag: &Arc<AtomicBool>,
+    pause_flag: &Arc<AtomicBool>,
     level: &Arc<AtomicU32>,
     channels: usize,
     samples: impl Iterator<Item = f32>,
 ) {
-    if stop_flag.load(Ordering::Relaxed) {
+    if stop_flag.load(Ordering::Relaxed) || pause_flag.load(Ordering::Relaxed) {
         return;
     }
     let data: Vec<f32> = samples.collect();
@@ -380,22 +398,24 @@ fn mix_wavs(mic: &Path, sys: &Path, out: &Path) -> Result<()> {
     Ok(())
 }
 
+/// « Terminer » (spec/03) : arrête la capture et passe la prise en revue
+/// « prise terminée » (`status = 'stopped'`). **Ne lance plus l'aval** — c'est
+/// `process_recording` (bouton Continuer) qui enfile les traitements cochés.
 pub async fn stop_recording(
     data_dir: &PathBuf,
-    resource_dir: Option<PathBuf>,
-    vault_path: Option<PathBuf>,
     active_recording_id: Arc<StdMutex<Option<String>>>,
     stop_flag: Arc<AtomicBool>,
+    pause_flag: Arc<AtomicBool>,
     recording_handle: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
     db: SqlitePool,
-    transcription_tx: TranscriptionSender,
     app_handle: tauri::AppHandle,
 ) -> Result<String> {
     let recording_id = active_recording_id
         .lock().unwrap().take()
         .ok_or_else(|| anyhow!("No active recording"))?;
 
-    // Signal the recording thread(s) to stop
+    // Signal the recording thread(s) to stop (a paused take stops fine too)
+    pause_flag.store(false, Ordering::SeqCst);
     stop_flag.store(true, Ordering::SeqCst);
 
     // Wait for the recording task to finish writing the WAV
@@ -405,32 +425,88 @@ pub async fn stop_recording(
 
     eprintln!("[audio] recording task finished");
 
+    let file_path = data_dir.join("recordings").join(format!("{}.wav", recording_id));
+    if !file_path.exists() {
+        return Err(anyhow!("WAV file not found after recording: {:?}", file_path));
+    }
+
     sqlx::query!(
-        "UPDATE recordings SET status = 'processing' WHERE id = ?",
+        "UPDATE recordings SET status = 'stopped' WHERE id = ?",
         recording_id
     )
     .execute(&db)
     .await?;
 
-    let file_path = data_dir.join("recordings").join(format!("{}.wav", recording_id));
+    let purpose: Option<String> = sqlx::query_scalar("SELECT purpose FROM recordings WHERE id = ?")
+        .bind(&recording_id)
+        .fetch_optional(&db)
+        .await
+        .ok()
+        .flatten();
+    app_handle.emit("recording-status-changed", serde_json::json!({
+        "status": "stopped",
+        "duration_seconds": 0,
+        "recording_id": recording_id,
+        "purpose": purpose.unwrap_or_else(|| "meeting".to_string()),
+    }))?;
 
-    // Verify the file exists before queueing transcription
-    if !file_path.exists() {
-        return Err(anyhow!("WAV file not found after recording: {:?}", file_path));
+    Ok(recording_id)
+}
+
+/// Bouton « Annuler » pendant la prise (spec/03) : arrête la capture, **jette le
+/// WAV** et supprime la ligne DB — aucun traitement aval. Retour à l'état idle.
+pub async fn cancel_recording(
+    data_dir: &PathBuf,
+    active_recording_id: Arc<StdMutex<Option<String>>>,
+    stop_flag: Arc<AtomicBool>,
+    pause_flag: Arc<AtomicBool>,
+    recording_handle: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
+    db: SqlitePool,
+    app_handle: tauri::AppHandle,
+) -> Result<()> {
+    let recording_id = active_recording_id
+        .lock().unwrap().take()
+        .ok_or_else(|| anyhow!("No active recording"))?;
+
+    pause_flag.store(false, Ordering::SeqCst);
+    stop_flag.store(true, Ordering::SeqCst);
+    if let Some(handle) = recording_handle.lock().await.take() {
+        let _ = handle.await;
     }
 
-    crate::transcription::enqueue_job(
-        recording_id.clone(),
-        file_path,
-        db,
-        app_handle,
-        data_dir.clone(),
-        resource_dir,
-        vault_path,
-        &transcription_tx,
-    )
-    .await?;
-    Ok(recording_id)
+    discard_recording_files(data_dir, &recording_id, &db).await?;
+
+    app_handle.emit("recording-status-changed", serde_json::json!({
+        "status": "idle",
+        "duration_seconds": 0
+    }))?;
+    eprintln!("[audio] recording {} cancelled — WAV discarded", recording_id);
+    Ok(())
+}
+
+/// Supprime le WAV (encore dans `$APP_DATA_DIR/recordings/`) et la ligne
+/// `recordings`. Partagé par `cancel_recording` (Annuler pendant la prise) et la
+/// commande `discard_recording` (Supprimer / Recommencer depuis la revue).
+pub async fn discard_recording_files(
+    data_dir: &PathBuf,
+    recording_id: &str,
+    db: &SqlitePool,
+) -> Result<()> {
+    let file_path = data_dir.join("recordings").join(format!("{}.wav", recording_id));
+    if file_path.exists() {
+        let _ = tokio::fs::remove_file(&file_path).await;
+    }
+    // Temp captures of the `mixed` mode, if the stop happened mid-mix.
+    for ext in ["mic.wav", "sys.wav"] {
+        let p = file_path.with_extension(ext);
+        if p.exists() {
+            let _ = tokio::fs::remove_file(&p).await;
+        }
+    }
+    sqlx::query!("DELETE FROM recordings WHERE id = ?", recording_id)
+        .execute(db)
+        .await?;
+    Ok(())
 }
 
 /// Briefly open the default input device to verify microphone access. On macOS

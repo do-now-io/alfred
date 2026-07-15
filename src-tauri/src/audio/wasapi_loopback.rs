@@ -21,7 +21,10 @@ pub const LOOPBACK_SAMPLE_RATE: u32 = 16_000;
 const EVENT_TIMEOUT_MS: u32 = 100;
 
 /// Blocking capture loop: runs until `stop_flag` is set, then finalizes the WAV.
-pub fn record_system_audio(file_path: PathBuf, stop_flag: Arc<AtomicBool>) -> Result<()> {
+/// While `pause_flag` is set (spec/03/13), incoming packets are drained but
+/// dropped and no silence is filled — the paused stretch simply doesn't exist in
+/// the file (same behaviour as the mic capture, keeps `mixed` aligned).
+pub fn record_system_audio(file_path: PathBuf, stop_flag: Arc<AtomicBool>, pause_flag: Arc<AtomicBool>) -> Result<()> {
     // Per-thread COM init (multithreaded apartment). Failure here is fatal for capture.
     wasapi::initialize_mta()
         .ok()
@@ -86,12 +89,17 @@ pub fn record_system_audio(file_path: PathBuf, stop_flag: Arc<AtomicBool>) -> Re
     let silence_chunk = (LOOPBACK_SAMPLE_RATE as u64 * EVENT_TIMEOUT_MS as u64 / 1000) as usize;
 
     while !stop_flag.load(Ordering::Relaxed) {
+        let paused = pause_flag.load(Ordering::Relaxed);
         match event.wait_for_event(EVENT_TIMEOUT_MS) {
             Ok(()) => {
                 capture
                     .read_from_device_to_deque(&mut byte_queue)
                     .map(|_info| ())
                     .map_err(|e| anyhow!("read_from_device: {}", e))?;
+                if paused {
+                    byte_queue.clear();
+                    continue;
+                }
                 while byte_queue.len() >= 4 {
                     let bytes = [
                         byte_queue.pop_front().unwrap(),
@@ -104,6 +112,9 @@ pub fn record_system_audio(file_path: PathBuf, stop_flag: Arc<AtomicBool>) -> Re
                 }
             }
             Err(_) => {
+                if paused {
+                    continue;
+                }
                 // Nothing rendered during the window (silence): keep wall-clock
                 // alignment by writing the equivalent stretch of silence.
                 for _ in 0..silence_chunk {
@@ -132,10 +143,12 @@ mod tests {
         let path = dir.join("loopback.wav");
 
         let stop = Arc::new(AtomicBool::new(false));
+        let pause = Arc::new(AtomicBool::new(false));
         let stop_thread = stop.clone();
+        let pause_thread = pause.clone();
         let path_thread = path.clone();
         let handle =
-            std::thread::spawn(move || record_system_audio(path_thread, stop_thread));
+            std::thread::spawn(move || record_system_audio(path_thread, stop_thread, pause_thread));
 
         std::thread::sleep(std::time::Duration::from_secs(2));
         stop.store(true, Ordering::SeqCst);

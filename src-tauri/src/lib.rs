@@ -117,11 +117,29 @@ async fn import_audio_file(
 ) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
 
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("Audio WAV", &["wav"])
-        .blocking_pick_file();
+    // Open the picker where Alfred's own recordings live (vault `alfred-raw/`),
+    // so imports start in the expected folder. Falls back to the vault root, then
+    // the OS default.
+    let vault = state.vault_path.lock().unwrap().clone();
+    let initial_dir = match vault {
+        Some(root) => {
+            let rec = root.join(transcription::recording_folder(&state.db).await);
+            if rec.is_dir() {
+                Some(rec)
+            } else if root.is_dir() {
+                Some(root)
+            } else {
+                None
+            }
+        }
+        None => None,
+    };
+
+    let mut builder = app.dialog().file().add_filter("Audio WAV", &["wav"]);
+    if let Some(dir) = initial_dir {
+        builder = builder.set_directory(dir);
+    }
+    let picked = builder.blocking_pick_file();
     let Some(picked) = picked else { return Ok(None) };
     let src_path = picked.into_path().map_err(|e| e.to_string())?;
 

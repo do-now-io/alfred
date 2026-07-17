@@ -68,6 +68,16 @@ déjà présents — mais en **mode éphémère**, distinct de l'enregistrement 
 - **Réutilisable** ailleurs (hors périmètre de cette tâche mais viser un composant
   partagé) : correction de contexte (spec/13), feedback (spec/14).
 
+## Contexte d'une tâche (bouton « Rassembler le contexte ») — 📝 à faire (feedback tests)
+
+Depuis la **fiche tâche** (spec/06), un bouton lance une **action IA à la demande**
+qui **réunit le contexte utile pour réaliser la tâche** : point d'entrée = la même
+boucle agentique (`answer_question`), amorcée avec le **titre de la tâche** + sa
+**provenance** (`[[compte-rendu source]]`, spec/05/06). Claude lit le compte-rendu
+source puis cherche les **notes liées** (tags / projet communs) et renvoie un
+**résumé synthétique** + les **sources** (comptes-rendus similaires cliquables).
+Jamais automatique. Réutilise `search_notes` / `read_note` ; sortie = `ChatResponse`.
+
 ## Recherche
 
 Simple **keyword-match** (pas d'embeddings) — suffisant pour la v1.

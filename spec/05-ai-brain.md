@@ -95,11 +95,12 @@ même note sert de source au **glossaire Whisper** (spec/17).
    **`project` de `submit_ingestion` est une LISTE** (`array` de chaînes) — une
    réunion peut relever de **plusieurs projets** (feedback tests) ; l'IA renvoie 0..n
    projets « clairement identifiables ».
-2. Tâches → **écriture double** tant que spec/06 (Todos → vault) n'est pas faite :
-   fusionnées dans `alfred-intelligence/Todo.md` (section `## À faire`, dédup par
-   titre normalisé) **et** insérées dans la table SQLite `todos` (pour que l'écran
-   Tâches actuel continue de les afficher). Le fichier deviendra seul juste après
-   le cutover spec/06.
+2. Tâches → `alfred-intelligence/Todo.md` (section `## À faire`, dédup par titre
+   normalisé). **Provenance (📝 à faire, spec/06)** : chaque tâche générée reçoit un
+   **wikilink de provenance** sur sa ligne — `[[compte-rendu source]]` (nommé par
+   sujet) si le compte-rendu est produit, sinon `[[note brute de transcription]]` —
+   + la date. But : cliquable, lien dans le graphe (spec/07c), et la **fiche tâche**
+   (spec/06) sait **d'où / quand** vient la tâche.
 
 **Événement** : `ingestion_completed { ai_mode }` (metrics, spec/15) + `notes-updated`
 (+ `todos-updated` pour la partie SQLite, transitoire).

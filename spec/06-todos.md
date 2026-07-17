@@ -102,6 +102,54 @@ Contrainte : tout doit rester **compatible Obsidian** (édition directe du fichi
 donc les enrichissements passent par des marqueurs inline simples, pas de
 frontmatter par tâche.
 
+## Évolutions Tâches — 📝 à faire (feedback tests, 2e passe)
+
+Le Kanban est en place ; on l'enrichit sans jeter la lecture Markdown.
+
+### Deux vues, même `Todo.md` — bascule sur la page Tâches
+
+- **Sélecteur Kanban / Markdown** en tête de la page Tâches. Les deux affichent le
+  **même `Todo.md`** (source de vérité unique).
+- **Vue Markdown** = la lecture en lignes, avec **sections repliables** (Prioritaire /
+  En cours / À faire / Archivé). C'est la vue « document », proche d'Obsidian.
+- **Vue Kanban** = colonnes (déjà faite).
+
+### Fiche tâche (ouvrable depuis le Kanban ET la vue Markdown)
+
+Cliquer une tâche (carte Kanban ou ligne Markdown) ouvre une **fiche** (panneau /
+modale) présentant et éditant tout ce que la tâche porte. On peut y **ajouter des
+infos** :
+
+- **Sous-puces libres** (notes / checklist) sous la ligne de tâche dans `Todo.md`
+  (compatible Obsidian).
+- **Champs structurés inline** : **projet** (`+Projet`, façon `@responsable`),
+  **priorité**, **estimation** — marqueurs inline simples, **filtrables** dans le
+  Kanban (tranche la décision « projet/priorité par tâche » laissée ouverte plus haut).
+- **Description longue** (bloc multi-lignes rattaché à la tâche).
+
+Contrainte inchangée : tout reste **compatible Obsidian** (marqueurs inline + sous-
+puces, pas de frontmatter par tâche ; l'identité reste le titre normalisé).
+
+### Provenance & contexte de la tâche
+
+Constat test : une tâche créée par un enregistrement perd son origine. On rattache :
+
+- **Provenance = wikilink sur la ligne.** À l'ingestion (spec/05), la tâche générée
+  reçoit un **`[[Compte-rendu source]]`** (nommé par sujet, spec/05/07) + la **date**
+  sur sa ligne `Todo.md`. Cliquable, crée un **lien dans le graphe** (spec/07c), et la
+  fiche affiche **d'où / quand** vient la tâche.
+- **Bouton « Rassembler le contexte pour cette tâche »** (dans la fiche) = **action IA
+  à la demande** (RAG, spec/07b) : retrouve le compte-rendu source + les notes liées
+  (tags / projet communs) et **résume le contexte utile** pour réaliser la tâche.
+  Jamais automatique — déclenché par l'utilisateur.
+
+### Commandes / événements à prévoir
+
+`move_todo` existe (Kanban). À ajouter : lecture/écriture des **sous-puces**,
+**description** et **marqueurs inline** (`+Projet`, priorité, estimation) d'une tâche
+donnée (extension de `update_todo` ou nouvelles commandes ciblées sur le bloc de la
+tâche) ; l'action IA « contexte tâche » côté chat/RAG (spec/07b).
+
 ## Commandes Tauri — ✅ refondues vers le fichier
 
 `get_todos` (non cochées hors Archivé), `create_todo` (ajout dédupliqué dans

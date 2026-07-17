@@ -36,6 +36,38 @@ principal : l'**input Alfred** de l'accueil (spec/10).
 Composant `ChatPanel`. L'input Alfred de l'accueil alimente `ask_notes` ; les
 exemples d'amorces vivent dans la spec/10.
 
+## Dictée vocale de la question — 📝 à faire (feedback tests)
+
+Aujourd'hui on ne peut interroger Alfred qu'au **clavier**. On ajoute une **dictée
+vocale** : parler sa question, Alfred la transcrit dans le champ, on relit/corrige,
+on envoie. Réutilise la **capture micro** (spec/03) + **Whisper embarqué** (spec/04)
+déjà présents — mais en **mode éphémère**, distinct de l'enregistrement de réunion.
+
+- **UI** : un **bouton micro** dans la barre de saisie du chat (`ChatPanel`, à côté
+  de « Envoyer » ; idem `ChatTeaser` de l'accueil, spec/10). Clic → capture ; état
+  « à l'écoute » **inline** (petit indicateur + éventuel niveau/volume, un bouton
+  **stop**). Stop → transcription → le texte est **inséré dans le champ** (au
+  curseur / ajouté à l'existant), **éditable** avant envoi (on **n'envoie pas**
+  automatiquement).
+- **Éphémère, pas une note** : l'audio de dictée est un **clip temporaire**
+  transcrit puis **supprimé** — **aucune** écriture dans `alfred-raw/`, **aucune**
+  ligne `recordings`, **aucune** ingestion (compte-rendu/tâches). C'est de la
+  saisie, pas un enregistrement.
+- **Autonome vis-à-vis de l'enregistrement de réunion** : n'utilise **pas** le
+  bandeau global ni la page `/recording` (spec/03/10). La capture réunion étant un
+  singleton, **désactiver** le bouton dictée pendant qu'un enregistrement de réunion
+  est en cours (et inversement), pour éviter le conflit de périphérique.
+- **Dégradation gracieuse** : micro refusé / transcription en échec → message court,
+  on **conserve** le texte déjà tapé ; la saisie clavier reste toujours disponible.
+- **Backend** (à ajouter) : chemin de transcription léger qui **rend le texte**
+  plutôt que d'écrire une note, p. ex. `start_dictation()` / `stop_dictation() ->
+  String` (ou `transcribe_clip`) — réutilise le capteur micro (cpal) + `run_whisper`
+  sur le WAV temporaire, avec le **glossaire** existant (spec/17) pour la même
+  qualité, puis nettoie le fichier. Retour d'état via un événement dédié
+  (`dictation-status-changed`) plutôt que `recording-status-changed`.
+- **Réutilisable** ailleurs (hors périmètre de cette tâche mais viser un composant
+  partagé) : correction de contexte (spec/13), feedback (spec/14).
+
 ## Recherche
 
 Simple **keyword-match** (pas d'embeddings) — suffisant pour la v1.

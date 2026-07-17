@@ -175,6 +175,11 @@ Après transcription confirmée en DB (spec 04) : supprimer le WAV et passer
   capture : les frames sont **jetées** (mic + loopback WASAPI, pas d'insertion de
   silence) et le chrono se fige (le backend exclut le temps de pause de
   `duration_seconds` ; état émis : `"paused"`).
+- **`start_dictation()` / `stop_dictation() -> String`** (à ajouter, spec/07b) —
+  **dictée éphémère** : capture micro courte → `run_whisper` (glossaire spec/17) →
+  **rend le texte** (saisie chat), WAV temporaire supprimé. **Pas** de note, pas de
+  ligne `recordings`, pas d'ingestion ; état via `dictation-status-changed` (pas le
+  bandeau global). Désactivée pendant un enregistrement de réunion (capture = singleton).
 - `import_audio_file() -> Option<recording_id>` — ouvre le sélecteur de fichier
   (filtre `.wav`), copie le WAV choisi et le met en file de transcription ;
   `None` si l'utilisateur annule.

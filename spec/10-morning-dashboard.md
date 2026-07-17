@@ -111,6 +111,8 @@ et le clic lisent cette cible.
    cliquables, `ChatTeaser`) mais envoie vers `/ai-actions` plutôt que de dérouler
    la conversation **sur la page** — l'historique/liste de conversations (section
    suivante) n'est pas fait, donc la conversation inline reste à construire avec.
+   📝 **Dictée vocale** de la question à ajouter (bouton micro dans la barre de
+   saisie, ici et dans `ChatPanel` — voir spec/07b §Dictée vocale).
 
 ### Chat — historique & liste des conversations — ✅ fait
 

@@ -66,7 +66,13 @@ on ne ré-ajoute pas une tâche déjà présente. *(L'ancienne dédup SQLite par
 - **Onglet Tâches** : ~~liste éditable~~ → **refonte en tableau Kanban** (ci-dessous).
 - **Accueil « Alfred »** : bloc dépliable Prioritaire / En cours / À faire (spec 10).
 
-## Refonte Kanban de la page Tâches — ✅ fait (feedback tests + demande utilisateurs)
+## Refonte Kanban de la page Tâches — 🚧 fait partiellement (feedback tests + demande utilisateurs)
+
+> **À finir (feedback tests) :** le **glisser-déposer ne fonctionne pas** — on ne peut
+> **pas** changer une carte de colonne à la souris, ni **déplier** une carte. La
+> commande `move_todo` existe côté backend ; c'est le **câblage UX du DnD** (et le
+> dépliage/ouverture de carte → fiche tâche, cf. § Évolutions Tâches) qui reste à
+> faire côté front.
 
 La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
 **tableau Kanban** (demande explicite d'utilisateurs). La source de vérité **reste

@@ -13,6 +13,12 @@ Pas de `get_settings` / `update_setting` : chaque réglage passe par
 
 ## Sections v1
 
+**Profil local** (📝 à faire, feedback tests) — le menu profil ambigu du haut-droite
+est **retiré** (spec/10) ; l'identité vit ici. **Prénom + avatar** stockés **en local**
+(config, pas de compte serveur, cohérent v1 : pas de PII, metrics anonymes). Réutilisé
+dans l'app : assignation de tâche à soi (**`@moi`**, spec/06), reconnaissance de
+l'utilisateur dans les participants, signature de partage (spec/18). Édité ici.
+
 **Accès IA** (remplace « APIs ») — mode **clé perso** ou **AlfredIA** :
 - *Clé perso* : saisir `claude_api_key` + **Tester** (`test_api_key`).
 - *AlfredIA* : **statut** de l'abonnement (actif / essai / inactif) + bouton

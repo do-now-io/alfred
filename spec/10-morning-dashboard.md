@@ -43,7 +43,11 @@ Topbar **sans barre de recherche**.
 - **Bandeau d'enregistrement** (pendant l'enregistrement, persistant sur toute
   l'app) : **timer** + **visualisation du volume micro** + bouton **stop**.
 - **Indicateur d'état Alfred** (remplace la cloche) — voir ci-dessous.
-- Avatar + nom **Alfred** (menu profil).
+- ~~Avatar + nom **Alfred** (menu profil)~~ → **retiré** (📝 à faire, feedback tests).
+  Le menu haut-droite était un **placeholder vide et ambigu** (ni compte utilisateur,
+  ni compte Alfred) et faisait doublon avec les **Réglages** (bas-gauche). On le
+  **supprime**. Le **profil local** (prénom/avatar) et le **compte / abonnement IA**
+  vivent dans les **Réglages** (spec/11).
 
 ### Indicateur d'état Alfred — ✅ fait (ajusté après test)
 

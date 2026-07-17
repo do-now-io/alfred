@@ -67,7 +67,7 @@ de « analyse » (une seule ingestion fusionnée, spec/05) — pas de 5ᵉ état
 sans événement réel derrière. Labels codés en dur pour l'instant (pas encore
 éditables dans l'app).
 
-### Indicateur d'état = où Alfred travaille — 📝 à faire (feedback tests)
+### Indicateur d'état = où Alfred travaille — ✅ fait (feedback tests)
 
 Deux évolutions demandées pour que l'état ne dise pas seulement *quoi*, mais aussi
 *sur quoi* :

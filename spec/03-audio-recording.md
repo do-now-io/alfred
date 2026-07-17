@@ -122,11 +122,10 @@ et `volume` (RMS 0..1) sont émis en direct toutes les ~250 ms — plus de `0` f
   niveau (RMS) + durée dans `recording-status-changed` toutes les ~250 ms,
   affichés à la fois dans le bandeau topbar et en grand sur la page de guidage.
 
-## Arrêt : annuler / continuer + choix des traitements aval — 📝 à faire (feedback tests)
+## Arrêt : annuler / continuer + choix des traitements aval — ✅ fait (feedback tests)
 
-Aujourd'hui « Terminer » **déclenche immédiatement** la transcription puis
-l'ingestion (compte-rendu + tâches) — impossible d'arrêter sans tout enclencher.
-On veut **rendre le pipeline aval optionnel et interruptible** :
+« Terminer » ne déclenche plus rien : le pipeline aval est **optionnel et
+interruptible** :
 
 - **Annuler pendant l'enregistrement** — un bouton **Annuler** (à côté d'Arrêter,
   visuellement distinct) stoppe la prise et **jette le WAV** sans rien lancer en
@@ -162,19 +161,20 @@ Après transcription confirmée en DB (spec 04) : supprimer le WAV et passer
 ## Commandes Tauri (réel)
 
 - `start_recording(source)` — `"mic_only" | "system_only" | "mixed"`
-- `stop_recording() -> recording_id` — **s'arrête sans lancer l'aval** (passe en
-  revue « prise terminée » ; l'aval n'est plus enclenché ici mais par
-  `process_recording`). *Changement de contrat vs actuel (où il enfile la
-  transcription) — à faire.*
-- **`cancel_recording()`** (à ajouter) — arrête + **jette le WAV**, aucun aval
+- `stop_recording() -> recording_id` — **s'arrête sans lancer l'aval** : passe en
+  revue « prise terminée » (`recordings.status = 'stopped'`, migration 012) et
+  émet `recording-status-changed { status: "stopped", recording_id, purpose }`.
+- **`cancel_recording()`** — arrête + **jette le WAV** (+ ligne DB), aucun aval
   (bouton Annuler pendant la prise).
-- **`discard_recording(recording_id)`** (à ajouter) — supprime une prise en revue
-  (bouton Supprimer) ; partagé avec le « Recommencer » du téléprompteur (spec/13).
-- **`process_recording(recording_id, { transcribe, summary, tasks })`** (à ajouter)
-  — lance les traitements aval **cochés** (bouton Continuer). Remplace l'enfilage
-  automatique fait aujourd'hui dans `stop_recording`.
-- **`pause_recording()` / `resume_recording()`** (à ajouter, spec/13) — pause/reprise
-  de la capture.
+- **`discard_recording(recording_id)`** — supprime une prise en revue (bouton
+  Supprimer) ; partagé avec le « Recommencer » du téléprompteur (spec/13).
+- **`process_recording(recording_id, { transcribe, summary, tasks })`** — lance
+  les traitements aval **cochés** (bouton Continuer). `transcribe=false` → le WAV
+  est simplement déplacé dans le vault (rien d'aval).
+- **`pause_recording()` / `resume_recording()`** (spec/13) — pause/reprise de la
+  capture : les frames sont **jetées** (mic + loopback WASAPI, pas d'insertion de
+  silence) et le chrono se fige (le backend exclut le temps de pause de
+  `duration_seconds` ; état émis : `"paused"`).
 - `import_audio_file() -> Option<recording_id>` — ouvre le sélecteur de fichier
   (filtre `.wav`), copie le WAV choisi et le met en file de transcription ;
   `None` si l'utilisateur annule.

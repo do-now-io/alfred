@@ -78,8 +78,8 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    reprendre, pas être piégé dès qu'il clique « stop ») :
    - **Commencer l'enregistrement** (lance la prise).
    - **Pause / Reprendre** pendant la prise (le chrono se fige, la capture
-     s'interrompt sans clôturer la prise). *Dépend d'un support pause/reprise de la
-     capture audio — voir spec/03 ; à ajouter.*
+     s'interrompt sans clôturer la prise). *Support pause/reprise de la capture
+     audio : ✅ fait (spec/03 — `pause_recording`/`resume_recording`).*
    - **J'ai terminé** → **ne lance PAS directement** la transcription. On passe dans
      un état intermédiaire « prise terminée » offrant :
      - **Recommencer** — jette la prise et repart à zéro (nouvel enregistrement de
@@ -251,9 +251,11 @@ Archivé). Idempotent.
 (spec/15) · `test_microphone` · `get_config` / `set_config` (`onboarding_completed`,
 `tour_completed`) · `start_recording(purpose = "meeting" | "context")` /
 `stop_recording` (tournée guidée, via le store d'enregistrement existant) ·
-**`pause_recording` / `resume_recording`** (à ajouter — contrôles téléprompteur,
-dépend du support pause de la capture, spec/03) · **`discard_recording`** (à
-ajouter — bouton « Recommencer ») · `build_context_from_transcription` (route
+**`pause_recording` / `resume_recording`** (✅ — contrôles téléprompteur,
+spec/03) · **`discard_recording`** (✅ — bouton « Recommencer ») ·
+**`process_recording`** (✅ — bouton « Continuer », spec/03) ·
+**`seed_starter_content`** (✅ — contenu de démarrage, flag
+`starter_content_seeded`) · `build_context_from_transcription` (route
 « mode contexte » → structure `Contexte Alfred.md` +
 `generate_glossary_from_context`, spec/17) · `read_recording_wav` (réécoute dans
 l'écran /resolve mode contexte).

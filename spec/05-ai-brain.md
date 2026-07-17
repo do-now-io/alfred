@@ -93,7 +93,7 @@ même note sert de source au **glossaire Whisper** (spec/17).
 **Événement** : `ingestion_completed { ai_mode }` (metrics, spec/15) + `notes-updated`
 (+ `todos-updated` pour la partie SQLite, transitoire).
 
-### Sortie découplée compte-rendu / tâches — 📝 à faire (feedback tests, spec/03)
+### Sortie découplée compte-rendu / tâches — ✅ fait (feedback tests, spec/03)
 
 Le panneau de revue post-enregistrement (spec/03) laisse l'utilisateur **choisir**
 les traitements aval : Transcription / **Compte-rendu** / **Tâches** (cases cochées

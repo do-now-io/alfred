@@ -37,6 +37,10 @@ struct NoteEntry {
     folder: Option<String>,
     tags: Vec<String>,
     wikilinks: Vec<String>,
+    /// Paire transcription ↔ compte-rendu (spec/07c) : les notes qui partagent
+    /// un `recording_id` sont reliées nativement (un wikilink serait ambigu tant
+    /// que les deux portaient le même nom daté).
+    recording_id: Option<String>,
 }
 
 pub fn build_graph(root: &Path) -> Result<VaultGraph> {
@@ -85,6 +89,7 @@ pub fn build_graph(root: &Path) -> Result<VaultGraph> {
             folder,
             tags,
             wikilinks: extract_wikilinks(&body),
+            recording_id: metadata.recording_id.clone(),
         });
     }
 
@@ -122,6 +127,23 @@ pub fn build_graph(root: &Path) -> Result<VaultGraph> {
         }
     }
 
+    // Paire enregistrement (spec/07c) : lien note → note entre toutes les notes
+    // partageant le même `recording_id` (transcription brute ↔ compte-rendu).
+    {
+        let mut by_recording: HashMap<&str, Vec<&NoteEntry>> = HashMap::new();
+        for note in &notes {
+            if let Some(rid) = note.recording_id.as_deref().filter(|r| !r.trim().is_empty()) {
+                by_recording.entry(rid).or_default().push(note);
+            }
+        }
+        for group in by_recording.values() {
+            for pair in group.windows(2) {
+                // Ordonné (source, target) stable — le HashSet dédoublonne.
+                links.insert((pair[0].path.clone(), pair[1].path.clone()));
+            }
+        }
+    }
+
     let mut sorted_tags: Vec<String> = tag_ids.into_iter().collect();
     sorted_tags.sort();
     for tag_id in sorted_tags {
@@ -140,6 +162,35 @@ pub fn build_graph(root: &Path) -> Result<VaultGraph> {
         .collect();
 
     Ok(VaultGraph { nodes, links })
+}
+
+/// Tags distincts du vault (frontmatter + `#inline`), triés — pour
+/// l'autocomplétion du panneau Properties (spec/07). Réutilise exactement la
+/// même extraction que `build_graph`.
+pub fn list_tags(root: &Path) -> Result<Vec<String>> {
+    let mut tags: HashSet<String> = HashSet::new();
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().is_file()
+                && e.path().extension().map(|x| x == "md").unwrap_or(false)
+                && !e.path().components().any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+        })
+    {
+        let Ok(raw) = std::fs::read_to_string(entry.path()) else { continue };
+        let stem = entry
+            .path()
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let (metadata, body) = frontmatter::parse(&raw, &stem);
+        tags.extend(metadata.tags.iter().map(|t| normalize_tag(t)).filter(|t| !t.is_empty()));
+        tags.extend(extract_inline_tags(&body));
+    }
+    let mut out: Vec<String> = tags.into_iter().collect();
+    out.sort();
+    Ok(out)
 }
 
 fn normalize_tag(tag: &str) -> String {

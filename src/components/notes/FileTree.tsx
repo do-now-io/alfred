@@ -36,13 +36,16 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
     return () => { cancelled = true; };
   }, [view, vaultPath, tree]);
 
-  // Group notes by project; named projects alpha, "Sans projet" last.
+  // Group notes by project — `project` est une LISTE (spec/07) : une note
+  // apparaît sous CHACUN de ses projets ; sans projet → « Sans projet » (dernier).
   const projectGroups = useMemo(() => {
     const map = new Map<string, ProjectNote[]>();
     for (const n of projectNotes) {
-      const key = n.project?.trim() || "";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(n);
+      const keys = n.project.map((p) => p.trim()).filter(Boolean);
+      for (const key of keys.length ? keys : [""]) {
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(n);
+      }
     }
     return [...map.entries()]
       .map(([project, notes]) => ({

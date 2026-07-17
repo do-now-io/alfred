@@ -121,7 +121,7 @@ pub async fn seed_starter_content(db: &SqlitePool, vault_root: Option<&Path>) ->
                 title,
                 None,
                 participants,
-                Some("Projet Horloge (exemple)".to_string()),
+                vec!["Projet Horloge (exemple)".to_string()],
             );
             if let Err(e) = crate::notes::vault::create_intelligence_note(&folder, title, metadata, body).await {
                 eprintln!("[seed] demo note '{}' failed: {}", title, e);

@@ -88,11 +88,12 @@ pub async fn resolve_access(db: &SqlitePool) -> Result<AiAccess> {
 const INGESTION_SYSTEM: &str = r#"Tu es Alfred, un assistant personnel. On te donne la transcription brute d'un enregistrement (réunion, note vocale, appel). Analyse-la et soumets un compte-rendu structuré via l'outil `submit_ingestion`.
 
 Consignes :
+- `titre` : un SUJET COURT qui nomme l'échange (ex. « Réunion Flexiflit — migration GKE », « Point équipe produit »). C'est le nom de fichier du compte-rendu : descriptif, concis (≤ 60 caractères), sans date. Chaîne vide si la transcription est inexploitable.
 - `resume` : compte-rendu structuré en Markdown (points clés abordés), en français, concis.
 - `points_cles` : liste des points clés abordés, en phrases courtes.
 - `taches` : chaque tâche à faire identifiée dans la transcription. Quand un responsable est nommé (prénom), rappelle-le dans `responsable` — c'est important, ne l'invente pas s'il n'est pas mentionné. `echeance` au format YYYY-MM-DD si une date est mentionnée, sinon omets-la.
 - `participants` : les prénoms des personnes présentes / citées comme participant à l'échange (pas les personnes simplement mentionnées). Liste vide si indéterminable.
-- `project` : le nom du projet concerné, UNIQUEMENT s'il est clairement identifiable (nommé dans la transcription ou reconnaissable via le contexte interne). Omets-le sinon — ne devine pas.
+- `project` : la liste des projets concernés (0, 1 ou plusieurs), UNIQUEMENT ceux clairement identifiables (nommés dans la transcription ou reconnaissables via le contexte interne). Liste vide sinon — ne devine pas.
 - N'invente rien : si la transcription est trop courte ou vide de contenu exploitable, renvoie un résumé bref, une liste de points clés vide, et aucune tâche."#;
 
 fn ingestion_tool() -> serde_json::Value {
@@ -102,6 +103,10 @@ fn ingestion_tool() -> serde_json::Value {
         "input_schema": {
             "type": "object",
             "properties": {
+                "titre": {
+                    "type": "string",
+                    "description": "Sujet court de l'échange — nom de fichier du compte-rendu (sans date). Vide si inexploitable."
+                },
                 "resume": {
                     "type": "string",
                     "description": "Compte-rendu structuré en Markdown"
@@ -128,17 +133,21 @@ fn ingestion_tool() -> serde_json::Value {
                     "description": "Prénoms des participants à l'échange"
                 },
                 "project": {
-                    "type": "string",
-                    "description": "Nom du projet concerné, seulement si clairement identifiable"
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Projets concernés (0..n), seulement s'ils sont clairement identifiables"
                 }
             },
-            "required": ["resume", "points_cles", "taches"]
+            "required": ["titre", "resume", "points_cles", "taches"]
         }
     }])
 }
 
 #[derive(Debug, Deserialize)]
 struct IngestionOutput {
+    /// Sujet court (spec/05/07) → nom du fichier compte-rendu. Vide → nom daté.
+    #[serde(default)]
+    titre: String,
     resume: String,
     #[serde(default)]
     points_cles: Vec<String>,
@@ -146,8 +155,24 @@ struct IngestionOutput {
     taches: Vec<IngestedTask>,
     #[serde(default)]
     participants: Vec<String>,
-    #[serde(default)]
-    project: Option<String>,
+    /// Liste de projets (0..n) — une réunion peut relever de plusieurs projets.
+    #[serde(default, deserialize_with = "string_or_seq")]
+    project: Vec<String>,
+}
+
+/// Accepte `"Acme"` comme `["Acme"]` — l'IA rend parfois un scalaire malgré le
+/// schéma array ; on ne perd pas l'ingestion pour ça.
+fn string_or_seq<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum V {
+        One(String),
+        Many(Vec<String>),
+    }
+    Ok(match V::deserialize(d)? {
+        V::One(s) => vec![s],
+        V::Many(v) => v,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -259,17 +284,22 @@ async fn run_ingestion_core(
     // generic (they can fire for unrelated reasons) to reliably drive UI waiting
     // on ingestion. Errors carry their message: a silent ingestion failure looks
     // exactly like "the feature doesn't work" (learned the hard way in testing).
-    let emit_status = |status: &str, message: Option<String>| {
+    // La `phase` (spec/05/10 — `analyzing` → `summary` → `tasks` → `done`) pilote
+    // la capsule majordome (« Je cogite… » / « Je note les tâches… »). Un seul
+    // appel IA : les phases d'écriture sont brèves mais honnêtes.
+    let emit_status = |status: &str, phase: &str, message: Option<String>| {
         let _ = app_handle.emit(
             "ingestion-status-changed",
-            json!({ "status": status, "recording_id": recording_id, "message": message }),
+            json!({ "status": status, "phase": phase, "recording_id": recording_id, "message": message }),
         );
     };
 
     if text.trim().is_empty() || (!summary && !tasks) {
-        emit_status("done", None);
+        emit_status("done", "done", None);
         return Ok(());
     }
+
+    emit_status("running", "analyzing", None);
 
     // Contexte interne (spec/16) : helps the ingestion spell names/teams right.
     let context = match vault_root {
@@ -280,17 +310,30 @@ async fn run_ingestion_core(
     let (output, ai_mode) = match call_ingestion(text, context.as_deref(), tasks, db).await {
         Ok(r) => r,
         Err(e) => {
-            emit_status("error", Some(e.to_string()));
+            emit_status("error", "error", Some(e.to_string()));
             return Err(e);
         }
+    };
+
+    // Nom du compte-rendu = sujet court fourni par l'IA (spec/05/07) ; la
+    // transcription brute garde son nom daté. Fallback : nom daté si titre vide.
+    let report_title = {
+        let t = output.titre.trim();
+        if t.is_empty() { note_title.to_string() } else { t.to_string() }
     };
 
     if let Some(vault_root) = vault_root {
         // 1. Compte-rendu → alfred-intelligence/{titre}.md — only when requested.
         if summary {
+            emit_status("running", "summary", None);
             let folder = vault_root.join(intelligence_folder(db).await);
-            let project = output.project.as_deref().map(str::trim).filter(|p| !p.is_empty()).map(str::to_string);
-            let metadata = crate::notes::NoteMetadata::for_meeting_report(note_title, recording_id, output.participants.clone(), project);
+            let project: Vec<String> = output
+                .project
+                .iter()
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect();
+            let metadata = crate::notes::NoteMetadata::for_meeting_report(&report_title, recording_id, output.participants.clone(), project);
             let mut body = output.resume.clone();
             if !output.points_cles.is_empty() {
                 body.push_str("\n\n## Points clés\n");
@@ -298,8 +341,8 @@ async fn run_ingestion_core(
                     body.push_str(&format!("- {}\n", p));
                 }
             }
-            match crate::notes::vault::create_intelligence_note(&folder, note_title, metadata, &body).await {
-                Ok(_) => eprintln!("[ingestion] compte-rendu created: {}", note_title),
+            match crate::notes::vault::create_intelligence_note(&folder, &report_title, metadata, &body).await {
+                Ok(_) => eprintln!("[ingestion] compte-rendu created: {}", report_title),
                 Err(e) => eprintln!("[ingestion] failed to write compte-rendu: {}", e),
             }
         }
@@ -307,6 +350,7 @@ async fn run_ingestion_core(
         // 2. Tâches → Todo.md (spec/06 — the todos source of truth), deduped —
         //    only when requested.
         if tasks && !output.taches.is_empty() {
+            emit_status("running", "tasks", None);
             let todo_rel_path = crate::todos::todo_file_path(db).await;
             let tasks: Vec<IngestTask> = output
                 .taches
@@ -334,7 +378,7 @@ async fn run_ingestion_core(
     }
 
     crate::metrics::send("ingestion_completed", json!({ "ai_mode": ai_mode }));
-    emit_status("done", None);
+    emit_status("done", "done", None);
 
     Ok(())
 }

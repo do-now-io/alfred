@@ -6,7 +6,8 @@ export type NoteMetadata = { title: string, date: string, tags: Array<string>, t
  */
 participants: Array<string>, 
 /**
- * Vault "project" this note belongs to, when known (spec/07, hors v1 pour le
- * regroupement automatique — le champ existe déjà pour l'ingestion).
+ * Vault projects this note belongs to (spec/07) — une note peut relever de
+ * PLUSIEURS projets (feedback tests) : elle apparaît sous chacun dans la vue
+ * Projets. Lecture rétro-compatible avec l'ancienne forme scalaire.
  */
-project: string | null, };
+project: Array<string>, };

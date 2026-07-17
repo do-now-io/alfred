@@ -270,6 +270,75 @@ pub fn archive_task(content: &str, id: &str) -> Result<String> {
     Ok(out)
 }
 
+/// Déplace une tâche vers `## section`, à `position` (index 0-based dans la
+/// section ; hors bornes / absent → fin de section). Conserve `@responsable`,
+/// `📅 échéance` et l'état coché (spec/06 — Kanban : colonne = section, ordre =
+/// ordre des lignes). La section cible est créée si absente (sections inconnues
+/// préservées par `merge_tasks`).
+pub fn move_task(content: &str, id: &str, section: &str, position: Option<usize>) -> Result<String> {
+    let section = section.trim();
+    if section.is_empty() {
+        return Err(anyhow!("Section cible vide"));
+    }
+
+    // 1. Retirer la ligne de sa section actuelle (en mémorisant son rendu exact).
+    let mut moved: Option<(bool, IngestTask)> = None;
+    let without = map_task_line(content, id, |_, checked, task| {
+        moved = Some((checked, task.clone()));
+        None
+    })?;
+    let (checked, task) = moved.expect("map_task_line found the task");
+    let mut line = render_line(&task);
+    if checked {
+        line = line.replacen("- [ ]", "- [x]", 1);
+    }
+
+    // 2. Normaliser les sections (squelette garanti), puis insérer dans la cible.
+    let (normalized, _) = merge_tasks(Some(&without), &[]);
+    let heading = format!("## {}", section);
+    let mut out: Vec<String> = Vec::new();
+    let mut inserted = false;
+    let mut in_target = false;
+    let mut task_index = 0usize;
+
+    for l in normalized.lines() {
+        let is_heading = l.trim().starts_with("## ");
+        if is_heading {
+            // On quitte la section cible sans avoir inséré → fin de section.
+            if in_target && !inserted {
+                // Insère avant les lignes vides de fin de section.
+                while out.last().map(|s| s.trim().is_empty()).unwrap_or(false) {
+                    out.pop();
+                }
+                out.push(line.clone());
+                out.push(String::new());
+                inserted = true;
+            }
+            in_target = l.trim() == heading;
+            task_index = 0;
+        } else if in_target && !inserted && parse_line(l).is_some() {
+            if position.map(|p| task_index >= p).unwrap_or(false) {
+                out.push(line.clone());
+                inserted = true;
+            }
+            task_index += 1;
+        }
+        out.push(l.to_string());
+    }
+    if in_target && !inserted {
+        out.push(line.clone());
+        inserted = true;
+    }
+    if !inserted {
+        // Section inconnue du fichier → on la crée en fin (avant rien).
+        out.push(String::new());
+        out.push(heading);
+        out.push(line);
+    }
+
+    Ok(out.join("\n").trim_end().to_string() + "\n")
+}
+
 /// Rewrite a task's title / responsable / échéance (keeps its checked state + place).
 pub fn edit_task(content: &str, id: &str, new_task: &IngestTask) -> Result<String> {
     map_task_line(content, id, |_, checked, _| {
@@ -354,6 +423,36 @@ mod tests {
         .unwrap();
         assert!(out.contains("- [x] Nouvelle formulation — 📅 2026-08-01"));
         assert!(!out.contains("Vieille formulation"));
+    }
+
+    #[test]
+    fn moves_between_sections_keeping_fields() {
+        let content = "## Prioritaire\n\n## En cours\n\n## À faire\n- [x] Relire le contrat — @Jean — 📅 2026-07-10\n- [ ] Autre tâche\n\n## Archivé\n";
+        let out = move_task(content, &normalize_title("Relire le contrat"), "En cours", None).unwrap();
+        let en_cours = out.find("## En cours").unwrap();
+        let a_faire = out.find("## À faire").unwrap();
+        let pos = out.find("- [x] Relire le contrat — @Jean — 📅 2026-07-10").unwrap();
+        assert!(pos > en_cours && pos < a_faire, "task should sit under En cours:\n{out}");
+        assert!(out.contains("- [ ] Autre tâche"));
+    }
+
+    #[test]
+    fn moves_to_position_within_section() {
+        let content = "## Prioritaire\n- [ ] A\n- [ ] B\n\n## À faire\n- [ ] C\n";
+        let out = move_task(content, &normalize_title("C"), "Prioritaire", Some(1)).unwrap();
+        let a = out.find("- [ ] A").unwrap();
+        let b = out.find("- [ ] B").unwrap();
+        let c = out.find("- [ ] C").unwrap();
+        assert!(a < c && c < b, "C should be between A and B:\n{out}");
+    }
+
+    #[test]
+    fn move_to_same_section_reorders() {
+        let content = "## À faire\n- [ ] A\n- [ ] B\n- [ ] C\n";
+        let out = move_task(content, &normalize_title("C"), "À faire", Some(0)).unwrap();
+        let a = out.find("- [ ] A").unwrap();
+        let c = out.find("- [ ] C").unwrap();
+        assert!(c < a, "C should now be first:\n{out}");
     }
 
     #[test]

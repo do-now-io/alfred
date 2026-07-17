@@ -14,10 +14,11 @@ pub struct NoteMetadata {
     /// First names of meeting participants, when known (spec/05 ingestion).
     #[serde(default)]
     pub participants: Vec<String>,
-    /// Vault "project" this note belongs to, when known (spec/07, hors v1 pour le
-    /// regroupement automatique — le champ existe déjà pour l'ingestion).
+    /// Vault projects this note belongs to (spec/07) — une note peut relever de
+    /// PLUSIEURS projets (feedback tests) : elle apparaît sous chacun dans la vue
+    /// Projets. Lecture rétro-compatible avec l'ancienne forme scalaire.
     #[serde(default)]
-    pub project: Option<String>,
+    pub project: Vec<String>,
 }
 
 impl NoteMetadata {
@@ -30,7 +31,7 @@ impl NoteMetadata {
             status: "active".to_string(),
             recording_id: None,
             participants: vec![],
-            project: None,
+            project: vec![],
         }
     }
 
@@ -43,7 +44,7 @@ impl NoteMetadata {
             status: "active".to_string(),
             recording_id: Some(recording_id.to_string()),
             participants: vec![],
-            project: None,
+            project: vec![],
         }
     }
 
@@ -54,7 +55,7 @@ impl NoteMetadata {
         title: &str,
         recording_id: Option<&str>,
         participants: Vec<String>,
-        project: Option<String>,
+        project: Vec<String>,
     ) -> Self {
         Self {
             title: title.to_string(),
@@ -75,7 +76,7 @@ impl NoteMetadata {
         if self.status != "active" { count += 1; }
         if self.recording_id.is_some() { count += 1; }
         if !self.participants.is_empty() { count += 1; }
-        if self.project.is_some() { count += 1; }
+        if !self.project.is_empty() { count += 1; }
         count
     }
 }
@@ -149,8 +150,15 @@ pub fn parse(raw: &str, filename_stem: &str) -> (NoteMetadata, String) {
                     }
                 }
                 "project" => {
+                    // LISTE `[A, B]` — mais accepte aussi l'ancienne forme
+                    // scalaire `project: A` (rétro-compat, spec/07).
                     if !value.is_empty() && value != "null" && value != "~" {
-                        metadata.project = Some(value.trim_matches('"').to_string());
+                        let v = value.trim().trim_matches('[').trim_matches(']');
+                        metadata.project = v
+                            .split(',')
+                            .map(|p| p.trim().trim_matches('"').to_string())
+                            .filter(|p| !p.is_empty())
+                            .collect();
                     }
                 }
                 _ => {} // ignore unknown keys
@@ -198,8 +206,13 @@ pub fn serialize(metadata: &NoteMetadata, body: &str) -> String {
         out.push_str(&format!("participants: [{}]\n", participants_str));
     }
 
-    if let Some(ref project) = metadata.project {
-        out.push_str(&format!("project: {}\n", project));
+    if !metadata.project.is_empty() {
+        let project_str = metadata.project
+            .iter()
+            .map(|p| p.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!("project: [{}]\n", project_str));
     }
 
     out.push_str("---\n\n");
@@ -222,7 +235,7 @@ mod tests {
             status: "active".into(),
             recording_id: None,
             participants: vec![],
-            project: None,
+            project: vec![],
         };
         let body = "# Test\n\nHello world.";
         let raw = serialize(&meta, body);
@@ -238,5 +251,23 @@ mod tests {
         let (meta, body) = parse(raw, "my-file");
         assert_eq!(meta.title, "my-file");
         assert_eq!(body, raw);
+    }
+
+    #[test]
+    fn project_list_roundtrips() {
+        let mut meta = NoteMetadata::new("n");
+        meta.project = vec!["Acme".into(), "Interne".into()];
+        let raw = serialize(&meta, "corps");
+        assert!(raw.contains("project: [Acme, Interne]"));
+        let (parsed, _) = parse(&raw, "n");
+        assert_eq!(parsed.project, vec!["Acme", "Interne"]);
+    }
+
+    #[test]
+    fn project_scalar_is_accepted() {
+        // Rétro-compat : l'ancienne forme scalaire se lit comme une liste de 1.
+        let raw = "---\ntitle: T\ndate: 2026-01-01\nproject: Acme\n---\ncorps";
+        let (parsed, _) = parse(raw, "t");
+        assert_eq!(parsed.project, vec!["Acme"]);
     }
 }

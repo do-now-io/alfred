@@ -5,6 +5,12 @@
  */
 export type ProjectNote = { path: string, title: string, 
 /**
- * `null` → shown under "Sans projet".
+ * Liste vide → « Sans projet ». Une note peut relever de plusieurs projets
+ * (elle apparaît sous chacun — feedback tests, spec/07).
  */
-project: string | null, type: string, };
+project: Array<string>, type: string, 
+/**
+ * Lien de paire transcription ↔ compte-rendu (spec/07) : le compte-rendu
+ * porte le projet, la transcription est affichée avec lui via ce champ.
+ */
+recording_id: string | null, };

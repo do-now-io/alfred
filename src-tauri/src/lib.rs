@@ -27,6 +27,11 @@ async fn start_recording(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    // La capture est un singleton (spec/07b) : pas d'enregistrement pendant une dictée.
+    if *state.dictation_active.lock().unwrap() {
+        return Err("Une dictée est en cours — terminez-la avant d'enregistrer.".to_string());
+    }
+
     let data_dir = app
         .path()
         .app_data_dir()
@@ -249,6 +254,116 @@ async fn resume_recording(state: tauri::State<'_, AppState>) -> Result<(), Strin
 #[tauri::command]
 async fn test_microphone() -> Result<(), String> {
     audio::test_microphone().await.map_err(|e| e.to_string())
+}
+
+// ─── Dictée éphémère (spec/07b) ────────────────────────────────────────────────
+// Capture micro courte → Whisper (glossaire) → texte rendu à l'appelant. AUCUNE
+// note, aucune ligne `recordings`, aucune ingestion : le WAV temporaire est
+// supprimé après transcription. Exclusive de l'enregistrement de réunion.
+
+fn dictation_wav_path(data_dir: &std::path::Path) -> std::path::PathBuf {
+    data_dir.join("dictation.wav")
+}
+
+#[tauri::command]
+async fn start_dictation(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    if state.active_recording_id.lock().unwrap().is_some() {
+        return Err("Un enregistrement est en cours — la dictée est indisponible.".to_string());
+    }
+    {
+        let mut active = state.dictation_active.lock().unwrap();
+        if *active {
+            return Err("Une dictée est déjà en cours.".to_string());
+        }
+        *active = true;
+    }
+
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let wav = dictation_wav_path(&data_dir);
+    let _ = tokio::fs::remove_file(&wav).await;
+
+    state
+        .dictation_stop_flag
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    let stop_flag = state.dictation_stop_flag.clone();
+    let handle = tauri::async_runtime::spawn(async move {
+        let r = tokio::task::spawn_blocking(move || audio::record_dictation_clip(wav, stop_flag)).await;
+        match r {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => eprintln!("[dictation] capture error: {}", e),
+            Err(e) => eprintln!("[dictation] capture panicked: {:?}", e),
+        }
+    });
+    *state.dictation_handle.lock().await = Some(handle);
+
+    let _ = app.emit("dictation-status-changed", serde_json::json!({ "status": "recording" }));
+    Ok(())
+}
+
+#[tauri::command]
+async fn stop_dictation(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    if !*state.dictation_active.lock().unwrap() {
+        return Err("Aucune dictée en cours.".to_string());
+    }
+
+    state
+        .dictation_stop_flag
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    if let Some(handle) = state.dictation_handle.lock().await.take() {
+        let _ = handle.await;
+    }
+
+    let _ = app.emit("dictation-status-changed", serde_json::json!({ "status": "transcribing" }));
+
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let wav = dictation_wav_path(&data_dir);
+    let result = transcription::transcribe_wav_text(&wav, &state.db, &data_dir, state.resource_dir.as_deref()).await;
+
+    // Éphémère : le clip est supprimé quoi qu'il arrive (spec/07b).
+    let _ = tokio::fs::remove_file(&wav).await;
+    *state.dictation_active.lock().unwrap() = false;
+
+    match result {
+        Ok(text) => {
+            let _ = app.emit("dictation-status-changed", serde_json::json!({ "status": "done" }));
+            Ok(text)
+        }
+        Err(e) => {
+            let _ = app.emit(
+                "dictation-status-changed",
+                serde_json::json!({ "status": "error", "message": e.to_string() }),
+            );
+            Err(e.to_string())
+        }
+    }
+}
+
+/// Annule la dictée sans transcrire (fermeture du popover, navigation…).
+#[tauri::command]
+async fn cancel_dictation(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    if !*state.dictation_active.lock().unwrap() {
+        return Ok(());
+    }
+    state
+        .dictation_stop_flag
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    if let Some(handle) = state.dictation_handle.lock().await.take() {
+        let _ = handle.await;
+    }
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let _ = tokio::fs::remove_file(dictation_wav_path(&data_dir)).await;
+    *state.dictation_active.lock().unwrap() = false;
+    let _ = app.emit("dictation-status-changed", serde_json::json!({ "status": "idle" }));
+    Ok(())
 }
 
 /// Import an existing WAV file and transcribe it through the same pipeline as a
@@ -568,6 +683,29 @@ async fn dismiss_todo(
         .map_err(|e| e.to_string())
 }
 
+/// TOUTES les tâches (cochées + Archivé), dans l'ordre du fichier — vue Kanban (spec/06).
+#[tauri::command]
+async fn get_all_todos(state: tauri::State<'_, AppState>) -> Result<Vec<todos::Todo>, String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    todos::get_all_todos(&state.db, vault_root.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Déplace une tâche vers une section / position (Kanban, spec/06).
+#[tauri::command]
+async fn move_todo(
+    id: String,
+    section: String,
+    position: Option<usize>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    todos::move_todo(&id, &section, position, &state.db, vault_root.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn update_todo(
     id: String,
@@ -689,6 +827,26 @@ async fn get_notes_by_project(
 ) -> Result<Vec<notes::vault::ProjectNote>, String> {
     let root = get_vault_root(&state)?;
     tokio::task::spawn_blocking(move || notes::vault::list_notes_with_project(&root))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Valeurs `project` distinctes du vault (combobox Projet + drag-drop, spec/07).
+#[tauri::command]
+async fn list_projects(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+    let root = get_vault_root(&state)?;
+    tokio::task::spawn_blocking(move || notes::vault::list_projects(&root))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Tags distincts du vault (autocomplétion Properties, spec/07).
+#[tauri::command]
+async fn list_tags(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+    let root = get_vault_root(&state)?;
+    tokio::task::spawn_blocking(move || notes::graph::list_tags(&root))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
@@ -1214,6 +1372,9 @@ pub fn run() {
                 active_recording_id: Arc::new(StdMutex::new(None)),
                 recording_stop_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 recording_pause_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                dictation_active: Arc::new(StdMutex::new(false)),
+                dictation_stop_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                dictation_handle: Arc::new(Mutex::new(None)),
                 transcription_tx,
                 http_client: http_client.clone(),
                 resource_dir,
@@ -1262,6 +1423,10 @@ pub fn run() {
             resume_recording,
             test_microphone,
             import_audio_file,
+            // Dictée éphémère (spec/07b)
+            start_dictation,
+            stop_dictation,
+            cancel_dictation,
             // Transcription
             download_model,
             get_transcription,
@@ -1277,10 +1442,12 @@ pub fn run() {
             subscribe_alfredia,
             // Todos
             get_todos,
+            get_all_todos,
             create_todo,
             complete_todo,
             dismiss_todo,
             update_todo,
+            move_todo,
             // Notes (vault)
             get_vault_tree,
             get_note_file,
@@ -1291,6 +1458,8 @@ pub fn run() {
             get_recent_notes,
             get_notes_by_project,
             get_vault_graph,
+            list_projects,
+            list_tags,
             get_vault_path,
             set_vault_path,
             pick_vault_folder,

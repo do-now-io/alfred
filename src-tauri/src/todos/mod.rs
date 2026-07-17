@@ -32,6 +32,9 @@ pub struct CreateTodoInput {
     pub title: String,
     pub responsable: Option<String>,
     pub echeance: Option<String>,
+    /// Section cible (Kanban « + » par colonne, spec/06). Défaut : « À faire ».
+    #[serde(default)]
+    pub section: Option<String>,
 }
 
 /// Vault-relative path of the shared to-do list (spec/06). Configurable via
@@ -108,14 +111,46 @@ pub async fn create_todo(input: &CreateTodoInput, db: &SqlitePool, vault_root: O
     };
     todo_md::append_tasks(root, &rel, std::slice::from_ref(&task)).await?;
 
+    // Section cible ≠ « À faire » (ajout rapide Kanban) → déplace la ligne.
+    let mut section = "À faire".to_string();
+    if let Some(target) = input.section.as_deref().map(str::trim).filter(|s| !s.is_empty() && *s != "À faire") {
+        move_todo(&todo_md::normalize_title(title), target, None, db, vault_root).await?;
+        section = target.to_string();
+    }
+
     Ok(Todo {
         id: todo_md::normalize_title(title),
         title: title.to_string(),
         responsable: task.responsable,
         echeance: task.echeance,
-        section: "À faire".to_string(),
+        section,
         checked: false,
     })
+}
+
+/// TOUTES les tâches (cochées et archivées comprises), dans l'ordre du fichier —
+/// pour la vue Kanban (spec/06 : colonnes = sections, Archivé compris).
+pub async fn get_all_todos(db: &SqlitePool, vault_root: Option<&Path>) -> Result<Vec<Todo>> {
+    let path = resolve_path(db, vault_root).await?;
+    let Some(content) = read_file(&path).await else {
+        return Ok(vec![]);
+    };
+    Ok(todo_md::parse_all(&content).into_iter().map(to_todo).collect())
+}
+
+/// Déplace une tâche vers `section` à `position` (Kanban, spec/06) — conserve
+/// responsable / échéance / état coché.
+pub async fn move_todo(
+    id: &str,
+    section: &str,
+    position: Option<usize>,
+    db: &SqlitePool,
+    vault_root: Option<&Path>,
+) -> Result<()> {
+    let path = resolve_path(db, vault_root).await?;
+    let content = read_file(&path).await.ok_or_else(|| anyhow!("Todo.md introuvable"))?;
+    let new_content = todo_md::move_task(&content, id, section, position)?;
+    write_file(&path, &new_content).await
 }
 
 /// Toggle done: check/uncheck in place (spec/06 — the line never moves).

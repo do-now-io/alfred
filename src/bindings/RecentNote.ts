@@ -4,4 +4,12 @@ export type RecentNote = { path: string, title: string,
 /**
  * Last filesystem modification time, in Unix seconds.
  */
-modified: bigint, };
+modified: bigint, 
+/**
+ * Frontmatter `type` — pour l'icône de type dans les Récents (spec/07).
+ */
+type: string, 
+/**
+ * Présent sur la paire transcription/compte-rendu (icône + apparaige).
+ */
+recording_id: string | null, };

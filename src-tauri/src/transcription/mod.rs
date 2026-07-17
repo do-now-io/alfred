@@ -123,16 +123,20 @@ pub async fn run_transcription_worker(mut rx: mpsc::Receiver<TranscriptionJob>) 
 /// 1. Alfred.app/Contents/Resources/models/  — bundled at build time
 /// 2. $APP_DATA_DIR/models/                  — downloaded by the user
 fn resolve_model_path(job: &TranscriptionJob) -> Result<PathBuf> {
-    let filename = format!("ggml-{}.bin", job.model_size);
+    resolve_model_path_parts(&job.model_size, &job.data_dir, job.resource_dir.as_deref())
+}
 
-    if let Some(ref res_dir) = job.resource_dir {
+fn resolve_model_path_parts(model_size: &str, data_dir: &std::path::Path, resource_dir: Option<&std::path::Path>) -> Result<PathBuf> {
+    let filename = format!("ggml-{}.bin", model_size);
+
+    if let Some(res_dir) = resource_dir {
         let bundled = res_dir.join("models").join(&filename);
         if bundled.exists() {
             return Ok(bundled);
         }
     }
 
-    let user_path = job.data_dir.join("models").join(&filename);
+    let user_path = data_dir.join("models").join(&filename);
     if user_path.exists() {
         return Ok(user_path);
     }
@@ -141,6 +145,42 @@ fn resolve_model_path(job: &TranscriptionJob) -> Result<PathBuf> {
         "Model '{}' not found. Bundle it in the app or download it from Settings.",
         filename
     ))
+}
+
+/// Transcription légère « clip → texte » pour la dictée éphémère (spec/07b) :
+/// mêmes réglages de décodage que le pipeline normal (modèle, langue, threads,
+/// glossaire spec/17), mais AUCUNE écriture — ni note, ni ligne `recordings`,
+/// ni ingestion. Le WAV appartient à l'appelant (qui le supprime après).
+pub async fn transcribe_wav_text(
+    wav_path: &std::path::Path,
+    db: &SqlitePool,
+    data_dir: &std::path::Path,
+    resource_dir: Option<&std::path::Path>,
+) -> Result<String> {
+    let model = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'whisper_model'")
+        .fetch_optional(db).await?
+        .unwrap_or_else(|| "small".to_string());
+    let lang = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'language_hint'")
+        .fetch_optional(db).await?
+        .unwrap_or_else(|| "auto".to_string());
+    let threads = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'whisper_threads'")
+        .fetch_optional(db).await?
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&t| t > 0);
+    let glossary = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'transcription_glossary'")
+        .fetch_optional(db).await?
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let model_path = resolve_model_path_parts(&model, data_dir, resource_dir)?;
+    let wav = wav_path.to_path_buf();
+    let language = if lang == "auto" { None } else { Some(lang) };
+
+    let (text, _segments, _detected) = tokio::task::spawn_blocking(move || {
+        run_whisper(&wav, &model_path, language.as_deref(), threads, glossary.as_deref())
+    })
+    .await??;
+    Ok(text.trim().to_string())
 }
 
 async fn process_job(job: TranscriptionJob) -> Result<()> {
@@ -283,7 +323,7 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
         } else if !summary && !tasks {
             let _ = app_clone.emit(
                 "ingestion-status-changed",
-                serde_json::json!({ "status": "done", "recording_id": rec_id, "message": null }),
+                serde_json::json!({ "status": "done", "phase": "done", "recording_id": rec_id, "message": null }),
             );
         } else if let Err(e) = crate::ai::run_ingestion_for_recording(&rec_id, &text, &title, summary, tasks, &db_clone, vault_clone.as_deref(), &app_clone).await {
             eprintln!("Ingestion error: {}", e);

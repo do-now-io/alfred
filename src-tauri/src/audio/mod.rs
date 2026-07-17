@@ -115,7 +115,7 @@ fn run_capture(source: &str, final_path: PathBuf, stop_flag: Arc<AtomicBool>, pa
             }
         }
         // "mic_only" and anything unknown: microphone.
-        _ => record_microphone(final_path, stop_flag, pause_flag, app_handle),
+        _ => record_microphone(final_path, stop_flag, pause_flag, Some(app_handle)),
     }
 }
 
@@ -136,7 +136,7 @@ fn record_mixed(final_path: PathBuf, stop_flag: Arc<AtomicBool>, pause_flag: Arc
     });
 
     // Mic-only RMS is used as the volume meter's proxy for the mixed stream too.
-    let mic_result = record_microphone(mic_path.clone(), stop_flag, pause_flag, app_handle);
+    let mic_result = record_microphone(mic_path.clone(), stop_flag, pause_flag, Some(app_handle));
     let sys_result = sys_thread
         .join()
         .map_err(|_| anyhow!("System capture thread panicked"))?;
@@ -167,7 +167,9 @@ fn record_mixed(final_path: PathBuf, stop_flag: Arc<AtomicBool>, pause_flag: Arc
 /// Capture the default input device into a mono PCM16 WAV at the device's
 /// native rate. Handles f32 / i16 / u16 devices (some WASAPI inputs are i16 —
 /// the old f32-only callback failed at runtime on those).
-fn record_microphone(file_path: PathBuf, stop_flag: Arc<AtomicBool>, pause_flag: Arc<AtomicBool>, app_handle: tauri::AppHandle) -> Result<()> {
+/// `app_handle: None` → capture silencieuse (aucun événement émis) — utilisée
+/// par la dictée éphémère (spec/07b), qui a son propre canal d'état.
+fn record_microphone(file_path: PathBuf, stop_flag: Arc<AtomicBool>, pause_flag: Arc<AtomicBool>, app_handle: Option<tauri::AppHandle>) -> Result<()> {
     let host = cpal::default_host();
     let device = host
         .default_input_device()
@@ -274,11 +276,13 @@ fn record_microphone(file_path: PathBuf, stop_flag: Arc<AtomicBool>, pause_flag:
             let paused_now = paused_since.map(|s| s.elapsed()).unwrap_or_default();
             let effective = started_at.elapsed().saturating_sub(paused_total + paused_now);
             let volume = f32::from_bits(level.load(Ordering::Relaxed)).min(1.0);
-            let _ = app_handle.emit("recording-status-changed", serde_json::json!({
-                "status": if paused { "paused" } else { "recording" },
-                "duration_seconds": effective.as_secs(),
-                "volume": if paused { 0.0 } else { volume }
-            }));
+            if let Some(ref app) = app_handle {
+                let _ = app.emit("recording-status-changed", serde_json::json!({
+                    "status": if paused { "paused" } else { "recording" },
+                    "duration_seconds": effective.as_secs(),
+                    "volume": if paused { 0.0 } else { volume }
+                }));
+            }
         }
     }
 
@@ -507,6 +511,14 @@ pub async fn discard_recording_files(
         .execute(db)
         .await?;
     Ok(())
+}
+
+/// Capture micro « clip » pour la dictée éphémère (spec/07b) : aucun événement
+/// `recording-status-changed`, pas de pause — juste un WAV temporaire jusqu'au
+/// stop. L'état est porté par `dictation-status-changed` côté commande.
+pub fn record_dictation_clip(file_path: PathBuf, stop_flag: Arc<AtomicBool>) -> Result<()> {
+    let no_pause = Arc::new(AtomicBool::new(false));
+    record_microphone(file_path, stop_flag, no_pause, None)
 }
 
 /// Briefly open the default input device to verify microphone access. On macOS

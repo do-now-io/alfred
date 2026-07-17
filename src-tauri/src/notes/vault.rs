@@ -34,6 +34,11 @@ pub struct RecentNote {
     pub title: String,
     /// Last filesystem modification time, in Unix seconds.
     pub modified: i64,
+    /// Frontmatter `type` — pour l'icône de type dans les Récents (spec/07).
+    #[serde(rename = "type")]
+    pub note_type: String,
+    /// Présent sur la paire transcription/compte-rendu (icône + apparaige).
+    pub recording_id: Option<String>,
 }
 
 // ─── Tree ─────────────────────────────────────────────────────────────────────
@@ -157,13 +162,15 @@ pub fn list_recent_notes(root: &Path, limit: usize) -> Result<Vec<RecentNote>> {
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let title = std::fs::read_to_string(&path)
-                .map(|raw| frontmatter::parse(&raw, &stem).0.title)
-                .unwrap_or(stem);
+            let meta = std::fs::read_to_string(&path)
+                .map(|raw| frontmatter::parse(&raw, &stem).0)
+                .unwrap_or_else(|_| frontmatter::NoteMetadata::new(&stem));
             RecentNote {
                 path: path.to_string_lossy().to_string(),
-                title,
+                title: meta.title,
                 modified,
+                note_type: meta.note_type,
+                recording_id: meta.recording_id,
             }
         })
         .collect();
@@ -177,10 +184,14 @@ pub fn list_recent_notes(root: &Path, limit: usize) -> Result<Vec<RecentNote>> {
 pub struct ProjectNote {
     pub path: String,
     pub title: String,
-    /// `null` → shown under "Sans projet".
-    pub project: Option<String>,
+    /// Liste vide → « Sans projet ». Une note peut relever de plusieurs projets
+    /// (elle apparaît sous chacun — feedback tests, spec/07).
+    pub project: Vec<String>,
     #[serde(rename = "type")]
     pub note_type: String,
+    /// Lien de paire transcription ↔ compte-rendu (spec/07) : le compte-rendu
+    /// porte le projet, la transcription est affichée avec lui via ce champ.
+    pub recording_id: Option<String>,
 }
 
 /// Every `.md` note in the vault with its title/project/type, for virtual
@@ -206,16 +217,33 @@ pub fn list_notes_with_project(root: &Path) -> Result<Vec<ProjectNote>> {
             let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
             let raw = std::fs::read_to_string(path).ok()?;
             let meta = frontmatter::parse(&raw, &stem).0;
-            let project = meta.project.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+            let project: Vec<String> = meta
+                .project
+                .iter()
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect();
             Some(ProjectNote {
                 path: path.to_string_lossy().to_string(),
                 title: meta.title,
                 project,
                 note_type: meta.note_type,
+                recording_id: meta.recording_id,
             })
         })
         .collect();
     Ok(notes)
+}
+
+/// Valeurs `project` distinctes du vault, triées — pour la combobox Projet du
+/// panneau Properties et le glisser-déposer de la vue Projets (spec/07).
+pub fn list_projects(root: &Path) -> Result<Vec<String>> {
+    let notes = list_notes_with_project(root)?;
+    let mut set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for note in notes {
+        set.extend(note.project);
+    }
+    Ok(set.into_iter().collect())
 }
 
 // ─── File I/O ─────────────────────────────────────────────────────────────────

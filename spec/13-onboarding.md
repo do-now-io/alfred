@@ -103,14 +103,26 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    Un **indicateur d'état discret** rappelle en permanence qu'Alfred « écoute et met
    au propre… » puis « range tout ça… » (piloté par `recording-status-changed =
    processing`, puis `transcription-complete` → structuration).
-4. **Contexte prêt (pop-up)** — **dès** `context-status-changed { status: "done" }`
-   pour **ce** `recording_id`, une pop-up **interrompt la visite** (où qu'on en
-   soit) : *« Alfred vous connaît maintenant — mais vérifiez ce qu'il a compris. »*
+
+   > **La visite ne doit PAS être interrompue** (feedback tests) : même si le
+   > contexte finit d'être construit pendant qu'on visite, on **laisse
+   > l'utilisateur dérouler toutes les étapes présentées jusqu'au bout**. L'événement
+   > `context-status-changed { status: "done" }` est **mis de côté** (drapeau
+   > « contexte prêt » + son récap : sections remplies, nombre de termes de
+   > glossaire) — il **ne déclenche rien** en cours de visite, il est simplement
+   > **mémorisé** pour l'étape 4.
+4. **Contexte prêt (pop-up)** — s'affiche **à la fin de la visite** (après la
+   dernière étape de découverte, étape 3.4), **pas** au moment où le contexte est
+   prêt. Deux cas :
+   - **Contexte déjà prêt** (l'événement `done` est arrivé pendant la visite, mis de
+     côté) → la pop-up s'affiche immédiatement avec le récap mémorisé.
+   - **Pas encore prêt** → on reste sur l'indicateur d'état jusqu'à réception de
+     `context-status-changed { status: "done" }`, puis la pop-up apparaît.
+
+   Contenu : *« Alfred vous connaît maintenant — mais vérifiez ce qu'il a compris. »*
    + aperçu (sections remplies + *« {n} noms propres ajoutés au glossaire »*).
    **Un seul bouton : « Revoir / corriger »** (l'ancien bouton « Continuer » est
-   **retiré** — on veut forcer le passage par la vérification). Si la visite se
-   termine avant que le contexte soit prêt, on reste sur l'indicateur d'état jusqu'à
-   l'événement.
+   **retiré** — on veut forcer le passage par la vérification).
 5. **Correction du contexte (écran /resolve)** — « Revoir / corriger » ouvre un
    **écran de correction dédié** — **réutilise l'écran `/resolve`** de l'ingestion
    augmentée (spec/17) en **mode contexte** : les 4 sections structurées

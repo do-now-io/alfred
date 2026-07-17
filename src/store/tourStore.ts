@@ -36,6 +36,10 @@ interface TourState {
   step: TourStep;
   error: string | null;
   recap: ContextRecap | null;
+  /** « Contexte prêt » MÉMORISÉ (spec/13, feedback tests) : l'événement
+   *  `context-status-changed: done` reçu pendant la visite ne déclenche RIEN —
+   *  la pop-up n'apparaît qu'à la fin de la dernière étape de découverte. */
+  contextReady: boolean;
   /** DOM targets the spotlight/toasts anchor to, keyed by a stable id. */
   targets: Record<string, HTMLElement | null>;
   registerTarget: (id: string, el: HTMLElement | null) => void;
@@ -56,14 +60,15 @@ export const useTourStore = create<TourState>((set) => ({
   step: "intro",
   error: null,
   recap: null,
+  contextReady: false,
   targets: {},
 
   registerTarget: (id, el) =>
     set((s) => (s.targets[id] === el ? s : { targets: { ...s.targets, [id]: el } })),
 
-  start: () => set({ active: true, step: "intro", error: null, recap: null }),
+  start: () => set({ active: true, step: "intro", error: null, recap: null, contextReady: false }),
   goto: (step) => set({ step, error: null }),
-  setRecap: (recap) => set({ recap }),
+  setRecap: (recap) => set({ recap, contextReady: true }),
   fail: (message) => set({ error: message }),
 
   // Skipping still marks the tour as seen — "Revoir la visite guidée" (Réglages)

@@ -36,7 +36,7 @@ principal : l'**input Alfred** de l'accueil (spec/10).
 Composant `ChatPanel`. L'input Alfred de l'accueil alimente `ask_notes` ; les
 exemples d'amorces vivent dans la spec/10.
 
-## Dictée vocale de la question — 📝 à faire (feedback tests)
+## Dictée vocale de la question — ✅ fait (feedback tests)
 
 Aujourd'hui on ne peut interroger Alfred qu'au **clavier**. On ajoute une **dictée
 vocale** : parler sa question, Alfred la transcrit dans le champ, on relit/corrige,

@@ -10,13 +10,70 @@ import alfredLogo from "../assets/alfred-logo.png";
 // (or the Dashboard's recording card). Shows live feedback (timer + volume) and
 // the capture tips that make a recording actually transcribe/extract well.
 
-const DEFAULT_TIPS = [
-  "Présentez les participants : prénom + rôle.",
-  "Annoncez le sujet / l'objectif en une phrase au début.",
-  "Quand vous donnez une tâche, nommez le responsable (prénom).",
-  "Récapitulez les décisions à la fin.",
-  "Épelez les noms propres ou termes techniques peu courants.",
+// Conseils de captation PAR TYPE (spec/03, feedback tests) : chaque type de
+// captation a sa phrase d'ouverture (ce qu'il faut dire en premier) + ses
+// conseils ciblés. Config `capture_tips` = dict `{ [type]: { opener, tips[] } }`
+// (l'ancienne liste plate est migrée vers le type « libre »).
+
+interface CaptureTypeTips {
+  opener: string;
+  tips: string[];
+}
+
+const CAPTURE_TYPES: Array<{ id: string; label: string }> = [
+  { id: "perso", label: "Note personnelle" },
+  { id: "client", label: "Réunion client" },
+  { id: "one2one", label: "One-to-one" },
+  { id: "equipe", label: "Réunion d'équipe" },
+  { id: "libre", label: "Autre / libre" },
 ];
+
+const DEFAULT_TIPS_BY_TYPE: Record<string, CaptureTypeTips> = {
+  perso: {
+    opener: "« Ceci est une note personnelle sur … »",
+    tips: [
+      "Annoncez le contexte et le sujet en une phrase.",
+      "Datez les éléments importants (« à faire pour vendredi »).",
+      "Épelez les noms propres ou termes techniques peu courants.",
+    ],
+  },
+  client: {
+    opener: "« Réunion avec le client {nom}, participants : … »",
+    tips: [
+      "Nommez TOUS les participants (côté client et interne) et leur rôle.",
+      "Citez le nom du client et du projet concerné.",
+      "Quand vous donnez une tâche, nommez le responsable (prénom).",
+      "Récapitulez les décisions à la fin.",
+      "Épelez les noms propres ou termes techniques peu courants.",
+    ],
+  },
+  one2one: {
+    opener: "« One-to-one avec {prénom} »",
+    tips: [
+      "Annoncez le sujet de l'échange.",
+      "Formulez clairement les points d'action et qui s'en charge.",
+      "Récapitulez ce qui est convenu à la fin.",
+    ],
+  },
+  equipe: {
+    opener: "« Réunion d'équipe {nom}, participants : … »",
+    tips: [
+      "Présentez les participants internes : prénom + rôle.",
+      "Annoncez l'ordre du jour en une phrase.",
+      "Quand vous donnez une tâche, nommez le responsable (prénom).",
+      "Récapitulez les décisions à la fin.",
+    ],
+  },
+  libre: {
+    opener: "Annoncez le sujet / l'objectif en une phrase au début.",
+    tips: [
+      "Présentez les participants : prénom + rôle.",
+      "Quand vous donnez une tâche, nommez le responsable (prénom).",
+      "Récapitulez les décisions à la fin.",
+      "Épelez les noms propres ou termes techniques peu courants.",
+    ],
+  },
+};
 
 const CAPTURE_TIPS_KEY = "capture_tips";
 
@@ -26,43 +83,58 @@ function formatDuration(seconds: number): string {
   return `${m}:${s}`;
 }
 
-// ─── Editable capture tips (spec/03: "liste éditable, stockée dans l'app") ─────
+// ─── Editable capture tips, per type (spec/03) ─────────────────────────────────
 
 function useCaptureTips() {
-  const [tips, setTips] = useState<string[]>(DEFAULT_TIPS);
-  const loaded = useRef(false);
+  const [byType, setByType] = useState<Record<string, CaptureTypeTips>>(DEFAULT_TIPS_BY_TYPE);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     invoke<string | null>("get_config", { key: CAPTURE_TIPS_KEY }).then((raw) => {
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) setTips(parsed);
-        } catch { /* fall back to defaults */ }
-      }
-      loaded.current = true;
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          // Ancien format (liste plate) → migré vers le type « libre ».
+          if (parsed.length > 0) {
+            setByType((prev) => ({ ...prev, libre: { ...prev.libre, tips: parsed } }));
+          }
+        } else if (parsed && typeof parsed === "object") {
+          setByType((prev) => {
+            const next = { ...prev };
+            for (const [k, v] of Object.entries(parsed as Record<string, CaptureTypeTips>)) {
+              if (v && typeof v.opener === "string" && Array.isArray(v.tips)) next[k] = v;
+            }
+            return next;
+          });
+        }
+      } catch { /* fall back to defaults */ }
     });
   }, []);
 
-  const persist = (next: string[]) => {
-    setTips(next);
+  const persist = (next: Record<string, CaptureTypeTips>) => {
+    setByType(next);
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       invoke("set_config", { key: CAPTURE_TIPS_KEY, value: JSON.stringify(next) }).catch(() => {});
     }, 500);
   };
 
-  return { tips, persist };
+  return { byType, persist };
 }
 
 function TipsEditor() {
-  const { tips, persist } = useCaptureTips();
+  const { byType, persist } = useCaptureTips();
   const [editing, setEditing] = useState(false);
+  const [type, setType] = useState("libre");
 
-  const update = (i: number, text: string) => persist(tips.map((t, idx) => (idx === i ? text : t)));
-  const remove = (i: number) => persist(tips.filter((_, idx) => idx !== i));
-  const add = () => persist([...tips, ""]);
+  const current = byType[type] ?? DEFAULT_TIPS_BY_TYPE.libre;
+  const patch = (p: Partial<CaptureTypeTips>) =>
+    persist({ ...byType, [type]: { ...current, ...p } });
+
+  const update = (i: number, text: string) => patch({ tips: current.tips.map((t, idx) => (idx === i ? text : t)) });
+  const remove = (i: number) => patch({ tips: current.tips.filter((_, idx) => idx !== i) });
+  const add = () => patch({ tips: [...current.tips, ""] });
 
   return (
     <div className="card" style={{ padding: "18px 22px" }}>
@@ -78,8 +150,48 @@ function TipsEditor() {
         </button>
       </div>
 
+      {/* Sélecteur de type (spec/03) — le guidage s'adapte au type de captation. */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+        {CAPTURE_TYPES.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setType(t.id)}
+            style={{
+              background: type === t.id ? "var(--active-bg)" : "transparent",
+              color: type === t.id ? "var(--accent)" : "var(--text-secondary)",
+              border: "1px solid var(--border)", borderRadius: 16,
+              padding: "4px 11px", cursor: "pointer", fontSize: 12, fontWeight: type === t.id ? 600 : 400,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Phrase d'ouverture — ce qu'il faut dire en premier. */}
+      <div style={{
+        display: "flex", gap: 8, alignItems: "center", marginBottom: 10,
+        padding: "8px 12px", borderRadius: 8, background: "var(--active-bg)",
+      }}>
+        <span style={{ fontSize: 15, flexShrink: 0 }}>🗣️</span>
+        {editing ? (
+          <input
+            value={current.opener}
+            onChange={(e) => patch({ opener: e.target.value })}
+            style={{
+              flex: 1, border: "1px solid var(--border)", borderRadius: 6,
+              padding: "5px 9px", fontSize: 13, background: "var(--card-bg)", color: "var(--text-primary)",
+            }}
+          />
+        ) : (
+          <span style={{ fontSize: 13.5, color: "var(--text-primary)", fontWeight: 500, lineHeight: 1.5 }}>
+            Commencez par : {current.opener}
+          </span>
+        )}
+      </div>
+
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {tips.map((tip, i) =>
+        {current.tips.map((tip, i) =>
           editing ? (
             <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input

@@ -66,7 +66,7 @@ on ne ré-ajoute pas une tâche déjà présente. *(L'ancienne dédup SQLite par
 - **Onglet Tâches** : ~~liste éditable~~ → **refonte en tableau Kanban** (ci-dessous).
 - **Accueil « Alfred »** : bloc dépliable Prioritaire / En cours / À faire (spec 10).
 
-## Refonte Kanban de la page Tâches — 📝 à faire (feedback tests + demande utilisateurs)
+## Refonte Kanban de la page Tâches — ✅ fait (feedback tests + demande utilisateurs)
 
 La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
 **tableau Kanban** (demande explicite d'utilisateurs). La source de vérité **reste

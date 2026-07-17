@@ -122,7 +122,7 @@ et `volume` (RMS 0..1) sont émis en direct toutes les ~250 ms — plus de `0` f
   niveau (RMS) + durée dans `recording-status-changed` toutes les ~250 ms,
   affichés à la fois dans le bandeau topbar et en grand sur la page de guidage.
 
-### Conseils de captation par type de captation — 📝 à faire (feedback tests)
+### Conseils de captation par type de captation — ✅ fait (feedback tests)
 
 La liste unique et générique est **trop pauvre**. On propose **plusieurs modèles de
 captation selon le type**, chacun avec sa **phrase d'ouverture** (ce qu'il faut dire

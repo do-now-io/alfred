@@ -61,9 +61,9 @@ volume + stop) et sur erreur :
 | enregistrement | Tout ouïe… |
 | transcription | Je prends note… |
 | analyse (ingestion) | Je cogite… |
-| **création des tâches** (📝 à faire) | **Je note les tâches…** |
+| **création des tâches** (✅ fait) | **Je note les tâches…** |
 
-**5ᵉ état = phase de l'ingestion (📝 à faire, feedback tests).** L'ingestion étant
+**5ᵉ état = phase de l'ingestion (✅ fait, feedback tests).** L'ingestion étant
 désormais **découplée** (spec/05, `{summary, tasks}`), elle émet des **phases**
 (`analyzing` → `summary` → `tasks`). La phase `tasks` pilote un label distinct
 **« Je note les tâches… »** — l'utilisateur voit enfin qu'Alfred crée les tâches
@@ -115,7 +115,7 @@ et le clic lisent cette cible.
    cliquables, `ChatTeaser`) mais envoie vers `/ai-actions` plutôt que de dérouler
    la conversation **sur la page** — l'historique/liste de conversations (section
    suivante) n'est pas fait, donc la conversation inline reste à construire avec.
-   📝 **Dictée vocale** de la question à ajouter (bouton micro dans la barre de
+   ✅ **Dictée vocale** de la question (bouton micro dans la barre de
    saisie, ici et dans `ChatPanel` — voir spec/07b §Dictée vocale).
 
 ### Chat — historique & liste des conversations — ✅ fait

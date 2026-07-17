@@ -73,7 +73,7 @@ ce code base :
 Le system prompt reprend l'esprit des conseils de captation (spec/03) : rappeler le
 responsable de chaque tâche quand il est identifiable.
 
-**`titre` = nom du compte-rendu (📝 à faire, feedback tests).** Nouveau champ : un
+**`titre` = nom du compte-rendu (✅ fait, feedback tests).** Nouveau champ : un
 **sujet court** qui **nomme le fichier compte-rendu** (`alfred-intelligence/{titre}.md`)
 au lieu du nom daté `AAAA-MM-JJ HHhMM` hérité de l'enregistrement. Une fois
 l'intelligence faite, l'utilisateur veut un **nom de réunion**, pas une date
@@ -123,7 +123,7 @@ par défaut, décochables **indépendamment**). L'ingestion doit donc pouvoir
   tout (seule la transcription est produite). Compte-rendu/tâches supposent la
   transcription faite (dépendance gérée par l'UI, spec/03).
 
-### Retour d'état par phase (capsule « Je note les tâches… ») — 📝 à faire (feedback tests)
+### Retour d'état par phase (capsule « Je note les tâches… ») — ✅ fait (feedback tests)
 
 L'utilisateur ne voit pas qu'Alfred **crée les tâches** — seul l'état « Je cogite… »
 s'affiche. On expose les **phases** de l'ingestion pour piloter la capsule majordome

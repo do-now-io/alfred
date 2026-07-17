@@ -20,7 +20,7 @@ chaque note :
   ignorés).
 - **Tags** : frontmatter `tags` + `#tags` inline (au moins une lettre ; un titre
   Markdown `# Titre` n'est pas capté) → nœud `#tag` + lien note → tag.
-- **Paire enregistrement** (📝 à faire, feedback tests) : lien **note → note** entre
+- **Paire enregistrement** (✅ fait, feedback tests) : lien **note → note** entre
   la transcription brute et le compte-rendu **qui partagent le même `recording_id`**
   (frontmatter). Aujourd'hui le graphe **ne relie que par `[[wikilinks]]` et tags** —
   le `recording_id` n'y crée aucun lien, d'où l'absence de lien transcription ↔

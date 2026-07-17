@@ -68,7 +68,7 @@ struct + parser + serializer.
 L'UI regroupe les notes par `project` (**dossiers virtuels**, sans déplacer les
 fichiers). Le rangement physique par projet est **hors v1** (voir README #5).
 
-### Comment le `project` est renseigné, et comment le corriger — 📝 à faire (feedback tests)
+### Comment le `project` est renseigné, et comment le corriger — ✅ fait (feedback tests)
 
 Aujourd'hui `project` n'est écrit que **par l'IA** sur le **compte-rendu**
 (champ de `submit_ingestion`, « seulement si clairement identifiable »). La
@@ -85,7 +85,7 @@ ne permet de le corriger. On ajoute :
 - **Backend** : `list_projects()` (valeurs `project` distinctes du vault, pour la
   combobox et l'autocomplétion) ; la mise à jour du projet passe par le frontmatter.
 
-### Paire transcription ↔ compte-rendu — 📝 à faire (feedback tests)
+### Paire transcription ↔ compte-rendu — ✅ fait (feedback tests)
 
 Un enregistrement produit **deux notes** liées par le même `recording_id` : la
 **transcription brute** (`alfred-raw/`) et le **compte-rendu** (`alfred-intelligence/`).
@@ -95,7 +95,7 @@ Dossiers) : le compte-rendu porte le `project`, la transcription est affichée
 projet ». Le lien `recording_id` sert aussi au graphe (spec/07c) et au nommage
 (ci-dessous).
 
-## Différenciation des types & nommage — 📝 à faire (feedback tests)
+## Différenciation des types & nommage — ✅ fait (feedback tests)
 
 Problème constaté : impossible de savoir **sans ouvrir** une note si c'est une
 **transcription**, un **compte-rendu**, une **tâche** ou une note libre — surtout
@@ -130,7 +130,7 @@ dans le volet **Récents** (gauche), où seul le nom (souvent une date) s'affich
 
 (Design conservé de l'ancienne spec ; restylage avec spec 10.)
 
-### Tags — liste des existants + autocomplétion — 📝 à faire (feedback tests)
+### Tags — liste des existants + autocomplétion — ✅ fait (feedback tests)
 
 Le panneau Properties permet d'ajouter/supprimer des tags, mais **sans voir les
 tags existants ni autocomplétion**. On ajoute :
@@ -147,7 +147,7 @@ tags existants ni autocomplétion**. On ajoute :
 `delete_note_file`, `rename_note_file`, `get_recent_notes(limit)`,
 `get_vault_path`, `set_vault_path`, `pick_vault_folder`.
 (+ `get_vault_graph` → spec 07c.)
-À ajouter (feedback tests) : `list_projects()` (combobox/glisser-déposer projet),
+Ajoutées (feedback tests) : `list_projects()` (combobox/glisser-déposer projet),
 `list_tags()` (autocomplétion tags).
 
 ## Notes récentes

@@ -161,7 +161,7 @@ const VISIT_STEPS: Array<{
 ];
 
 export default function GuidedTour() {
-  const { active, step, error, targets, recap, goto, setRecap, fail, skip, finish } = useTourStore();
+  const { active, step, error, targets, recap, contextReady, goto, setRecap, fail, skip, finish } = useTourStore();
   const navigate = useNavigate();
   const startRecording = useRecordingStore((s) => s.startRecording);
   const stopRecording = useRecordingStore((s) => s.stopRecording);
@@ -178,8 +178,11 @@ export default function GuidedTour() {
       }
     }).then((fn) => unsubs.push(fn));
 
-    // « Contexte prêt » (spec/13 étape 4) : la pop-up INTERROMPT la visite, où
-    // qu'on en soit (étapes visit-* ou waiting).
+    // « Contexte prêt » (spec/13 étape 4, feedback tests) : l'événement ne doit
+    // PAS interrompre la visite — il est MÉMORISÉ (drapeau + récap via setRecap).
+    // La pop-up ne s'affiche qu'à la fin de la dernière étape de découverte
+    // (immédiatement si le drapeau est déjà levé), ou depuis « waiting » si la
+    // visite est déjà finie quand l'événement arrive.
     listen<{ status: string; recording_id: string; note_title?: string | null; sections_filled?: number; glossary_terms?: number }>(
       "context-status-changed",
       (e) => {
@@ -191,7 +194,9 @@ export default function GuidedTour() {
             recordingId: e.payload.recording_id,
             noteTitle: e.payload.note_title ?? null,
           });
-          goto("ready");
+          // Seul cas d'affichage immédiat : la visite est déjà terminée et on
+          // attendait sur l'indicateur d'état.
+          if (step === "waiting") goto("ready");
         } else {
           fail("Alfred n'a pas réussi à construire votre contexte, mais votre transcription est bien enregistrée. Vous pourrez remplir la note de contexte à la main.");
         }
@@ -311,6 +316,13 @@ export default function GuidedTour() {
               title={visit.title}
               text={visit.text}
               onNext={() => {
+                if (visit.next === "waiting") {
+                  // Fin de la dernière étape de découverte (spec/13) : la pop-up
+                  // « Contexte prêt » s'affiche MAINTENANT si l'événement est
+                  // arrivé pendant la visite (mémorisé), sinon on attend dessus.
+                  goto(contextReady ? "ready" : "waiting");
+                  return;
+                }
                 const nextDef = VISIT_STEPS.find((v) => v.step === visit.next);
                 if (nextDef) navigate(nextDef.route);
                 goto(visit.next);

@@ -63,8 +63,44 @@ on ne ré-ajoute pas une tâche déjà présente. *(L'ancienne dédup SQLite par
 
 ## Affichage
 
-- **Onglet Tâches** : liste éditable.
+- **Onglet Tâches** : ~~liste éditable~~ → **refonte en tableau Kanban** (ci-dessous).
 - **Accueil « Alfred »** : bloc dépliable Prioritaire / En cours / À faire (spec 10).
+
+## Refonte Kanban de la page Tâches — 📝 à faire (feedback tests + demande utilisateurs)
+
+La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
+**tableau Kanban** (demande explicite d'utilisateurs). La source de vérité **reste
+`Todo.md`** — le Kanban est une **vue** par-dessus, pas un nouveau stockage.
+
+- **Colonnes = sections du fichier** : **Prioritaire · En cours · À faire ·
+  Archivé** (Archivé repliable/masquable par défaut). Aucune nouvelle sémantique :
+  une colonne = une section `##`.
+- **Glisser-déposer** une carte d'une colonne à l'autre = **déplacer la tâche entre
+  sections** (réécrit `Todo.md` en conservant `@responsable` / `📅 échéance` / l'état
+  coché). Réordonner dans une colonne = ordre des lignes dans la section.
+  → **Nouvelle commande `move_todo(id, section, position?)`** (les commandes
+  actuelles ne savent que cocher / archiver / éditer, pas déplacer vers une section
+  arbitraire).
+- **Carte de tâche lisible** : titre + **puce responsable** (`@Prénom`, avec
+  couleur/initiales) + **badge d'échéance** (`📅`, **coloré selon la proximité** :
+  en retard / aujourd'hui / à venir) + case à cocher (fait). Case cochée = carte
+  estompée / barrée, reste dans sa colonne.
+- **Ajout rapide par colonne** (« + » en tête de colonne → `create_todo` dans la
+  section correspondante) + **compteur** par colonne.
+- **Filtres** (à confirmer) : par **responsable**, par **échéance** (en retard /
+  cette semaine), éventuellement par **projet** (voir ci-dessous).
+
+**Décisions ouvertes (à trancher)** :
+- **Projet sur une tâche** : les tâches de `Todo.md` ne portent pas de projet
+  aujourd'hui. Pour filtrer/colorer par projet, il faudrait un marqueur par tâche
+  (ex. `+Projet` façon `@responsable`). À décider (utile mais élargit le format).
+- **Priorité** : gérée uniquement par la colonne « Prioritaire », ou champ dédié ?
+- **Réordonnancement fin** : conserver l'ordre dans le fichier suffit-il, ou faut-il
+  un index explicite ?
+
+Contrainte : tout doit rester **compatible Obsidian** (édition directe du fichier),
+donc les enrichissements passent par des marqueurs inline simples, pas de
+frontmatter par tâche.
 
 ## Commandes Tauri — ✅ refondues vers le fichier
 

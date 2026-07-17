@@ -20,6 +20,15 @@ chaque note :
   ignorés).
 - **Tags** : frontmatter `tags` + `#tags` inline (au moins une lettre ; un titre
   Markdown `# Titre` n'est pas capté) → nœud `#tag` + lien note → tag.
+- **Paire enregistrement** (📝 à faire, feedback tests) : lien **note → note** entre
+  la transcription brute et le compte-rendu **qui partagent le même `recording_id`**
+  (frontmatter). Aujourd'hui le graphe **ne relie que par `[[wikilinks]]` et tags** —
+  le `recording_id` n'y crée aucun lien, d'où l'absence de lien transcription ↔
+  compte-rendu constatée. On le relie **nativement par `recording_id`** plutôt que
+  par un wikilink : les deux notes portent le **même nom daté** dans des dossiers
+  différents, donc un `[[date]]` serait **ambigu**. (Une fois le compte-rendu nommé
+  par sujet — spec/05/07 — un wikilink cliquable dans le corps reste possible en
+  complément, pour la navigation.)
 
 ## Sortie
 

@@ -43,7 +43,7 @@ date: 2026-06-11
 tags: [travail, client]
 type: meeting        # note | meeting | task
 status: active       # active | archived
-project: Acme        # regroupement par projet
+project: [Acme, Interne]   # LISTE — une note peut relever de plusieurs projets
 participants: [Jean, Marie]
 recording_id: uuid   # notes vocales
 ---
@@ -55,6 +55,11 @@ Champs `NoteMetadata` : `title, date, tags[], type, status, recording_id` **+
 YAML maison** (ligne à ligne) ; l'ajout de `project` / `participants` étend
 struct + parser + serializer.
 
+> **`project` est une LISTE** (feedback tests, point multi-projet) : une réunion
+> peut couvrir plusieurs projets → la note apparaît **sous chacun** dans la vue
+> Projets, sans être découpée (une seule note = une seule réunion). Accepter aussi
+> la forme scalaire à la lecture (rétro-compat), sérialiser en liste.
+
 ⚠️ Les notes créées par la transcription n'ont **pas** de frontmatter aujourd'hui
 — à aligner (utiliser `NoteMetadata::for_recording`).
 
@@ -62,6 +67,59 @@ struct + parser + serializer.
 
 L'UI regroupe les notes par `project` (**dossiers virtuels**, sans déplacer les
 fichiers). Le rangement physique par projet est **hors v1** (voir README #5).
+
+### Comment le `project` est renseigné, et comment le corriger — 📝 à faire (feedback tests)
+
+Aujourd'hui `project` n'est écrit que **par l'IA** sur le **compte-rendu**
+(champ de `submit_ingestion`, « seulement si clairement identifiable »). La
+transcription brute n'en a pas → elle tombe dans « Sans projet », et **aucune UI**
+ne permet de le corriger. On ajoute :
+
+- **Champ « Projet » (et « Participants ») dans le panneau Properties** — combobox
+  **multi-sélection** (une note peut relever de plusieurs projets) qui **liste les
+  projets existants** du vault + **autocomplétion** + création d'un nouveau.
+  Modifier la valeur ré-écrit le frontmatter (`update_note_file`) et regroupe la note
+  immédiatement (sous **chacun** des projets).
+- **Glisser-déposer** une note sur un groupe de projet dans l'arbre (vue Projets)
+  → met à jour `project`. Déposer sur « Sans projet » vide le champ.
+- **Backend** : `list_projects()` (valeurs `project` distinctes du vault, pour la
+  combobox et l'autocomplétion) ; la mise à jour du projet passe par le frontmatter.
+
+### Paire transcription ↔ compte-rendu — 📝 à faire (feedback tests)
+
+Un enregistrement produit **deux notes** liées par le même `recording_id` : la
+**transcription brute** (`alfred-raw/`) et le **compte-rendu** (`alfred-intelligence/`).
+Elles doivent être **regroupées comme une paire** dans les vues Notes (Projets **et**
+Dossiers) : le compte-rendu porte le `project`, la transcription est affichée
+**avec lui** (rattachée via `recording_id`), au lieu d'être isolée dans « Sans
+projet ». Le lien `recording_id` sert aussi au graphe (spec/07c) et au nommage
+(ci-dessous).
+
+## Différenciation des types & nommage — 📝 à faire (feedback tests)
+
+Problème constaté : impossible de savoir **sans ouvrir** une note si c'est une
+**transcription**, un **compte-rendu**, une **tâche** ou une note libre — surtout
+dans le volet **Récents** (gauche), où seul le nom (souvent une date) s'affiche.
+
+- **Icône de type à l'œil** (pas de couleurs — l'app reste sobre) : chaque note
+  affiche une **petite icône** selon son type, dans l'**arbre** et dans les
+  **Récents**. Type dérivé du frontmatter `type` **et** du dossier :
+  - transcription brute (`alfred-raw/`, `for_recording`) → icône « micro / onde »,
+  - compte-rendu (`alfred-intelligence/`, `type: meeting`) → icône « document »,
+  - tâche (`type: task`) → icône « case à cocher »,
+  - contexte (`Contexte Alfred.md`) → icône dédiée,
+  - note libre → icône note.
+- **Récents plus lisibles** : icône de type + **nom** + **date/heure** en secondaire
+  (pour distinguer deux enregistrements) plutôt que le seul nom.
+- **Nommage : sujet après ingestion, plus la date** — une fois l'intelligence faite,
+  le **compte-rendu est nommé par un sujet court** (nom de réunion / description),
+  **pas** par la date. L'IA fournit ce titre : ajouter un champ **`titre`** (sujet
+  court) à `submit_ingestion` (spec/05) → nom de fichier du compte-rendu. La
+  **transcription brute** garde son nom daté (`AAAA-MM-JJ HHhMM`) — c'est l'artefact
+  brut, daté volontairement tant qu'il n'est pas qualifié ; elle reste identifiable
+  par son **icône** et par sa **paire** avec le compte-rendu nommé. Effet de bord
+  bienvenu : un compte-rendu nommé par sujet **ne collisionne plus** avec la
+  transcription datée (cf. graphe, spec/07c).
 
 ## UI Notes (3 panneaux)
 
@@ -72,12 +130,25 @@ fichiers). Le rangement physique par projet est **hors v1** (voir README #5).
 
 (Design conservé de l'ancienne spec ; restylage avec spec 10.)
 
+### Tags — liste des existants + autocomplétion — 📝 à faire (feedback tests)
+
+Le panneau Properties permet d'ajouter/supprimer des tags, mais **sans voir les
+tags existants ni autocomplétion**. On ajoute :
+
+- **Liste des tags existants** du vault (suggestions cliquables sous le champ) +
+  **autocomplétion** au fil de la frappe (taper `te` propose `test`). Clic = ajout.
+- Ajout / suppression restent libres ; taper un tag inédit le crée.
+- **Backend** : `list_tags()` (tags distincts du vault ; `build_graph` collecte déjà
+  les tags frontmatter + `#inline`, spec/07c — réutiliser la même extraction).
+
 ## Commandes Tauri (réel)
 
 `get_vault_tree`, `get_note_file`, `create_note_file`, `update_note_file`,
 `delete_note_file`, `rename_note_file`, `get_recent_notes(limit)`,
 `get_vault_path`, `set_vault_path`, `pick_vault_folder`.
 (+ `get_vault_graph` → spec 07c.)
+À ajouter (feedback tests) : `list_projects()` (combobox/glisser-déposer projet),
+`list_tags()` (autocomplétion tags).
 
 ## Notes récentes
 

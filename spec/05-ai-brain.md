@@ -62,6 +62,7 @@ robuste que « demander du JSON puis retirer les \`\`\`json », et déjà éprou
 ce code base :
 ```json
 {
+  "titre": "sujet court de l'échange (ex. « Réunion Flexiflit — migration GKE »)",
   "resume": "compte-rendu structuré en Markdown (points clés abordés)",
   "points_cles": ["..."],
   "taches": [
@@ -71,6 +72,14 @@ ce code base :
 ```
 Le system prompt reprend l'esprit des conseils de captation (spec/03) : rappeler le
 responsable de chaque tâche quand il est identifiable.
+
+**`titre` = nom du compte-rendu (📝 à faire, feedback tests).** Nouveau champ : un
+**sujet court** qui **nomme le fichier compte-rendu** (`alfred-intelligence/{titre}.md`)
+au lieu du nom daté `AAAA-MM-JJ HHhMM` hérité de l'enregistrement. Une fois
+l'intelligence faite, l'utilisateur veut un **nom de réunion**, pas une date
+(spec/07 §Différenciation & nommage). La transcription brute garde son nom daté ;
+les deux restent appariées par `recording_id` (spec/07/07c). Bonus : le compte-rendu
+nommé par sujet **ne collisionne plus** avec la transcription datée.
 
 **Contexte interne (spec/16)** : si la note `Contexte Alfred.md` existe et n'est
 pas vide, son corps (cap ~4 000 caractères) est injecté comme **second bloc
@@ -82,8 +91,10 @@ même note sert de source au **glossaire Whisper** (spec/17).
 **Écriture (par Rust, jamais par l'IA)** :
 1. Compte-rendu → `alfred-intelligence/{titre}.md` avec frontmatter
    (`type: meeting`, `date`, `recording_id`, `participants`, `project`).
-   `participants`/`project` existent dans le frontmatter mais ne sont pas encore
-   peuplés par l'IA (regroupement par projet = spec/07, hors de ce chantier).
+   `participants`/`project` peuplés par l'IA (regroupement par projet = spec/07).
+   **`project` de `submit_ingestion` est une LISTE** (`array` de chaînes) — une
+   réunion peut relever de **plusieurs projets** (feedback tests) ; l'IA renvoie 0..n
+   projets « clairement identifiables ».
 2. Tâches → **écriture double** tant que spec/06 (Todos → vault) n'est pas faite :
    fusionnées dans `alfred-intelligence/Todo.md` (section `## À faire`, dédup par
    titre normalisé) **et** insérées dans la table SQLite `todos` (pour que l'écran
@@ -111,6 +122,22 @@ par défaut, décochables **indépendamment**). L'ingestion doit donc pouvoir
 - **Cas limites** : `summary=false, tasks=false` ⇒ ne pas appeler l'ingestion du
   tout (seule la transcription est produite). Compte-rendu/tâches supposent la
   transcription faite (dépendance gérée par l'UI, spec/03).
+
+### Retour d'état par phase (capsule « Je note les tâches… ») — 📝 à faire (feedback tests)
+
+L'utilisateur ne voit pas qu'Alfred **crée les tâches** — seul l'état « Je cogite… »
+s'affiche. On expose les **phases** de l'ingestion pour piloter la capsule majordome
+(spec/10) :
+
+- `ingestion-status-changed` porte une **phase** : `analyzing` (appel Claude, le gros
+  du temps) → `summary` (écriture du compte-rendu, si demandé) → `tasks` (écriture
+  des tâches, si demandé) → `done`/`error`.
+- **1 seul appel IA** (choix acté) : la phase `tasks` est donc **brève** (écriture
+  seule) — capsule courte mais **honnête**, on ne fabrique pas de fausse durée.
+  Labels majordome : voir spec/10.
+- **Ré-ingestion** : mêmes phases pour `run_ingestion_for_note` **et** pour une
+  éventuelle **ré-ingestion en lot** (« toutes les notes ») — la capsule reflète la
+  note en cours (et son avancement n/total si lot).
 
 ### Ingestion augmentée — 📝 à faire (spec/17)
 

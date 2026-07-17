@@ -112,7 +112,7 @@ et `volume` (RMS 0..1) sont émis en direct toutes les ~250 ms — plus de `0` f
   déclenchement (ou accessible directement, idle → bouton démarrer). Montre
   timer + volume en grand, bouton Arrêter, et les **conseils de captation**
   (liste éditable en place, persistée via `get_config`/`set_config('capture_tips')`
-  en JSON) :
+  en JSON). Conseils par défaut actuels :
   - Présente les participants : prénom + rôle.
   - Annonce le sujet / objectif en une phrase au début.
   - Quand tu donnes une tâche, nomme le responsable (prénom).
@@ -121,6 +121,33 @@ et `volume` (RMS 0..1) sont émis en direct toutes les ~250 ms — plus de `0` f
 - **Retour d'état live** : ✅ **visualisation du volume micro** + **timer** —
   niveau (RMS) + durée dans `recording-status-changed` toutes les ~250 ms,
   affichés à la fois dans le bandeau topbar et en grand sur la page de guidage.
+
+### Conseils de captation par type de captation — 📝 à faire (feedback tests)
+
+La liste unique et générique est **trop pauvre**. On propose **plusieurs modèles de
+captation selon le type**, chacun avec sa **phrase d'ouverture** (ce qu'il faut dire
+en premier) + ses conseils ciblés. L'utilisateur **choisit un type** sur la page de
+guidage (sélecteur en tête des conseils) et voit le guidage adapté. Types par défaut
+(éditables) :
+
+- **Note personnelle** — ouvrir par *« Ceci est une note personnelle sur … »* ;
+  contexte/sujet ; pas de participants.
+- **Réunion client** — annoncer *« Réunion avec le client {nom}, participants : … »* ;
+  nommer **tous les participants** (côté client + interne) et leur rôle ; le
+  nom du client / projet ; décisions + tâches avec responsable.
+- **One-to-one** — *« One-to-one avec {prénom} »* ; sujet ; points d'action.
+- **Réunion d'équipe** — participants internes ; ordre du jour ; décisions/tâches.
+- (**Autre / libre** — la liste générique actuelle.)
+
+**Modèle** : `capture_tips` (config JSON) passe d'une **liste plate** à un
+**dictionnaire par type** `{ [type]: { opener, tips[] } }`, éditable en place (le
+« Modifier » existant s'applique au type sélectionné). Défauts côté front, comme
+aujourd'hui.
+
+**Extension possible** (à trancher, cf. `purpose` spec/13) : le type choisi pourrait
+être **transmis à l'ingestion** comme indice (meilleur compte-rendu, pré-remplir
+`type`/participants) et/ou vers le nommage. Hors périmètre strict de cette tâche —
+signalé pour décision.
 
 ## Arrêt : annuler / continuer + choix des traitements aval — ✅ fait (feedback tests)
 

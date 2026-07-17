@@ -61,11 +61,15 @@ volume + stop) et sur erreur :
 | enregistrement | Tout ouïe… |
 | transcription | Je prends note… |
 | analyse (ingestion) | Je cogite… |
+| **création des tâches** (📝 à faire) | **Je note les tâches…** |
 
-**Simplifié à 4 états** (v1) : « création des tâches » n'a pas de signal distinct
-de « analyse » (une seule ingestion fusionnée, spec/05) — pas de 5ᵉ état fabriqué
-sans événement réel derrière. Labels codés en dur pour l'instant (pas encore
-éditables dans l'app).
+**5ᵉ état = phase de l'ingestion (📝 à faire, feedback tests).** L'ingestion étant
+désormais **découplée** (spec/05, `{summary, tasks}`), elle émet des **phases**
+(`analyzing` → `summary` → `tasks`). La phase `tasks` pilote un label distinct
+**« Je note les tâches… »** — l'utilisateur voit enfin qu'Alfred crée les tâches
+(constat test). L'appel IA restant unique, la phase `tasks` est **brève** (écriture
+seule), donc le label est court mais honnête. Vaut aussi en **ré-ingestion**
+(single + lot). Labels codés en dur pour l'instant (pas encore éditables).
 
 ### Indicateur d'état = où Alfred travaille — ✅ fait (feedback tests)
 

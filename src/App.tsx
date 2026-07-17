@@ -25,6 +25,7 @@ import { useTourStore, useTourTarget } from "./store/tourStore";
 import { useAlfredStatusStore, alfredStatusLabel } from "./store/alfredStatusStore";
 import RecordingBar from "./components/RecordingBar";
 import RecordingReview from "./components/RecordingReview";
+import { NoteTypeIcon } from "./utils/noteType";
 import GuidedTour from "./components/tour/GuidedTour";
 import FeedbackWidget from "./components/FeedbackWidget";
 
@@ -184,6 +185,16 @@ function samePath(a: string | null | undefined, b: string | null | undefined): b
   return a.replace(/\\/g, "/") === b.replace(/\\/g, "/");
 }
 
+/** « 16/07 14h32 » — date/heure secondaire des Récents (spec/07). */
+function formatRecentDate(unixSeconds: number | bigint): string {
+  const d = new Date(Number(unixSeconds) * 1000);
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  const hm = `${String(d.getHours()).padStart(2, "0")}h${String(d.getMinutes()).padStart(2, "0")}`;
+  if (sameDay) return hm;
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${hm}`;
+}
+
 function Recents() {
   const navigate = useNavigate();
   const recents = useNotesStore(s => s.recents);
@@ -214,7 +225,7 @@ function Recents() {
         return (
           <div key={item.path} style={{
             display: "flex", alignItems: "center", gap: 8,
-            padding: "7px 24px", cursor: "pointer", fontSize: 13,
+            padding: "6px 24px", cursor: "pointer", fontSize: 13,
             color: "var(--text-secondary)",
             background: active ? "var(--active-bg)" : "transparent",
           }}
@@ -222,8 +233,15 @@ function Recents() {
             onMouseEnter={e => (e.currentTarget.style.background = "var(--active-bg)")}
             onMouseLeave={e => (e.currentTarget.style.background = active ? "var(--active-bg)" : "transparent")}
           >
-            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.title}>
-              {item.title}
+            {/* Icône de type (spec/07) : transcription / compte-rendu / tâche / contexte / note. */}
+            <NoteTypeIcon path={item.path} noteType={item.type} recordingId={item.recording_id} size={14} />
+            <span style={{ flex: 1, minWidth: 0, overflow: "hidden" }} title={item.title}>
+              <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {item.title}
+              </span>
+              <span style={{ display: "block", fontSize: 10.5, color: "var(--text-muted)" }}>
+                {formatRecentDate(item.modified)}
+              </span>
             </span>
             {processing && (
               <span
@@ -345,7 +363,13 @@ function AppInner() {
       }
     }).then(fn => unsubs.push(fn));
 
-    listen<{ status: string; message?: string }>("ingestion-status-changed", (e) => {
+    // Phases d'ingestion (spec/05/10) : `analyzing`/`summary` → « Je cogite… »,
+    // `tasks` → « Je note les tâches… » (5ᵉ label), `done`/`error` → repos.
+    listen<{ status: string; phase?: string; message?: string }>("ingestion-status-changed", (e) => {
+      if (e.payload.status === "running") {
+        setAlfredState(e.payload.phase === "tasks" ? "tasking" : "thinking");
+        return;
+      }
       setAlfredState("idle");
       if (e.payload.status === "error") {
         setIngestError(e.payload.message ?? "Erreur inconnue pendant la rédaction du compte-rendu");

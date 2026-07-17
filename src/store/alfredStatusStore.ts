@@ -6,7 +6,7 @@ import { create } from "zustand";
 // travaille", feedback tests) : la note en cours de traitement (point ambre
 // dans les listes) et/ou la route à ouvrir quand on clique l'indicateur.
 
-export type AlfredState = "idle" | "recording" | "transcribing" | "thinking";
+export type AlfredState = "idle" | "recording" | "transcribing" | "thinking" | "tasking";
 
 /** Ce sur quoi Alfred travaille en ce moment (spec/10). */
 export interface AlfredTarget {
@@ -22,6 +22,10 @@ const LABELS: Record<AlfredState, string> = {
   recording: "Tout ouïe…",
   transcribing: "Je prends note…",
   thinking: "Je cogite…",
+  // Phase `tasks` de l'ingestion (spec/05/10) — brève (1 seul appel IA, c'est
+  // l'écriture des tâches) mais honnête : l'utilisateur voit enfin qu'Alfred
+  // crée les tâches.
+  tasking: "Je note les tâches…",
 };
 
 interface AlfredStatusStore {

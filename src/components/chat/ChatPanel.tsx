@@ -5,6 +5,7 @@ import { useChatStore, type ChatTurn } from "../../store/chatStore";
 import { useNotesStore } from "../../store/notesStore";
 import { useTourTarget } from "../../store/tourStore";
 import BriefingContent from "../BriefingContent";
+import DictationButton from "../DictationButton";
 import type { ChatSource } from "../../bindings/ChatSource";
 
 // The "my-context" suggestion doubles as the guided tour's final spotlight
@@ -210,6 +211,9 @@ export default function ChatPanel() {
               lineHeight: 1.5, outline: "none",
             }}
           />
+          {/* Dictée vocale (spec/07b) : le texte transcrit s'ajoute au champ,
+              éditable — jamais d'envoi automatique. */}
+          <DictationButton onText={(t) => setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${t}` : t))} />
           <button
             onClick={() => submit()}
             disabled={loading || !input.trim()}

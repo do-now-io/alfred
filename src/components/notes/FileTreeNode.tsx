@@ -2,6 +2,7 @@ import { useState } from "react";
 import { MdEdit, MdDelete } from "react-icons/md";
 import type { VaultNode } from "../../bindings/VaultNode";
 import { useNotesStore } from "../../store/notesStore";
+import { NoteTypeIcon } from "../../utils/noteType";
 
 interface Props {
   node: VaultNode;
@@ -67,18 +68,21 @@ export default function FileTreeNode({ node, depth, selectedPath, onSelect, onDe
         onClick={() => onSelect(node.path)}
         onContextMenu={handleContextMenu}
         style={{
+          display: "flex", alignItems: "center", gap: 6,
           padding: "4px 8px 4px 0", paddingLeft: `${20 + indent}px`,
           cursor: "pointer", fontSize: 13,
           color: isSelected ? "var(--accent)" : "var(--text-primary)",
           background: isSelected ? "var(--active-bg)" : "transparent",
           borderRadius: 4,
           userSelect: "none",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          overflow: "hidden", whiteSpace: "nowrap",
         }}
         onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "var(--bg)"; }}
         onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
       >
-        {node.name}
+        {/* Icône de type à l'œil (spec/07) — dérivée du dossier / nom de fichier. */}
+        <NoteTypeIcon path={node.path} size={13} />
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.name}</span>
       </div>
 
       {contextMenu && (

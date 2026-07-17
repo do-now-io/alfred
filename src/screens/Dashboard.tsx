@@ -8,6 +8,7 @@ import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore"
 import { useNotesStore } from "../store/notesStore";
 import { useTourTarget } from "../store/tourStore";
 import BriefingContent from "../components/BriefingContent";
+import DictationButton from "../components/DictationButton";
 import type { NoteFile } from "../bindings/NoteFile";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
 import { toggleChecked, groupTasksBySection, type TaskLine } from "../utils/todoTasks";
@@ -436,6 +437,8 @@ function ChatTeaser() {
             padding: "8px 12px", fontSize: 13.5, background: "var(--bg)", color: "var(--text-primary)",
           }}
         />
+        {/* Dictée vocale (spec/07b/10) — texte inséré, éditable, pas d'envoi auto. */}
+        <DictationButton size={16} onText={(t) => setText((prev) => (prev.trim() ? `${prev.trimEnd()} ${t}` : t))} />
         <button
           onClick={() => submit(text)}
           disabled={!text.trim()}

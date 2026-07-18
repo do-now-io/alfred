@@ -69,9 +69,11 @@ du spec/15 (pas de stockage objet en v1).
 - **Rendu côté serveur** : Markdown → HTML via un moteur **GFM** (tables, cases à
   cocher, liens auto) en **mode sûr** (HTML brut **échappé** → pas de XSS depuis le
   contenu de note, qui est **non fiable**).
-- **Page auto-portante** : titre, corps rendu, petit pied « Partagé via Alfred ».
-  **CSS inline** (lisible, responsive, thème clair/sombre). **Aucune ressource
-  externe** (CSP stricte).
+- **Page auto-portante** : titre, corps rendu, petit pied « Partagé via **Alfred** »
+  avec le **logo** — le tout est un **lien vers `https://alfred.do-now.io`**. Logo
+  servi par le backend lui-même (`GET /logo.png`, 128 px embarqué dans le binaire,
+  aussi favicon) : toujours **aucune ressource externe** (CSP stricte, même origine).
+  **CSS inline** (lisible, responsive, thème clair/sombre).
 
 ## Côté application (desktop)
 

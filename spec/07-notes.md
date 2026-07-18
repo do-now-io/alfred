@@ -141,6 +141,19 @@ tags existants ni autocomplétion**. On ajoute :
 - **Backend** : `list_tags()` (tags distincts du vault ; `build_graph` collecte déjà
   les tags frontmatter + `#inline`, spec/07c — réutiliser la même extraction).
 
+### Recherche dans la note ouverte — ✅ fait
+
+Recherche **locale au fichier courant** (à ne pas confondre avec la recherche
+plein-texte globale, hors v1 — spec/10) :
+
+- **Ctrl/Cmd+F** ouvre le panneau de recherche CodeMirror (`@codemirror/search`)
+  en haut de l'éditeur : occurrences surlignées, suivant/précédent (F3),
+  remplacer, libellés en français. Échap ferme. Le raccourci marche même si le
+  focus est ailleurs (arbre, propriétés) — listener global sur l'écran Notes.
+- **Bouton loupe** dans la barre d'actions de la note (découvrabilité).
+- Effet de bord assumé : l'écran `/resolve` réutilise le même éditeur →
+  Ctrl/Cmd+F y est disponible quand l'éditeur a le focus.
+
 ## Commandes Tauri (réel)
 
 `get_vault_tree`, `get_note_file`, `create_note_file`, `update_note_file`,

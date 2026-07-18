@@ -95,6 +95,11 @@ La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
   section correspondante) + **compteur** par colonne.
 - **Filtres** (à confirmer) : par **responsable**, par **échéance** (en retard /
   cette semaine), éventuellement par **projet** (voir ci-dessous).
+- **Recherche texte** — ✅ fait : champ « Rechercher… » à côté des filtres ;
+  masque en direct les cartes dont ni le titre ni le responsable ne matchent
+  (insensible à la casse et aux accents), toutes colonnes confondues. Se cumule
+  aux autres filtres ; Échap vide le champ. C'est la recherche **locale à
+  `Todo.md`** (la recherche globale reste hors v1, spec/10).
 
 **Décisions ouvertes (à trancher)** :
 - **Projet sur une tâche** : les tâches de `Todo.md` ne portent pas de projet

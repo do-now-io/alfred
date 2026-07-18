@@ -39,7 +39,10 @@ Topbar **sans barre de recherche**.
 
 ## Topbar
 
-- ✅ **Plus de recherche** (barre + `⌘K` retirés).
+- ✅ **Plus de recherche** (barre + `⌘K` retirés). Ne concerne que la recherche
+  **globale** (multi-fichiers) : la recherche **locale au fichier courant**
+  (Ctrl/Cmd+F dans l'éditeur de note, filtre texte du Kanban Tâches) est en v1
+  — voir spec/07 et spec/06.
 - **Bandeau d'enregistrement** (pendant l'enregistrement, persistant sur toute
   l'app) : **timer** + **visualisation du volume micro** + bouton **stop**.
 - **Indicateur d'état Alfred** (remplace la cloche) — voir ci-dessous.

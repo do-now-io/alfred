@@ -101,14 +101,19 @@ Problème constaté : impossible de savoir **sans ouvrir** une note si c'est une
 **transcription**, un **compte-rendu**, une **tâche** ou une note libre — surtout
 dans le volet **Récents** (gauche), où seul le nom (souvent une date) s'affiche.
 
-- **Icône de type à l'œil** (pas de couleurs — l'app reste sobre) : chaque note
-  affiche une **petite icône** selon son type, dans l'**arbre** et dans les
-  **Récents**. Type dérivé du frontmatter `type` **et** du dossier :
-  - transcription brute (`alfred-raw/`, `for_recording`) → icône « micro / onde »,
-  - compte-rendu (`alfred-intelligence/`, `type: meeting`) → icône « document »,
-  - tâche (`type: task`) → icône « case à cocher »,
-  - contexte (`Contexte Alfred.md`) → icône dédiée,
-  - note libre → icône note.
+- **Icône de type à l'œil** — ✅ refondues sur maquette (« Types de fichiers &
+  icônes », variante contour léger + glyphe coloré subtil) : chaque note affiche
+  une **feuille de document** (coin plié) avec un glyphe selon son type, dans
+  l'**arbre** et dans les **Récents** (`utils/noteType.tsx`, SVG maison). Type
+  dérivé du frontmatter `type` **et** du dossier :
+  - **audio** (`alfred-raw/`, nom daté `AAAA-MM-JJ HHhMM` ou `recording_id`) →
+    glyphe **forme d'onde** (accent doré) — transcription d'un enregistrement,
+  - **note brute** (`alfred-raw/` sans enregistrement) → glyphe **lignes** (RAW),
+  - **synthèse Alfred** (`alfred-intelligence/`, `type: meeting`) → glyphe
+    **étincelle** dorée (fichier généré par Alfred),
+  - tâche (`type: task`, `Todo.md`) → glyphe **liste à puces**,
+  - contexte (`Contexte Alfred.md`) → glyphe silhouette,
+  - note libre → glyphe chevrons (doc markdown).
 - **Récents plus lisibles** : icône de type + **nom** + **date/heure** en secondaire
   (pour distinguer deux enregistrements) plutôt que le seul nom.
 - **Nommage : sujet après ingestion, plus la date** — une fois l'intelligence faite,

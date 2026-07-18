@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
-import { MdFolder, MdStickyNote2, MdFactCheck } from "react-icons/md";
+import { MdFolder, MdStickyNote2, MdFactCheck, MdSearch } from "react-icons/md";
 import { useNotesStore, findNodeByRef } from "../store/notesStore";
 import { useResolveStore } from "../store/resolveStore";
 import ShareButton from "../components/ShareButton";
@@ -62,6 +62,19 @@ export default function Notes() {
 
   const handleToggleCollapseAll = useCallback(() => {
     setAllCollapsed(editorRef.current?.toggleAll() ?? false);
+  }, []);
+
+  // Ctrl/Cmd+F → recherche dans la note ouverte (spec/07), même quand le focus
+  // est hors de l'éditeur (arbre de fichiers, propriétés). No-op sans note.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        editorRef.current?.openSearch();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, []);
 
   const debouncedSave = useDebounce(
@@ -188,8 +201,20 @@ export default function Notes() {
               onBack={goBack}
               onOpenHistoryEntry={selectFile}
             />
-            {/* Note actions: share (any note) + re-open correction (recordings). */}
+            {/* Note actions: search + share (any note) + re-open correction (recordings). */}
             <div style={{ padding: "6px 16px", display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center", borderBottom: "1px solid var(--border)" }}>
+              <button
+                onClick={() => editorRef.current?.openSearch()}
+                title="Rechercher dans la note (Ctrl/Cmd+F)"
+                style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  background: "transparent", color: "var(--text-secondary)",
+                  border: "1px solid var(--border)", borderRadius: 8,
+                  padding: "5px 8px", cursor: "pointer",
+                }}
+              >
+                <MdSearch size={15} />
+              </button>
               {localMetadata.recording_id && (
                 <button
                   onClick={handleReview}

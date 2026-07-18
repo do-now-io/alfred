@@ -13,6 +13,9 @@ import type { Todo } from "../bindings/Todo";
 
 const COLUMNS = ["Prioritaire", "En cours", "À faire", "Archivé"] as const;
 
+/** Comparaison insensible à la casse et aux accents (« reunion » matche « Réunion »). */
+const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
 const CHIP_COLORS = [
   { bg: "#EDE9FE", text: "#6D28D9" },
   { bg: "#DCFCE7", text: "#15803D" },
@@ -60,7 +63,8 @@ export default function Tasks() {
   const [error, setError] = useState<string | null>(null);
   const [todoRel, setTodoRel] = useState<string>("");
   const [archiveOpen, setArchiveOpen] = useState(false);
-  // Filtres (spec/06) : responsable + échéance.
+  // Filtres (spec/06) : recherche texte + responsable + échéance.
+  const [textFilter, setTextFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState<string>("");
   const [dueFilter, setDueFilter] = useState<"" | "late" | "week">("");
   // Drag en cours + cible de dépôt (colonne, index d'insertion).
@@ -101,6 +105,10 @@ export default function Tasks() {
   }, [todos]);
 
   const visible = useCallback((t: Todo) => {
+    if (textFilter.trim()) {
+      const q = norm(textFilter.trim());
+      if (!norm(t.title).includes(q) && !(t.responsable && norm(t.responsable).includes(q))) return false;
+    }
     if (ownerFilter && t.responsable !== ownerFilter) return false;
     if (dueFilter) {
       const k = dueKind(t.echeance);
@@ -108,7 +116,7 @@ export default function Tasks() {
       if (dueFilter === "week" && k !== "today" && k !== "soon" && k !== "late") return false;
     }
     return true;
-  }, [ownerFilter, dueFilter]);
+  }, [textFilter, ownerFilter, dueFilter]);
 
   const byColumn = useMemo(() => {
     const map = new Map<string, Todo[]>(COLUMNS.map((c) => [c, []]));
@@ -174,6 +182,18 @@ export default function Tasks() {
         {/* Filtres (spec/06) */}
         {showBoard && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 16 }}>
+            <input
+              value={textFilter}
+              onChange={(e) => setTextFilter(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") setTextFilter(""); }}
+              placeholder="Rechercher…"
+              title="Rechercher dans les tâches (titre, responsable) — Échap pour effacer"
+              style={{
+                border: "1px solid var(--border)", borderRadius: 6,
+                padding: "5px 8px", fontSize: 13, width: 160, outline: "none",
+                background: "var(--bg)", color: "var(--text-primary)",
+              }}
+            />
             <select
               className="alfred-select"
               value={ownerFilter}

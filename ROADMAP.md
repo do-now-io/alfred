@@ -113,7 +113,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 
 | | Tâche | Qui |
 |---|---|---|
-| [x] | **CI GitHub Actions — build desktop 3 OS** (`.github/workflows/desktop-build.yml`) : Windows (msi/nsis) + macOS (dmg, arm64 + intel) + Linux (deb/rpm/AppImage), **non signé** ; déclenchement manuel + tags `v*` ; base sqlx + modèle Whisper `small` (caché) recréés en CI | T |
+| [x] | **CI GitHub Actions — build desktop 3 OS** (`.github/workflows/desktop-build.yml`) : Windows (msi/nsis) + macOS (dmg, arm64 + intel) + Linux (deb/rpm/AppImage), **non signé** ; déclenchement manuel + tags `v*` ; base sqlx recréée en CI ; **aucun modèle embarqué** (téléchargé à l'onboarding — `bundle.resources` vidé dans tauri.conf) | T |
 | [ ] | **macOS** : entitlements v1 (retirer apple-events, + `NSScreenCaptureUsageDescription`) ; signature Developer ID + notarisation | |
 | [ ] | **Windows** : build Whisper + WebView2 ; signature **Authenticode** | |
 | [ ] | Aligner le label launch-at-login `io.alfred.app` → `com.alfred.app` | |

@@ -4,16 +4,16 @@
 #   Windows → .msi + .exe (NSIS) · macOS → .dmg · Linux → .deb + .rpm + .AppImage
 #
 # Déclenchement : manuel (onglet Actions → Run workflow) ou tag `v*`.
-# Pas de build sur chaque push : Whisper (cmake) + le modèle de 466 Mo rendent
-# le job lourd ; les caches (cargo, modèle) amortissent les exécutions suivantes.
+# Pas de build sur chaque push : la compilation de Whisper (cmake) rend le job
+# lourd ; le cache cargo amortit les exécutions suivantes.
 #
 # Particularités du repo reproduites ici (mêmes étapes que scripts/*.ps1) :
 #   - macros sqlx::query! vérifiées à la compilation → il faut créer
 #     src-tauri/alfred_dev.db + migrations AVANT cargo (DATABASE_URL vient de
 #     src-tauri/.env, commité ; le cache .sqlx est volontairement gitignoré).
 #   - whisper-rs (feature par défaut) → cmake + libclang (bindgen).
-#   - le modèle Whisper `small` doit exister dans src-tauri/models/ avant
-#     `tauri build` (bundle.resources) → scripts/fetch-whisper-model.sh.
+#   - AUCUN modèle Whisper embarqué : il est téléchargé à l'onboarding
+#     (`download_model`) — rien à préparer côté CI.
 
 name: Desktop build
 
@@ -93,18 +93,6 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run
-
-      # 466 Mo depuis Hugging Face — partagé entre OS (fichier binaire brut).
-      - name: Cache du modèle Whisper
-        uses: actions/cache@v4
-        with:
-          path: src-tauri/models
-          key: whisper-model-small-v1
-          enableCrossOsArchive: true
-
-      - name: Modèle Whisper `small`
-        shell: bash
-        run: bash scripts/fetch-whisper-model.sh small
 
       - name: npm ci
         run: npm ci

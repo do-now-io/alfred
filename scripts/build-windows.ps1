@@ -1,6 +1,6 @@
-# Build Alfred for Windows with Whisper local transcription, `small` model
-# bundled (spec/04). Prerequisites: CMake, MSVC C++ build tools, libclang.dll
-# (see README).
+# Build Alfred for Windows with Whisper local transcription (spec/04). The
+# model is NOT bundled: it is downloaded during onboarding (`download_model`).
+# Prerequisites: CMake, MSVC C++ build tools, libclang.dll (see README).
 #
 # Run from the repo root:  ./scripts/build-windows.ps1
 
@@ -40,9 +40,6 @@ if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
 
 Push-Location $repoRoot
 try {
-    Write-Host "==> Fetching the Whisper 'small' model (bundled into the installer)..." -ForegroundColor Cyan
-    & (Join-Path $PSScriptRoot "fetch-whisper-model.ps1")
-
     Write-Host "==> Building (tauri build)..." -ForegroundColor Cyan
     npm run tauri -- build
 } finally {

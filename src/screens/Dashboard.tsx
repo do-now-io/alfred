@@ -12,6 +12,7 @@ import DictationButton from "../components/DictationButton";
 import type { NoteFile } from "../bindings/NoteFile";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
 import { toggleChecked, groupTasksBySection, type TaskLine } from "../utils/todoTasks";
+import { renderInlineMd } from "../utils/inlineMd";
 
 // ─── Hero card — enregistrement ───────────────────────────────────────────────
 
@@ -306,16 +307,6 @@ function TasksSection() {
       )}
     </div>
   );
-}
-
-// Render a short string with **bold** segments as React nodes (inline markdown only).
-function renderInlineMd(text: string) {
-  return text.split(/(\*\*.+?\*\*)/g).map((part, i) => {
-    const m = /^\*\*(.+?)\*\*$/.exec(part);
-    return m
-      ? <strong key={i} style={{ fontWeight: 600, color: "var(--text-primary)" }}>{m[1]}</strong>
-      : <span key={i}>{part}</span>;
-  });
 }
 
 // ─── Brief quotidien — bloc « Aujourd'hui » (spec/05 usage 3, spec/10) ─────────

@@ -90,7 +90,11 @@ La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
 - **Carte de tâche lisible** : titre + **puce responsable** (`@Prénom`, avec
   couleur/initiales) + **badge d'échéance** (`📅`, **coloré selon la proximité** :
   en retard / aujourd'hui / à venir) + case à cocher (fait). Case cochée = carte
-  estompée / barrée, reste dans sa colonne.
+  estompée / barrée, reste dans sa colonne. Le **markdown inline** du titre est
+  rendu, pas affiché brut (`**gras**`, `*italique*`, `` `code` ``, `~~barré~~`,
+  wikilinks sans crochets) — helper partagé `utils/inlineMd` (aussi utilisé par
+  le bloc tâches de l'accueil) ; la recherche texte matche le titre **sans** les
+  marqueurs.
 - **Ajout rapide par colonne** (« + » en tête de colonne → `create_todo` dans la
   section correspondante) + **compteur** par colonne.
 - **Filtres** (à confirmer) : par **responsable**, par **échéance** (en retard /

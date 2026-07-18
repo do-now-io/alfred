@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { MdCheckBox, MdFolderOff, MdAdd, MdExpandMore, MdExpandLess } from "react-icons/md";
 import ShareButton from "../components/ShareButton";
 import { useNotesStore } from "../store/notesStore";
+import { renderInlineMd, stripInlineMd } from "../utils/inlineMd";
 import type { Todo } from "../bindings/Todo";
 
 // Page Tâches — vue KANBAN sur `Todo.md` (spec/06, feedback tests + demande
@@ -107,7 +108,9 @@ export default function Tasks() {
   const visible = useCallback((t: Todo) => {
     if (textFilter.trim()) {
       const q = norm(textFilter.trim());
-      if (!norm(t.title).includes(q) && !(t.responsable && norm(t.responsable).includes(q))) return false;
+      // Titre comparé marqueurs markdown retirés (« rapport mensuel » doit
+      // matcher « **Rapport** mensuel »).
+      if (!norm(stripInlineMd(t.title)).includes(q) && !(t.responsable && norm(t.responsable).includes(q))) return false;
     }
     if (ownerFilter && t.responsable !== ownerFilter) return false;
     if (dueFilter) {
@@ -389,7 +392,7 @@ function TaskCard({
           fontSize: 13, lineHeight: 1.45, color: "var(--text-primary)",
           textDecoration: task.checked ? "line-through" : "none",
         }}>
-          {task.title}
+          {renderInlineMd(task.title)}
         </span>
       </div>
       {(owner || due) && (

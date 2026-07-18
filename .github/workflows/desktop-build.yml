@@ -1,0 +1,130 @@
+# Build desktop Alfred (Tauri) — Windows / macOS / Linux.
+#
+# Produit les installeurs NON SIGNÉS (signature = Phase E, ROADMAP) :
+#   Windows → .msi + .exe (NSIS) · macOS → .dmg · Linux → .deb + .rpm + .AppImage
+#
+# Déclenchement : manuel (onglet Actions → Run workflow) ou tag `v*`.
+# Pas de build sur chaque push : Whisper (cmake) + le modèle de 466 Mo rendent
+# le job lourd ; les caches (cargo, modèle) amortissent les exécutions suivantes.
+#
+# Particularités du repo reproduites ici (mêmes étapes que scripts/*.ps1) :
+#   - macros sqlx::query! vérifiées à la compilation → il faut créer
+#     src-tauri/alfred_dev.db + migrations AVANT cargo (DATABASE_URL vient de
+#     src-tauri/.env, commité ; le cache .sqlx est volontairement gitignoré).
+#   - whisper-rs (feature par défaut) → cmake + libclang (bindgen).
+#   - le modèle Whisper `small` doit exister dans src-tauri/models/ avant
+#     `tauri build` (bundle.resources) → scripts/fetch-whisper-model.sh.
+
+name: Desktop build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux x86_64
+          - os: windows-latest
+            label: Windows x86_64
+          - os: macos-latest
+            label: macOS Apple Silicon
+          # Runners Intel en fin de vie chez GitHub — retirer cette entrée si
+          # elle devient indisponible (ou passer au build universel signé, Phase E).
+          - os: macos-13
+            label: macOS Intel
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri v2 (webkit2gtk 4.1, appindicator, rsvg) + cpal/ALSA + bindgen.
+      - name: Dépendances système (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            libasound2-dev libclang-dev cmake
+
+      # whisper-rs/bindgen a besoin de libclang.dll ; LLVM est préinstallé sur
+      # les runners GitHub Windows — on installe seulement s'il manque.
+      - name: libclang (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          if [ ! -f "/c/Program Files/LLVM/bin/libclang.dll" ]; then
+            choco install -y llvm
+          fi
+          echo 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Cache cargo + target (whisper.cpp est le gros du temps de compilation).
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Binaire précompilé (évite ~5 min de `cargo install sqlx-cli`).
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: sqlx-cli
+
+      - name: Base sqlx de compilation (migrations)
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          sqlx database create
+          sqlx migrate run
+
+      # 466 Mo depuis Hugging Face — partagé entre OS (fichier binaire brut).
+      - name: Cache du modèle Whisper
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/models
+          key: whisper-model-small-v1
+          enableCrossOsArchive: true
+
+      - name: Modèle Whisper `small`
+        shell: bash
+        run: bash scripts/fetch-whisper-model.sh small
+
+      - name: npm ci
+        run: npm ci
+
+      # beforeBuildCommand (tauri.conf.json) enchaîne tsc + vite build.
+      - name: Build Tauri
+        shell: bash
+        run: npm run tauri -- build
+
+      # Le .app macOS n'est pas uploadé : upload-artifact ne préserve ni les
+      # permissions ni les liens symboliques — le .dmg est le livrable.
+      - name: Artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: alfred-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/appimage/*.AppImage

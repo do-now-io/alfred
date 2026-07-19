@@ -41,10 +41,9 @@ jobs:
             label: Windows x86_64
           - os: macos-latest
             label: macOS Apple Silicon
-          # Runners Intel en fin de vie chez GitHub — retirer cette entrée si
-          # elle devient indisponible (ou passer au build universel signé, Phase E).
-          - os: macos-13
-            label: macOS Intel
+          # Pas de macOS Intel : les runners macos-13 ne sont plus provisionnés
+          # (jobs restés en file >14 h) — couvrir les Mac Intel via le build
+          # universel signé (Phase E) si le besoin se confirme.
 
     steps:
       - uses: actions/checkout@v4
@@ -116,3 +115,37 @@ jobs:
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/rpm/*.rpm
             src-tauri/target/release/bundle/appimage/*.AppImage
+
+  # Sur un tag v* uniquement : une fois TOUS les builds verts, crée la release
+  # GitHub du tag avec les binaires en pièces jointes (notes générées depuis
+  # les commits). Re-run du workflow → les binaires sont re-poussés (--clobber)
+  # sur la release existante au lieu d'échouer.
+  release:
+    name: Release GitHub
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Télécharger tous les artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Release + binaires
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mapfile -d '' files < <(find artifacts -type f -print0)
+          echo "Binaires : ${files[*]}"
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "${files[@]}"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Alfred $GITHUB_REF_NAME" \
+              --generate-notes \
+              "${files[@]}"
+          fi

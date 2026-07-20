@@ -13,11 +13,19 @@ Pas de `get_settings` / `update_setting` : chaque réglage passe par
 
 ## Sections v1
 
-**Profil local** (📝 à faire, feedback tests) — le menu profil ambigu du haut-droite
-est **retiré** (spec/10) ; l'identité vit ici. **Prénom + avatar** stockés **en local**
-(config, pas de compte serveur, cohérent v1 : pas de PII, metrics anonymes). Réutilisé
-dans l'app : assignation de tâche à soi (**`@moi`**, spec/06), reconnaissance de
-l'utilisateur dans les participants, signature de partage (spec/18). Édité ici.
+**Profil local** (✅ fait, feedback tests) — le menu profil ambigu du haut-droite
+est **retiré** (spec/10) ; l'identité vit ici (`ProfileSection`, `store/profileStore.ts`).
+**Prénom + avatar** stockés **en local** (`config.profile_name` / `config.profile_avatar`
+— avatar = image choisie, encodée en data URI ; pas de compte serveur, cohérent v1 :
+pas de PII, metrics anonymes). Réutilisé dans l'app : bouton **« M'assigner »** sur
+la fiche tâche (**`@moi`**, spec/06) et badge « moi » sur les cartes/lignes portant
+son propre nom ; reconnaissance de l'utilisateur (chip « Moi ») parmi les participants
+d'une note (Properties, spec/07). Édité ici.
+
+> **Signature de partage (spec/18) — pas fait.** Réutilisation envisagée mais non
+> implémentée : nécessiterait de faire voyager le prénom jusqu'au backend AlfredIA
+> (`backend/`, service séparé) et d'en changer le rendu HTML de la page partagée —
+> hors périmètre de cette tâche (front only), signalé pour une itération dédiée.
 
 **Accès IA** (remplace « APIs ») — mode **clé perso** ou **AlfredIA** :
 - *Clé perso* : saisir `claude_api_key` + **Tester** (`test_api_key`).
@@ -52,10 +60,10 @@ clé de registre Windows) ; **« Revoir l'introduction »** (rejoue l'onboarding
 - `DEFAULT_RECORDING_FOLDER` : `raw/audios` → **`alfred-raw`**.
 - `DEFAULT_TODO_FILE` : `wiki/Todo.md` → **`alfred-intelligence/Todo.md`**.
 
-## Note bug
+## Note bug — ✅ fait
 
-Le launch-at-login macOS utilise le label `io.alfred.app` alors que l'identifiant
-de l'app est `com.alfred.app` → à aligner (spec/12).
+Le launch-at-login macOS utilisait le label `io.alfred.app` alors que l'identifiant
+de l'app est `com.alfred.app` → aligné (spec/12).
 
 ## Hors v1 / plus tard
 

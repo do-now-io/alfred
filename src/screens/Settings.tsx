@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { MdDownload } from "react-icons/md";
 import { useNotesStore } from "../store/notesStore";
 import { useTourStore } from "../store/tourStore";
+import { useProfileStore } from "../store/profileStore";
 import type { NoteFile } from "../bindings/NoteFile";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -49,6 +50,68 @@ function SettingRow({
       <span style={{ fontSize: 14, color: "var(--text-primary)", flexShrink: 0 }}>{label}</span>
       <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
         {children}
+      </div>
+    </div>
+  );
+}
+
+/** Profil local (spec/10/11, feedback tests) : prénom + avatar — aucun compte
+ *  serveur, remplace le menu profil ambigu retiré de la topbar (spec/10). */
+function ProfileSection() {
+  const { name, avatar, load, setName, setAvatar } = useProfileStore();
+  const [draftName, setDraftName] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setDraftName(name); }, [name]);
+
+  const pickAvatar = () => fileInput.current?.click();
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setAvatar(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const initial = draftName.trim().charAt(0).toUpperCase() || "?";
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+      <button
+        onClick={pickAvatar}
+        title="Changer l'avatar"
+        style={{
+          width: 52, height: 52, borderRadius: "50%", flexShrink: 0,
+          border: "1.5px solid var(--accent)", background: avatar ? "none" : "#1C1C1C",
+          cursor: "pointer", padding: 0, overflow: "hidden",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        {avatar ? (
+          <img src={avatar} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          <span style={{ color: "var(--accent)", fontSize: 18, fontWeight: 600 }}>{initial}</span>
+        )}
+      </button>
+      <input ref={fileInput} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
+      <div style={{ flex: 1 }}>
+        <input
+          value={draftName}
+          onChange={(e) => setDraftName(e.target.value)}
+          onBlur={() => { if (draftName.trim() !== name) setName(draftName.trim()); }}
+          placeholder="Votre prénom"
+          style={{
+            width: "100%", border: "1px solid var(--border)", borderRadius: 8,
+            padding: "8px 11px", fontSize: 14, background: "var(--bg)", color: "var(--text-primary)",
+            boxSizing: "border-box",
+          }}
+        />
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 5 }}>
+          Utilisé pour « Assigner à moi » (Tâches) et pour vous reconnaître parmi les participants.
+        </div>
       </div>
     </div>
   );
@@ -370,6 +433,10 @@ export default function Settings() {
       <h1 style={{ margin: "0 0 28px", fontSize: 22, fontWeight: 600, color: "var(--text-primary)" }}>
         Paramètres
       </h1>
+
+      <Section title="Profil">
+        <ProfileSection />
+      </Section>
 
       <Section title="Accès IA">
         <AiAccessSection />

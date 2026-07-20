@@ -1270,7 +1270,7 @@ fn save_secret(account: String, value: String) -> Result<(), String> {
 #[tauri::command]
 fn get_launch_at_login() -> Result<bool, String> {
     let plist_path = dirs::home_dir()
-        .map(|h| h.join("Library/LaunchAgents/io.alfred.app.plist"))
+        .map(|h| h.join("Library/LaunchAgents/com.alfred.app.plist"))
         .ok_or("Cannot determine home dir")?;
     Ok(plist_path.exists())
 }
@@ -1279,7 +1279,7 @@ fn get_launch_at_login() -> Result<bool, String> {
 #[tauri::command]
 fn set_launch_at_login(enabled: bool) -> Result<(), String> {
     let plist_path = dirs::home_dir()
-        .map(|h| h.join("Library/LaunchAgents/io.alfred.app.plist"))
+        .map(|h| h.join("Library/LaunchAgents/com.alfred.app.plist"))
         .ok_or("Cannot determine home dir")?;
 
     if enabled {
@@ -1288,7 +1288,7 @@ fn set_launch_at_login(enabled: bool) -> Result<(), String> {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>io.alfred.app</string>
+    <string>com.alfred.app</string>
     <key>ProgramArguments</key>
     <array>
         <string>/Applications/Alfred.app/Contents/MacOS/alfred</string>

@@ -47,10 +47,10 @@ loopback AlfredIA / Stripe).
 - **Windows** : certificat de **signature de code** (Authenticode) pour éviter les
   avertissements SmartScreen.
 
-## Note bug
+## Note bug — ✅ fait
 
-Aligner le label du launch-at-login macOS (`io.alfred.app`) sur l'identifiant
-`com.alfred.app` (spec/11).
+Label du launch-at-login macOS aligné sur l'identifiant `com.alfred.app`
+(était `io.alfred.app`, spec/11).
 
 ## Hors v1 / plus tard
 

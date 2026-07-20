@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { MdCalendarToday, MdLabel, MdCategory, MdToggleOn, MdFolderSpecial, MdGroups } from "react-icons/md";
 import type { NoteMetadata } from "../../bindings/NoteMetadata";
+import { useProfileStore, isSelf } from "../../store/profileStore";
 import TagChip from "./TagChip";
 
 interface Props {
@@ -21,6 +22,7 @@ function ChipsInput({
   suggestions,
   placeholder,
   colored,
+  selfName,
 }: {
   values: string[];
   onChange: (next: string[]) => void;
@@ -28,6 +30,9 @@ function ChipsInput({
   placeholder: string;
   /** true → chips colorées (tags) ; false → chips neutres (projet/participants). */
   colored?: boolean;
+  /** Profil local (spec/07, feedback tests) : la valeur qui matche est affichée
+   *  « Moi » — reconnaissance de l'utilisateur parmi les participants. */
+  selfName?: string;
 }) {
   const [input, setInput] = useState("");
   const [focused, setFocused] = useState(false);
@@ -63,7 +68,7 @@ function ChipsInput({
                 padding: "2px 8px", borderRadius: 20, fontSize: 12, fontWeight: 500,
               }}
             >
-              {v}
+              {selfName && isSelf(v, selfName) ? "Moi" : v}
               <button
                 onClick={() => remove(i)}
                 style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "inherit", fontSize: 11, lineHeight: 1, opacity: 0.7 }}
@@ -124,11 +129,14 @@ export default function PropertiesPanel({ metadata, onChange }: Props) {
   // les suggestions vides.
   const [allTags, setAllTags] = useState<string[]>([]);
   const [allProjects, setAllProjects] = useState<string[]>([]);
+  const profileName = useProfileStore((s) => s.name);
+  const loadProfile = useProfileStore((s) => s.load);
 
   useEffect(() => {
     invoke<string[]>("list_tags").then(setAllTags).catch(() => {});
     invoke<string[]>("list_projects").then(setAllProjects).catch(() => {});
-  }, []);
+    loadProfile();
+  }, [loadProfile]);
 
   const update = (patch: Partial<NoteMetadata>) =>
     onChange({ ...metadata, ...patch });
@@ -182,6 +190,7 @@ export default function PropertiesPanel({ metadata, onChange }: Props) {
             onChange={(participants) => update({ participants })}
             suggestions={[]}
             placeholder="+ participant"
+            selfName={profileName}
           />
         </Row>
 

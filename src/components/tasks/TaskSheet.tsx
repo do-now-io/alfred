@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { MdClose, MdAdd, MdAutoAwesome, MdHub, MdOpenInNew } from "react-icons/md";
+import { MdClose, MdAdd, MdAutoAwesome, MdHub, MdOpenInNew, MdPersonPin } from "react-icons/md";
 import { useNotesStore } from "../../store/notesStore";
+import { useProfileStore } from "../../store/profileStore";
 import BriefingContent from "../BriefingContent";
 import type { Todo } from "../../bindings/Todo";
 import type { TaskFieldsInput } from "../../bindings/TaskFieldsInput";
@@ -45,6 +46,9 @@ export default function TaskSheet({
 }) {
   const navigate = useNavigate();
   const openNoteByRef = useNotesStore((s) => s.openNoteByRef);
+  const profileName = useProfileStore((s) => s.name);
+  const loadProfile = useProfileStore((s) => s.load);
+  useEffect(() => { loadProfile(); }, [loadProfile]);
 
   const [title, setTitle] = useState(todo.title);
   const [responsable, setResponsable] = useState(todo.responsable ?? "");
@@ -188,14 +192,29 @@ export default function TaskSheet({
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <Field>
             <label style={label}>Responsable</label>
-            <input
-              list="task-sheet-owners"
-              value={responsable}
-              onChange={(e) => setResponsable(e.target.value)}
-              onBlur={() => saveFields({ responsable: responsable || null })}
-              placeholder="Prénom"
-              style={fieldInput}
-            />
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                list="task-sheet-owners"
+                value={responsable}
+                onChange={(e) => setResponsable(e.target.value)}
+                onBlur={() => saveFields({ responsable: responsable || null })}
+                placeholder="Prénom"
+                style={fieldInput}
+              />
+              {/* @moi (spec/06/10/11) : assigner en un clic avec le profil local. */}
+              {profileName && responsable !== profileName && (
+                <button
+                  onClick={() => { setResponsable(profileName); saveFields({ responsable: profileName }); }}
+                  title="M'assigner cette tâche"
+                  style={{
+                    background: "none", border: "1px solid var(--border)", borderRadius: 8,
+                    padding: "0 9px", cursor: "pointer", color: "var(--accent)", display: "flex", alignItems: "center", flexShrink: 0,
+                  }}
+                >
+                  <MdPersonPin size={16} />
+                </button>
+              )}
+            </div>
             <datalist id="task-sheet-owners">
               {owners.map((o) => <option key={o} value={o} />)}
             </datalist>

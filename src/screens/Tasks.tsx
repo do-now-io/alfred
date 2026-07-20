@@ -8,6 +8,7 @@ import {
 import ShareButton from "../components/ShareButton";
 import TaskSheet from "../components/tasks/TaskSheet";
 import { useNotesStore } from "../store/notesStore";
+import { useProfileStore, isSelf } from "../store/profileStore";
 import { renderInlineMd, stripInlineMd } from "../utils/inlineMd";
 import type { Todo } from "../bindings/Todo";
 
@@ -74,6 +75,9 @@ interface DragInfo {
 
 export default function Tasks() {
   const { vaultPath, fetchVaultPath } = useNotesStore();
+  const profileName = useProfileStore((s) => s.name);
+  const loadProfile = useProfileStore((s) => s.load);
+  useEffect(() => { loadProfile(); }, [loadProfile]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -393,6 +397,7 @@ export default function Tasks() {
                     <TaskCard
                       key={t.id}
                       task={t}
+                      profileName={profileName}
                       onToggle={() => toggleChecked(t)}
                       onOpen={() => setOpenTaskId(t.id)}
                       onDragStart={() => setDrag({ id: t.id })}
@@ -460,7 +465,11 @@ export default function Tasks() {
                           />
                           <span style={{ fontSize: 13.5, lineHeight: 1.5, color: "var(--text-primary)", textDecoration: t.checked ? "line-through" : "none" }}>
                             {renderInlineMd(t.title)}
-                            {t.responsable && <span style={{ color: "var(--text-muted)", fontSize: 12 }}> — @{t.responsable}</span>}
+                            {t.responsable && (
+                              <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                                {" — @"}{isSelf(t.responsable, profileName) ? "moi" : t.responsable}
+                              </span>
+                            )}
                             {t.echeance && <span style={{ color: "var(--text-muted)", fontSize: 12 }}> — 📅 {t.echeance}</span>}
                             {t.project && <span style={{ color: "var(--accent)", fontSize: 12 }}> — +{t.project}</span>}
                           </span>
@@ -502,9 +511,11 @@ function viewToggleBtn(active: boolean): React.CSSProperties {
 }
 
 function TaskCard({
-  task, onToggle, onOpen, onDragStart, onDragEnd, onDropBefore,
+  task, profileName, onToggle, onOpen, onDragStart, onDragEnd, onDropBefore,
 }: {
   task: Todo;
+  /** Profil local (spec/10/11) — pour afficher « moi » sur ses propres tâches. */
+  profileName: string;
   onToggle: () => void;
   onOpen: () => void;
   onDragStart: () => void;
@@ -565,6 +576,7 @@ function TaskCard({
           )}
           {owner && (() => {
             const { bg, text } = ownerColor(owner);
+            const mine = isSelf(owner, profileName);
             return (
               <span
                 title={`Responsable : ${owner}`}
@@ -574,7 +586,7 @@ function TaskCard({
                   padding: "1px 8px", fontSize: 11.5, fontWeight: 600,
                 }}
               >
-                {owner}
+                {mine ? "moi" : owner}
               </span>
             );
           })()}

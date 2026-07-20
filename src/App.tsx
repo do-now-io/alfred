@@ -309,17 +309,6 @@ function Topbar() {
       <RecordingBar />
 
       <FeedbackWidget />
-
-      <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-        <div style={{
-          width: 30, height: 30, borderRadius: "50%",
-          background: "#1C1C1C", border: "1.5px solid var(--accent)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 13, color: "var(--accent)",
-        }}>A</div>
-        <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>Alfred</span>
-        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>▾</span>
-      </div>
     </div>
   );
 }

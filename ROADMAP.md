@@ -74,6 +74,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | **Indicateur d'état = où Alfred travaille (spec/10, feedback tests)** : (a) le **point ambre** d'une note = la note qu'Alfred **traite** (transcription/analyse/contexte), plus « note sélectionnée » (highlight suffit) ; (b) **indicateur majordome cliquable** → navigue vers la cible en cours. Cible active dans `alfredStatusStore` (`targetPath`/`targetRoute`/`recordingId`), alimentée par `transcription-complete` (qui porte désormais `note_path`) | CF |
 | [x] | **Indicateur d'état** (topbar, labels majordome) + **bandeau d'enregistrement** (timer + volume live + stop) | UC |
 | [x] | Déclenchement via **logo** (hover micro) + **page de guidage** d'enregistrement (`/recording`, conseils de captation éditables) | UC |
+| [ ] | **Logo bouton d'enregistrement décalé (spec/03, feedback tests)** : dans `AlfredLogo` (App.tsx), le bouton 132×132 + `<img width:100% height:auto>` décale le logo verticalement si l'asset n'est pas carré → asset **carré** + `object-fit: contain`/centrage, et positionner l'overlay micro/stop par rapport à l'image centrée | |
 | [x] | **Import de fichier audio** (spec/03) : commande `import_audio_file` (picker WAV → copie `recordings/<uuid>.wav`, `source='import'`, réutilise la file de transcription via `transcription::enqueue_job` partagé avec `stop_recording`) + migration 009 (CHECK `source` élargi) + bouton « Importer un audio » sur `/recording` **et sur l'accueil** (sous la carte d'enregistrement, état repos — `/recording` n'étant atteignable qu'en enregistrant) | UC |
 | [ ] | **Import audio — mieux intégré à l'interface (spec/03)** : garder la fonction (picker `.wav` → même file de transcription) mais retravailler le placement — aujourd'hui second bouton à côté de « Démarrer l'enregistrement », à incorporer dans les points d'entrée existants (logo/carte d'enregistrement) plutôt qu'un bouton séparé | |
 | [x] | **Nav** : retirer routes mortes Réunions / Calendrier + barre de recherche ; ajouter **Feedback**. `/ai-actions` gardée à part (écart documenté spec/10 — historique chat pas encore fait) | UC |
@@ -131,6 +132,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [ ] | **macOS** : entitlements v1 (retirer apple-events, + `NSScreenCaptureUsageDescription`) ; signature Developer ID + notarisation | |
 | [ ] | **Windows** : build Whisper + WebView2 ; signature **Authenticode** | |
 | [x] | Aligner le label launch-at-login `io.alfred.app` → `com.alfred.app` | CF |
+| [ ] | **Icône d'app à mettre à jour (feedback tests)** : le jeu `src-tauri/icons/*` (32/128/@2x/.ico/.icns) montre encore un **cercle non rempli** (logo pas finalisé) → régénérer tout le jeu depuis le logo final (fond rempli), source carrée haute résolution ; vérifier rendu bureau Windows/macOS | |
 
 ## Phase F — Produit & ouverture (spec à écrire)
 

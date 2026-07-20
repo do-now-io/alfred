@@ -236,14 +236,14 @@ export default function Resolve() {
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
         <div style={{ flex: 1 }}>
           <h1 style={{ margin: 0, fontSize: 20, color: "var(--text-primary)" }}>
-            {isContext ? "Vérifiez ce qu'Alfred a compris" : "Vérification avant compte-rendu"}
+            {isContext ? "Vérifiez ce que j'ai compris" : "Vérification avant compte-rendu"}
           </h1>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)" }}>
             {isContext
-              ? "Voici votre contexte, structuré à partir de votre présentation. Corrigez librement — surtout l'orthographe des noms propres — puis validez."
+              ? "Voici ce que j'ai structuré à partir de votre présentation. Corrigez librement — surtout l'orthographe des noms propres — puis validez."
               : pending > 0
-                ? `Alfred a repéré ${pending} point${pending > 1 ? "s" : ""} à vérifier. Appliquez ce qui vous convient, corrigez le texte librement, puis finalisez.`
-                : "Relisez la transcription, corrigez si besoin, puis finalisez — le compte-rendu et les tâches ne sont écrits qu'à la finalisation."}
+                ? `J'ai repéré ${pending} point${pending > 1 ? "s" : ""} à vérifier. Appliquez ce qui vous convient, corrigez le texte librement, puis finalisez.`
+                : "Relisez la transcription, corrigez si besoin, puis finalisez — je n'écris le compte-rendu et les tâches qu'à la finalisation."}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
@@ -352,7 +352,7 @@ export default function Resolve() {
             </div>
           ))}
           {adds.length > 0 && (
-            <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "0 2px" }}>Les faits cochés sont ajoutés à « Appris automatiquement » dans votre note de contexte.</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "0 2px" }}>J'ajoute les faits cochés à « Appris automatiquement » dans votre note de contexte.</div>
           )}
         </div>
       </div>

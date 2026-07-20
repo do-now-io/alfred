@@ -172,17 +172,25 @@ Logo Alfred (hover → micro animé) → `start_recording` → **page de guidage
 l'enregistrement (conseils de captation + viz volume + timer). Bandeau d'état
 pendant toute la durée.
 
-## Voix du majordome — 📝 à faire
+## Voix du majordome — ✅ fait
 
-Le ton « majordome » n'existe aujourd'hui que sur les **labels d'état**
-(« À votre service », « Tout ouïe… », « Je prends note… », « Je cogite… », « Je
-note les tâches… » — §Indicateur d'état ci-dessus). Le reste des textes de
-l'app (placeholders, boutons, messages d'erreur, confirmations, onboarding,
-emails/notifications) reste au ton neutre habituel d'un logiciel. À faire :
-**passe de relecture éditoriale** sur l'ensemble des textes visibles pour
-qu'Alfred parle **comme un vrai majordome** de bout en bout, pas seulement à
-l'indicateur d'état — tout en restant sobre (pas de sur-jeu qui nuit à la
-lisibilité d'un message d'erreur, par ex.).
+Passe de relecture éditoriale sur les textes narratifs/de statut (onboarding,
+visite guidée, `/resolve`, tuiles de l'accueil, chat, Réglages, partage,
+feedback) : Alfred parle à la **première personne** (« je transcris », « j'ai
+repéré… », « je m'en sers pour… ») au lieu d'être décrit à la troisième
+(« Alfred transcrit », « Alfred a repéré… »). Registre **vouvoiement**
+conservé (« je vous connais », pas « je te connais ») — deux incohérences de
+registre (tu/vous) corrigées au passage (`Settings.tsx`, `ShareButton.tsx`,
+suggestion de chat).
+
+**Hors scope volontairement** : les libellés d'UI courts et neutres (noms de
+boutons/menus — « Renommer », « Paramètres », « Annuler »…) restent inchangés,
+ce n'est pas Alfred qui « parle » dans un bouton. Les messages d'erreur
+techniques ont été reformulés à la première personne quand ça restait clair
+(« Je n'arrive pas à… ») ; gardés neutres quand la clarté du diagnostic
+prime. Les états vides/confirmations purement fonctionnels (« Aucun dossier
+configuré », `window.confirm`) n'ont pas été touchés — pas de gain de ton
+là où le texte ne décrit pas une action d'Alfred.
 
 ## Design / palette
 

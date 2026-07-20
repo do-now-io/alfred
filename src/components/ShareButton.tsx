@@ -46,7 +46,7 @@ export default function ShareButton({ getLink, share, unshare, resetKey }: Props
     if (busy) return;
     if (!localStorage.getItem(CONSENT_KEY)) {
       const ok = window.confirm(
-        "Partager ?\n\nLe contenu sera envoyé sur les serveurs Alfred et accessible par toute personne disposant du lien. Tu pourras arrêter le partage à tout moment.",
+        "Partager ?\n\nLe contenu sera envoyé sur mes serveurs et accessible par toute personne disposant du lien. Vous pourrez arrêter le partage à tout moment.",
       );
       if (!ok) return;
       localStorage.setItem(CONSENT_KEY, "1");

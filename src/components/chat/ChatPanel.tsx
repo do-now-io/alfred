@@ -12,7 +12,7 @@ import type { ChatSource } from "../../bindings/ChatSource";
 // target (spec/13) — id kept stable so GuidedTour can find it (it asks Alfred
 // about the context the tour just recorded).
 const SUGGESTIONS = [
-  { id: "my-context", label: "Que sais-tu de mon équipe et de mes projets ?" },
+  { id: "my-context", label: "Que savez-vous de mon équipe et de mes projets ?" },
   { id: "recent-notes", label: "Résume mes notes récentes" },
   { id: "week-work", label: "Sur quoi ai-je travaillé cette semaine ?" },
 ];
@@ -254,7 +254,7 @@ function EmptyState({ onPick }: { onPick: (q: string) => void }) {
         Demander à Alfred
       </div>
       <div style={{ fontSize: 13.5, color: "var(--text-muted)", maxWidth: 460, lineHeight: 1.6 }}>
-        Posez une question sur vos notes — Alfred cherche dans votre coffre et répond en citant ses sources.
+        Posez une question sur vos notes — je cherche dans votre coffre et je réponds en citant mes sources.
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginTop: 4 }}>
         {SUGGESTIONS.map(s => (
@@ -344,7 +344,7 @@ function ProgressView({ progress }: { progress: string[] }) {
   return (
     <div style={{ alignSelf: "flex-start", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.8 }}>
       {progress.length === 0 ? (
-        <div>⏳ Alfred réfléchit…</div>
+        <div>⏳ Je réfléchis…</div>
       ) : (
         progress.map((line, i) => <div key={i}>{line}</div>)
       )}

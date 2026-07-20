@@ -110,7 +110,7 @@ function ProfileSection() {
           }}
         />
         <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 5 }}>
-          Utilisé pour « Assigner à moi » (Tâches) et pour vous reconnaître parmi les participants.
+          Je m'en sers pour « Assigner à moi » (Tâches) et pour vous reconnaître parmi les participants.
         </div>
       </div>
     </div>
@@ -505,8 +505,8 @@ export default function Settings() {
         <VaultPathRow />
         <ContextNoteRow />
         <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-          Décris ton entreprise, ton équipe et ton vocabulaire maison : Alfred s'en
-          sert pour corriger les noms propres dans les transcriptions et comptes-rendus.
+          Décrivez votre entreprise, votre équipe et votre vocabulaire maison : je m'en
+          sers pour corriger les noms propres dans les transcriptions et comptes-rendus.
         </div>
       </Section>
 

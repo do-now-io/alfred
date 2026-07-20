@@ -83,7 +83,7 @@ function HeroCard() {
               Prendre des notes maintenant
             </div>
             <div style={{ fontSize: 13, color: "#9B9B9B" }}>
-              Enregistre, transcrit et extrait les actions
+              J'enregistre, transcris et extrais les actions
             </div>
           </>
         )}
@@ -93,7 +93,7 @@ function HeroCard() {
               Enregistrement en cours… {fmt(elapsed)}
             </div>
             <div style={{ fontSize: 13, color: "#9B9B9B" }}>
-              Parlez naturellement — Alfred transcrit en temps réel
+              Parlez naturellement — je transcris en temps réel
             </div>
           </>
         )}
@@ -366,7 +366,7 @@ function BriefCard() {
       </div>
 
       {loading && !text ? (
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Alfred prépare votre brief…</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Je prépare votre brief…</div>
       ) : text ? (
         <>
           <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
@@ -378,7 +378,7 @@ function BriefCard() {
         </>
       ) : (
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Enregistrez ou écrivez quelque chose, et Alfred vous préparera un point chaque jour.
+          Enregistrez ou écrivez quelque chose, et je vous préparerai un point chaque jour.
         </div>
       )}
     </div>

@@ -144,7 +144,7 @@ function AlfredLogo() {
           quand Alfred travaille sur une cible : mène à ce qu'il fait (spec/10). */}
       <div
         onClick={clickableStatus ? goToTarget : undefined}
-        title={clickableStatus ? "Voir ce qu'Alfred est en train de traiter" : undefined}
+        title={clickableStatus ? "Voir ce que je suis en train de traiter" : undefined}
         style={{
           display: "flex", alignItems: "center", gap: 6,
           fontSize: 12.5, whiteSpace: "nowrap",
@@ -518,7 +518,7 @@ function ResolveBanner() {
       <div style={{ flex: 1, color: "var(--text-primary)", lineHeight: 1.5 }}>
         <div style={{ fontWeight: 600, marginBottom: 4 }}>
           {count > 0
-            ? `Alfred a ${count} point${count > 1 ? "s" : ""} à vérifier`
+            ? `J'ai ${count} point${count > 1 ? "s" : ""} à vérifier`
             : "Votre compte-rendu est prêt à valider"}
         </div>
         <button

@@ -130,9 +130,9 @@ function PipelineToast() {
   if (butler === "transcribing") {
     // Progression réelle (spec/04, feedback tests).
     const pct = progress != null ? ` (${progress} %)` : "";
-    return <TourToast icon="⏳" text={`Pendant ce temps, Alfred écoute et met au propre ce que vous venez de dire…${pct}`} />;
+    return <TourToast icon="⏳" text={`Pendant ce temps, j'écoute et je mets au propre ce que vous venez de dire…${pct}`} />;
   }
-  return <TourToast icon="🗂️" text="Alfred range tout ça : votre entreprise, votre équipe, vos projets, votre vocabulaire…" />;
+  return <TourToast icon="🗂️" text="Je range tout ça : votre entreprise, votre équipe, vos projets, votre vocabulaire…" />;
 }
 
 // The app-visit steps (spec/13 étape 3) — spotlight target id + copy + where to be.
@@ -143,7 +143,7 @@ const VISIT_STEPS: Array<{
   {
     step: "visit-notes", next: "visit-tasks", target: "nav-notes", route: "/notes",
     title: "Vos notes",
-    text: "Chaque enregistrement produit sa transcription et son compte-rendu, rangés ici — regroupés par projet.",
+    text: "De chaque enregistrement, je produis la transcription et le compte-rendu, rangés ici — regroupés par projet.",
   },
   {
     step: "visit-tasks", next: "visit-graph", target: "nav-tasks", route: "/tasks",
@@ -153,12 +153,12 @@ const VISIT_STEPS: Array<{
   {
     step: "visit-graph", next: "visit-chat", target: "nav-graph", route: "/graph",
     title: "Le graphe",
-    text: "Vos notes se relient entre elles par projets et participants — pratique pour retrouver le fil d'un sujet.",
+    text: "Je relie vos notes entre elles par projets et participants — pratique pour retrouver le fil d'un sujet.",
   },
   {
     step: "visit-chat", next: "waiting", target: "nav-chat", route: "/ai-actions",
     title: "Questions à Alfred — et comment enregistrer",
-    text: "Posez vos questions ici, Alfred répond en citant vos notes. Et pour enregistrer : cliquez le logo Alfred (en haut à gauche), la carte d'accueil, ou importez un audio.",
+    text: "Posez vos questions ici, je réponds en citant vos notes. Et pour enregistrer : cliquez mon logo (en haut à gauche), la carte d'accueil, ou importez un audio.",
   },
 ];
 
@@ -176,7 +176,7 @@ export default function GuidedTour() {
 
     listen<{ status: string }>("recording-status-changed", (e) => {
       if (e.payload.status === "error" && step === "record") {
-        fail("L'enregistrement a rencontré un problème — pas de souci, vous pourrez réessayer plus tard.");
+        fail("J'ai rencontré un problème pendant l'enregistrement — pas de souci, vous pourrez réessayer plus tard.");
       }
     }).then((fn) => unsubs.push(fn));
 
@@ -200,7 +200,7 @@ export default function GuidedTour() {
           // attendait sur l'indicateur d'état.
           if (step === "waiting") goto("ready");
         } else {
-          fail("Alfred n'a pas réussi à construire votre contexte, mais votre transcription est bien enregistrée. Vous pourrez remplir la note de contexte à la main.");
+          fail("Je n'ai pas réussi à construire votre contexte, mais votre transcription est bien enregistrée. Vous pourrez remplir la note de contexte à la main.");
         }
       }
     ).then((fn) => unsubs.push(fn));
@@ -236,7 +236,7 @@ export default function GuidedTour() {
       navigate("/resolve");
     } catch (e) {
       console.error("[tour] open_context_note failed:", e);
-      fail("Impossible d'ouvrir votre note de contexte — vous pourrez la corriger plus tard depuis les Réglages.");
+      fail("Je n'arrive pas à ouvrir votre note de contexte — vous pourrez la corriger plus tard depuis les Réglages.");
     }
   };
 
@@ -244,8 +244,8 @@ export default function GuidedTour() {
     case "intro":
       return (
         <TourModal
-          title="Apprenons à Alfred qui vous êtes"
-          text="Vous allez vous présenter à voix haute pendant qu'Alfred vous transcrit — il s'en servira pour bien orthographier vos collègues, vos clients et votre jargon. Deux minutes."
+          title="Laissez-moi apprendre à vous connaître"
+          text="Vous allez vous présenter à voix haute pendant que je vous transcris — je m'en servirai pour bien orthographier vos collègues, vos clients et votre jargon. Deux minutes."
           primary="Allons-y"
           onPrimary={() => goto("record")}
           secondary="Plus tard"
@@ -282,10 +282,10 @@ export default function GuidedTour() {
       return (
         <TourModal
           glow
-          title="Alfred vous connaît — mais vérifiez ce qu'il a compris"
+          title="Je vous connais — mais vérifiez ce que j'ai compris"
           text={
             recap && recap.terms > 0
-              ? `Votre contexte est prêt (${recap.sections} section${recap.sections > 1 ? "s" : ""} remplie${recap.sections > 1 ? "s" : ""}) et ${recap.terms} noms propres ont rejoint le glossaire de transcription. Un coup d'œil pour corriger ce qu'il faut ?`
+              ? `J'ai rempli votre contexte (${recap.sections} section${recap.sections > 1 ? "s" : ""}) et ajouté ${recap.terms} noms propres au glossaire de transcription. Un coup d'œil pour corriger ce qu'il faut ?`
               : "Votre contexte est prêt. Un coup d'œil pour corriger ce qu'il faut ?"
           }
           primary="Revoir / corriger"
@@ -303,7 +303,7 @@ export default function GuidedTour() {
         <TourModal
           glow
           title="Vous êtes équipé"
-          text="Désormais : parlez, Alfred écoute, résume et retient — et il connaît votre univers. Le reste, vous le découvrirez en l'utilisant."
+          text="Désormais : parlez, je vous écoute, je résume et je retiens — et je connais votre univers. Le reste, vous le découvrirez en m'utilisant."
           primary="Terminer"
           onPrimary={finish}
         />

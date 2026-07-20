@@ -63,7 +63,7 @@ export default function RecordingReview({
       <div>
         <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>Prise terminée</div>
         <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-          Vous pouvez recommencer votre présentation, ou continuer — Alfred la transcrit puis construit votre contexte.
+          Vous pouvez recommencer votre présentation, ou continuer — je la transcris puis je construis votre contexte.
         </div>
       </div>
 

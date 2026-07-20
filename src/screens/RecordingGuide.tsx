@@ -270,7 +270,7 @@ export default function RecordingGuide() {
               </div>
               <VolumeMeter volume={volume} size="lg" />
               <div style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>
-                {isPaused ? "En pause — reprenez quand vous voulez." : "Parlez naturellement — Alfred transcrit ensuite en local."}
+                {isPaused ? "En pause — reprenez quand vous voulez." : "Parlez naturellement — je transcris ensuite en local."}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <button

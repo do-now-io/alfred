@@ -228,7 +228,7 @@ function MicStep() {
       </button>
       {state === "ok" && <div style={okRow}><MdCheckCircle size={16} /> Micro accessible</div>}
       {state === "error" && (
-        <div style={errorRow}><MdWarning size={15} /> Accès refusé — autorisez Alfred dans les réglages système</div>
+        <div style={errorRow}><MdWarning size={15} /> Accès refusé — autorisez-moi dans les réglages système</div>
       )}
     </div>
   );
@@ -247,8 +247,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<img src={alfredLogo} alt="Alfred" style={{ width: 84, height: "auto", borderRadius: 18 }} />}
-          title="Bienvenue dans Alfred"
-          text="Votre majordome personnel : il écoute, transcrit, résume et retient — pour que vous n'ayez plus à prendre de notes vous-même. Deux minutes d'installation, puis on essaie ensemble."
+          title="Bienvenue, je suis Alfred"
+          text="Votre majordome personnel : j'écoute, je transcris, je résume et je retiens — pour que vous n'ayez plus à prendre de notes vous-même. Deux minutes d'installation, puis on essaie ensemble."
         />
       ),
     },
@@ -256,8 +256,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle><MdMic /></IconCircle>}
-          title="Parlez, il transcrit"
-          text="Lancez un enregistrement et parlez naturellement — réunion, note vocale, brainstorm. La transcription tourne en local (Whisper, déjà installé, ça marche hors ligne dès le premier lancement) et continue même si vous changez de vue."
+          title="Parlez, je transcris"
+          text="Lancez un enregistrement et parlez naturellement — réunion, note vocale, brainstorm. Je transcris en local (Whisper, déjà installé, ça marche hors ligne dès le premier lancement) et je continue même si vous changez de vue."
         />
       ),
     },
@@ -265,8 +265,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle><MdAutoAwesome /></IconCircle>}
-          title="Il en tire l'essentiel"
-          text="De chaque enregistrement, Alfred rédige un compte-rendu et en extrait les tâches à faire — avec le responsable, quand vous le nommez. Vos notes restent reliées entre elles, et vous pouvez lui parler directement pour retrouver n'importe quoi."
+          title="J'en tire l'essentiel"
+          text="De chaque enregistrement, je rédige un compte-rendu et j'en extrais les tâches à faire — avec le responsable, quand vous le nommez. Vos notes restent reliées entre elles, et vous pouvez me parler directement pour retrouver n'importe quoi."
         />
       ),
     },
@@ -276,7 +276,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <Panel
           icon={<IconCircle><MdFolderOpen /></IconCircle>}
           title="Choisissez votre dossier de notes"
-          text="Alfred range tout dans un dossier markdown (le « vault »), compatible Obsidian. Choisissez-en un — un dossier existant ou un nouveau, rien d'autre n'y sera touché."
+          text="Je range tout dans un dossier markdown (le « vault »), compatible Obsidian. Choisissez-en un — un dossier existant ou un nouveau, rien d'autre n'y sera touché."
         >
           <VaultStep />
         </Panel>
@@ -288,7 +288,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <Panel
           icon={<IconCircle><MdVpnKey /></IconCircle>}
           title="Accès à l'IA"
-          text="Alfred s'appuie sur Claude pour rédiger, extraire les tâches et répondre à vos questions. Choisissez comment y accéder — modifiable à tout moment dans les Réglages."
+          text="Je m'appuie sur Claude pour rédiger, extraire les tâches et répondre à vos questions. Choisissez comment y accéder — modifiable à tout moment dans les Réglages."
         >
           <AiAccessStep />
         </Panel>

@@ -99,7 +99,7 @@ export default function Feedback() {
         <div>
           <h1 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>Feedback</h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--text-secondary)" }}>
-            Un bug, une idée, ou juste un mot gentil — ça nous aide à améliorer Alfred.
+            Un bug, une idée, ou juste un mot gentil — ça m'aide à m'améliorer.
           </p>
         </div>
 

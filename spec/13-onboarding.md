@@ -28,7 +28,7 @@ onboardé). Rejouable via « Revoir l'introduction » (Paramètres). À la fin :
 5. **Accès IA** — les **deux** options présentées (modifiables ensuite dans Paramètres) :
    - **Ma clé Claude** → coller la clé (`save_secret('claude_api_key')` + `test_api_key`).
    - **Abonnement AlfredIA** — 20 €/mois (ou annuel), **14 jours d'essai gratuit**
-     (📝 feedback tests) → bouton « Commencer l'essai gratuit » → Stripe + loopback
+     (✅ fait) → bouton « Commencer l'essai gratuit » → Stripe + loopback
      (spec/15) → `alfredia_token` récupéré automatiquement. Accès immédiat pendant
      l'essai ; débit à la fin des 14 jours si non annulé (facturation : spec/15).
 6. **Micro** — test de permission (`test_microphone` ; déclenche le prompt macOS ;

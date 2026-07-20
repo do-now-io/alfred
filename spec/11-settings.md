@@ -29,9 +29,11 @@ d'une note (Properties, spec/07). Édité ici.
 
 **Accès IA** (remplace « APIs ») — mode **clé perso** ou **AlfredIA** :
 - *Clé perso* : saisir `claude_api_key` + **Tester** (`test_api_key`).
-- *AlfredIA* : **statut** de l'abonnement (actif / **essai (14 j)** / inactif) +
-  bouton **Commencer l'essai gratuit** / **S'abonner** (loopback, spec/15) ; token
-  `alfredia_token`. Pendant l'essai, afficher les **jours restants** si dispo. Gérer
+- *AlfredIA* : bouton **Commencer l'essai gratuit — 14 jours** (loopback,
+  spec/15) ; une fois le token reçu, statut affiché **« ✓ Activé »** (✅ fait,
+  léger). **Pas fait** : distinguer essai/actif et afficher les **jours
+  restants** — nécessite un endpoint de statut détaillé côté backend
+  (`GET /subscription/status`, pas encore construit — cf. spec/15). Gérer
   l'abonnement (portail Stripe) = plus tard.
 - Basculer de mode **à tout moment**.
 

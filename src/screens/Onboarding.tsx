@@ -190,16 +190,21 @@ function AiAccessStep() {
       {mode === "byo" ? (
         <ClaudeKeyStep />
       ) : subState === "active" ? (
-        <div style={{ ...okRow, justifyContent: "center" }}><MdCheckCircle size={16} /> Abonnement actif</div>
+        <div style={{ ...okRow, justifyContent: "center" }}><MdCheckCircle size={16} /> Abonnement AlfredIA activé</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
           <button onClick={() => subscribe("monthly")} disabled={subState === "subscribing"} style={primaryBtn(subState === "subscribing")}>
-            {subState === "subscribing" ? <><MdHourglassEmpty size={18} /> En attente du paiement…</> : "S'abonner — 20 €/mois"}
+            {subState === "subscribing" ? <><MdHourglassEmpty size={18} /> En attente du paiement…</> : "Commencer l'essai gratuit — 14 jours"}
           </button>
           {subState !== "subscribing" && (
-            <button onClick={() => subscribe("yearly")} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 16px", cursor: "pointer", fontSize: 13, color: ACCENT }}>
-              Annuel
-            </button>
+            <>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+                Puis 20 €/mois (ou en annuel ci-dessous), sans engagement — annulable à tout moment.
+              </div>
+              <button onClick={() => subscribe("yearly")} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 16px", cursor: "pointer", fontSize: 13, color: ACCENT }}>
+                Essai gratuit puis annuel
+              </button>
+            </>
           )}
           {error && <div style={errorRow}><MdWarning size={15} /> {error}</div>}
         </div>

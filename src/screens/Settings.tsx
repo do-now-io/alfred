@@ -342,7 +342,7 @@ function AiAccessSection() {
       {mode === "alfredia" && (
         <SettingRow label="Abonnement">
           {subStatus === "active" ? (
-            <span style={{ fontSize: 13, color: "#34C759" }}>✓ Actif</span>
+            <span style={{ fontSize: 13, color: "#34C759" }}>✓ Activé</span>
           ) : (
             <>
               {subStatus === "error" && (
@@ -361,7 +361,7 @@ function AiAccessSection() {
                   fontSize: 13,
                 }}
               >
-                {subscribing ? "En attente du paiement…" : "S'abonner — 20 €/mois"}
+                {subscribing ? "En attente du paiement…" : "Commencer l'essai gratuit — 14 jours"}
               </button>
               {!subscribing && (
                 <button
@@ -376,12 +376,17 @@ function AiAccessSection() {
                     fontSize: 13,
                   }}
                 >
-                  Annuel
+                  Essai gratuit puis annuel
                 </button>
               )}
             </>
           )}
         </SettingRow>
+      )}
+      {mode === "alfredia" && subStatus !== "active" && !subscribing && (
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>
+          Puis 20 €/mois (ou en annuel), sans engagement — annulable à tout moment.
+        </div>
       )}
       {error && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 4 }}>{error}</div>}
     </>

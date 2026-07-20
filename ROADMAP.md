@@ -27,7 +27,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | **PostgreSQL** (Coolify) : tables `tokens` + `metrics` ; endpoint `POST /metrics` | UC |
 | [x] | **`POST /feedback`** → tout en **Postgres** (texte + images BYTEA, consultation SQL ; email/S3 hors v1) | UC |
 | [x] | **Secrets** : variables d'env Coolify (clé Anthropic + clés Stripe, chiffrées) | UC |
-| [ ] | **Essai gratuit 14 jours AlfredIA (spec/15/13/11, feedback tests)** : Checkout Stripe avec `subscription_data.trial_period_days = 14` ; token émis dès le départ en `trialing` (proxy accepte déjà) ; wording onboarding « Commencer l'essai gratuit » + statut/jours restants en Réglages ; tester fin d'essai → `active` et échec paiement → `suspended` | |
+| [~] | **Essai gratuit 14 jours AlfredIA (spec/15/13/11, feedback tests)** : Checkout Stripe avec `subscription_data.trial_period_days = 14` (✅ fait) ; token émis dès le départ en `trialing` (proxy accepte déjà, ✅) ; wording onboarding + Réglages « Commencer l'essai gratuit » (✅ fait). **Reste** : endpoint de statut détaillé (`trialing` vs `active` + jours restants, desktop ne voit aujourd'hui que « token valide/invalide ») ; tester fin d'essai → `active` et échec paiement → `suspended` (recette sandbox, cf. tâche dédiée) | CF |
 | [ ] | **Recette du paiement — 20 €/mois (spec/15)** : rejouer `/subscribe` en **sandbox** Stripe (Checkout carte de test → webhook → token → proxy accepte) + simuler `subscription.deleted`/`payment_failed` (`stripe trigger`) → vérifie `suspended`/`revoked` ; puis **un** paiement réel de validation en **prod** une fois la sandbox verte | |
 
 ## Phase B — Desktop, moteur

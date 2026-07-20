@@ -162,6 +162,40 @@ plein-texte globale, hors v1 — spec/10) :
 - Effet de bord assumé : l'écran `/resolve` réutilise le même éditeur →
   Ctrl/Cmd+F y est disponible quand l'éditeur a le focus.
 
+### Gestion des dossiers — clic droit (créer / renommer / supprimer) — 📝 à faire
+
+L'arbre ne gère aujourd'hui que des **fichiers** : `rename_note_file` suffixe
+systématiquement `.md` (casse un nom de dossier) et `delete_note_file` appelle
+`remove_file` (échoue sur un répertoire) — aucune commande `create_folder` côté
+Rust. Le menu contextuel (`FileTreeNode.tsx`) est câblé sur les dossiers
+(`onContextMenu`) mais le popup ne se rend que dans la branche fichier : **clic
+droit sur un dossier ne montre rien** aujourd'hui (vestige non fonctionnel).
+
+À faire : commandes Tauri dédiées (`create_folder`, `rename_folder`,
+`delete_folder` — `remove_dir_all` avec confirmation, un dossier peut contenir
+des notes), menu contextuel dossier réellement affiché, et une entrée
+« Nouveau dossier » (le bouton **+** actuel ne crée qu'une note).
+
+### Glisser-déposer de fichiers externes — 📝 à faire
+
+Le seul glisser-déposer existant est **interne** (déplacer une note vers un
+groupe de projet, MIME custom `text/alfred-note-path`). Glisser un fichier
+depuis le Finder/l'Explorateur (PDF, image, document) dans l'arbre ou le
+contenu de Notes ne fait **rien** : aucun handler `dataTransfer.files`, et
+`dragDropEnabled: false` (tauri.conf.json, nécessaire au DnD HTML5 du Kanban)
+désactive aussi le drag&drop natif de fichiers OS au niveau du webview. À
+concevoir : où le fichier atterrit (copié dans le vault ? pièce jointe d'une
+note ?), et comment réconcilier avec `dragDropEnabled: false`.
+
+### Nom du dossier des transcriptions brutes — 📝 décision ouverte
+
+`alfred-raw` est le nom par défaut actuel (`recording_folder`, spec/11) mais
+n'a jamais été validé comme définitif produit — à rouvrir si un nom plus
+parlant pour l'utilisateur final est souhaité (ex. reflétant mieux « brut/non
+retravaillé » qu'un terme technique). Renommer implique une migration des
+vaults existants (dossier physique déjà créé chez les utilisateurs en test) —
+en tenir compte dans la décision.
+
 ## Commandes Tauri (réel)
 
 `get_vault_tree`, `get_note_file`, `create_note_file`, `update_note_file`,

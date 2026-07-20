@@ -27,6 +27,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | **PostgreSQL** (Coolify) : tables `tokens` + `metrics` ; endpoint `POST /metrics` | UC |
 | [x] | **`POST /feedback`** → tout en **Postgres** (texte + images BYTEA, consultation SQL ; email/S3 hors v1) | UC |
 | [x] | **Secrets** : variables d'env Coolify (clé Anthropic + clés Stripe, chiffrées) | UC |
+| [ ] | **Recette du paiement — 20 €/mois (spec/15)** : rejouer `/subscribe` en **sandbox** Stripe (Checkout carte de test → webhook → token → proxy accepte) + simuler `subscription.deleted`/`payment_failed` (`stripe trigger`) → vérifie `suspended`/`revoked` ; puis **un** paiement réel de validation en **prod** une fois la sandbox verte | |
 
 ## Phase B — Desktop, moteur
 
@@ -69,13 +70,16 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 
 | | Tâche | Qui |
 |---|---|---|
-| [~] | **Accueil « Alfred »** : brief ✅ + bloc tâches dépliable (par sections Prioritaire/En cours/À faire) ✅ + input chat + exemples ✅ (teaser qui envoie vers `/ai-actions` ; **historique/liste de conversations sur la page** reste à faire, cf tâche Chat) | UC |
+| [~] | **Accueil « Alfred »** (spec/10) : brief ✅ + bloc tâches dépliable ✅ + input chat + exemples ✅ (teaser qui envoie vers `/ai-actions`). **Reste : fusion cible** — « Alfred » prend la place d'« Aujourd'hui » (`/`), layout **2 colonnes** (gauche : conversation Alfred ; droite : prise de note/résumé — brief + tâches). Débloqué (historique de chat fait) | UC |
 | [x] | **Indicateur d'état = où Alfred travaille (spec/10, feedback tests)** : (a) le **point ambre** d'une note = la note qu'Alfred **traite** (transcription/analyse/contexte), plus « note sélectionnée » (highlight suffit) ; (b) **indicateur majordome cliquable** → navigue vers la cible en cours. Cible active dans `alfredStatusStore` (`targetPath`/`targetRoute`/`recordingId`), alimentée par `transcription-complete` (qui porte désormais `note_path`) | CF |
 | [x] | **Indicateur d'état** (topbar, labels majordome) + **bandeau d'enregistrement** (timer + volume live + stop) | UC |
 | [x] | Déclenchement via **logo** (hover micro) + **page de guidage** d'enregistrement (`/recording`, conseils de captation éditables) | UC |
 | [x] | **Import de fichier audio** (spec/03) : commande `import_audio_file` (picker WAV → copie `recordings/<uuid>.wav`, `source='import'`, réutilise la file de transcription via `transcription::enqueue_job` partagé avec `stop_recording`) + migration 009 (CHECK `source` élargi) + bouton « Importer un audio » sur `/recording` **et sur l'accueil** (sous la carte d'enregistrement, état repos — `/recording` n'étant atteignable qu'en enregistrant) | UC |
+| [ ] | **Import audio — mieux intégré à l'interface (spec/03)** : garder la fonction (picker `.wav` → même file de transcription) mais retravailler le placement — aujourd'hui second bouton à côté de « Démarrer l'enregistrement », à incorporer dans les points d'entrée existants (logo/carte d'enregistrement) plutôt qu'un bouton séparé | |
 | [x] | **Nav** : retirer routes mortes Réunions / Calendrier + barre de recherche ; ajouter **Feedback**. `/ai-actions` gardée à part (écart documenté spec/10 — historique chat pas encore fait) | UC |
 | [~] | **Onboarding** refonte (2 slides, détection vault + scaffolding dossiers, choix accès IA, test micro) + **tournée guidée** post-onboarding (vrai enregistrement → transcription → ingestion → tâches/notes → question à Alfred) | UC |
+| [ ] | **Écran de fin d'onboarding — habillage « pré-réunion » (spec/13)** : la clôture du wizard (« Tout est prêt ! ») et « Vous êtes équipé » (visite guidée) sont des panneaux génériques ; reprendre l'habillage de la page de guidage d'enregistrement (`/recording`, spec/03) pour que la dernière vue de l'onboarding ressemble à ce que l'utilisateur retrouve à son prochain enregistrement | |
+| [ ] | **Téléchargement du modèle Whisper pendant l'onboarding (spec/13, Tanguy)** : ré-ouvre une décision "hors v1" — le modèle n'étant plus embarqué (packaging CI), ajouter une étape de téléchargement (`download_model` + progression) dans le wizard plutôt que de le laisser uniquement dans Réglages | T |
 | [x] | **Visite guidée — retours tests (spec/13)** : (a) étape « Contexte prêt » = **un seul bouton « Revoir/corriger »** (retirer « Continuer ») ; (b) **meubler la transcription** par la visite de l'app (Notes → Tâches → Graphe → Questions à Alfred & enregistrer), pop-up « Alfred vous connaît, vérifiez » **dès `context-status-changed: done`** (interrompt la visite) ; (c) après correction → **clôture** « Vous êtes équipé » | CF |
 | [x] | **Visite guidée — écran de correction contexte (spec/13/17)** : « Revoir/corriger » ouvre l'**écran `/resolve` en mode contexte** (4 sections éditables + réécoute WAV via `note_title` porté par `context-status-changed` + Valider — la sauvegarde passe par `update_note_file`, qui régénère aussi le glossaire) | CF |
 | [x] | **Visite guidée — ne pas interrompre (spec/13, feedback tests)** : la pop-up « Contexte prêt » ne doit **plus s'afficher dès `context-status-changed: done`** — on **mémorise** l'événement (drapeau + récap) et on laisse l'utilisateur **finir toute la visite** ; la pop-up n'apparaît **qu'à la fin** (immédiatement si le contexte est déjà prêt, sinon on attend l'event sur l'indicateur d'état) | CF |
@@ -102,6 +106,10 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | **Tâches 2e passe — vues + fiche + provenance/contexte (spec/06/05/07b, feedback tests)** : (a) bascule **Kanban / Markdown** (sections repliables, Archivé replié par défaut) sur la même liste `Todo.md` ; (b) **fiche tâche** (`TaskSheet.tsx`) ouvrable depuis Kanban et Markdown — sous-puces libres, champs inline `+Projet`/`!priorité`/`⏱estimation` (filtrables), description longue, tout en blocs indentés compatibles Obsidian (`todo_md.rs` réécrit : `TaskFields`/`TaskBlock`) ; (c) **provenance** = wikilink `[[compte-rendu ou note brute]]`+date posé par l'ingestion, lien graphe automatique (résolution wikilink standard) + `/graph?focus=` pour centrer ; (d) bouton **« Rassembler le contexte »** (`gather_task_context`) = action IA à la demande réutilisant la boucle RAG du chat (spec/07b) | CF |
 | [x] | **Page partagée — footer marque (spec/18)** : « Partagé via Alfred » = lien vers `alfred.do-now.io` + logo (servi par le backend `GET /logo.png`, favicon inclus) | T |
 | [x] | **Icônes de type (spec/07)** : glyphes Material Design (`react-icons/md`, `utils/noteType`) — SVG inline, identiques Windows/macOS/Linux ; distinction **audio** (transcription datée d'un enregistrement) / **note brute** / **synthèse Alfred** + tâches/contexte/note ; arbre + Récents + vue Projets. *(La variante « feuille + glyphe interne » (SVG maison) essayée puis abandonnée — retour utilisateur : trop petite/discrète — revenu aux glyphes Material, plus visibles.)* | CF |
+| [ ] | **Clic droit sur un dossier — créer/renommer/supprimer (spec/07)** : le menu contextuel est câblé sur les dossiers mais ne s'affiche jamais (vestige non fonctionnel, seul le menu fichier se rend) ; aucune commande Tauri dossier (`rename_note_file` suffixe `.md`, `delete_note_file` échoue sur un répertoire). À faire : `create_folder`/`rename_folder`/`delete_folder` + menu contextuel dossier réel + entrée « Nouveau dossier » | |
+| [ ] | **Glisser-déposer de fichiers externes dans Notes (spec/07)** : glisser un fichier depuis le Finder/l'Explorateur (PDF, image…) sur l'arbre ou le contenu ne fait rien aujourd'hui (`dragDropEnabled: false` désactive le DnD natif de fichiers OS ; aucun handler `dataTransfer.files`). À concevoir : destination du fichier (copié dans le vault ? pièce jointe ?) et compatibilité avec `dragDropEnabled: false` (nécessaire au DnD du Kanban) | |
+| [ ] | **Nom du dossier des transcriptions brutes — décision ouverte (spec/07)** : `alfred-raw` est le nom par défaut actuel, jamais validé comme définitif produit ; à rouvrir si besoin, en tenant compte de la migration des vaults déjà créés chez les utilisateurs en test | |
+| [ ] | **Voix du majordome — passe éditoriale (spec/10)** : le ton « majordome » n'existe que sur les labels d'état (« À votre service », « Je cogite… »…) ; relire l'ensemble des textes (boutons, placeholders, erreurs, onboarding) pour un ton cohérent de bout en bout, sans nuire à la lisibilité des messages d'erreur | |
 | [x] | **Recherche dans le fichier courant (spec/06/07/10)** : Notes — Ctrl/Cmd+F dans l'éditeur (`@codemirror/search`, panneau FR, bouton loupe, raccourci global écran Notes) ; Tâches — champ « Rechercher… » qui filtre les cartes Kanban en direct (titre+responsable, insensible casse/accents). Recherche **locale** uniquement (globale toujours hors v1) | T |
 | [x] | **Settings** refonte (accès IA ✓, Whisper ✓, Vapi/Google/Places/calendrier/ingest CLI retirés ✓, défauts `alfred-*` ✓) | UC |
 | [x] | **Onglet Feedback** (formulaire + `submit_feedback`) | UC |
@@ -123,6 +131,13 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [ ] | **macOS** : entitlements v1 (retirer apple-events, + `NSScreenCaptureUsageDescription`) ; signature Developer ID + notarisation | |
 | [ ] | **Windows** : build Whisper + WebView2 ; signature **Authenticode** | |
 | [x] | Aligner le label launch-at-login `io.alfred.app` → `com.alfred.app` | CF |
+
+## Phase F — Produit & ouverture (spec à écrire)
+
+| | Tâche | Qui |
+|---|---|---|
+| [ ] | **Site web (`alfred.do-now.io`) — spec/19** : rien n'existe (ni code, ni spec) — le footer des pages partagées (spec/18) pointe déjà vers ce domaine. Écrire la spec (contenu, hébergement) avant de coder | |
+| [ ] | **Rendre le projet open source — spec/20** : décisions produit/légales à prendre d'abord (licence, dépôt cible, ce qui doit rester privé) avant d'écrire la spec | |
 
 ---
 

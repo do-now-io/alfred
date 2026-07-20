@@ -109,7 +109,7 @@ recordingId? }` — alimentée par les mêmes événements (`recording-status-ch
 en résolvant le `recording_id` → chemin de note dès qu'elle existe. Le point ambre
 et le clic lisent cette cible.
 
-## Page Alfred (`/`) — trois blocs
+## Page Alfred (`/`) — trois blocs (état actuel, à fusionner — voir cible ci-dessous)
 
 1. **« Aujourd'hui »** — ✅ brief quotidien (spec/05, `generate_daily_brief`/
    `get_daily_brief`) : titre + texte court Markdown (rendu via `BriefingContent`,
@@ -124,6 +124,20 @@ et le clic lisent cette cible.
    suivante) n'est pas fait, donc la conversation inline reste à construire avec.
    ✅ **Dictée vocale** de la question (bouton micro dans la barre de
    saisie, ici et dans `ChatPanel` — voir spec/07b §Dictée vocale).
+
+### Cible — fusion Alfred/Aujourd'hui, layout 2 colonnes — 📝 à faire
+
+Le nav (§Sidebar) fusionne « Alfred » sur `/` : `/ai-actions` disparaît comme
+route à part, et `/` devient la conversation Alfred elle-même — **layout 2
+colonnes** plutôt que les trois blocs empilés ci-dessus :
+- **Colonne gauche : conversation Alfred** — l'input + historique de chat
+  (`ChatPanel`, spec/07b) qui vit aujourd'hui sur `/ai-actions`.
+- **Colonne droite : prise de note & résumé** — brief quotidien + bloc tâches
+  (les deux premiers blocs actuels), en lecture/consultation pendant qu'on
+  discute avec Alfred dans l'autre colonne.
+
+Dépend de l'historique de conversations déjà fait (§ci-dessous) — le blocage
+initial (pas d'historique) est levé, cette fusion peut être reprise.
 
 ### Chat — historique & liste des conversations — ✅ fait
 
@@ -157,6 +171,18 @@ Nombreux, cliquables (remplissent l'input), groupés par intention :
 Logo Alfred (hover → micro animé) → `start_recording` → **page de guidage** liée à
 l'enregistrement (conseils de captation + viz volume + timer). Bandeau d'état
 pendant toute la durée.
+
+## Voix du majordome — 📝 à faire
+
+Le ton « majordome » n'existe aujourd'hui que sur les **labels d'état**
+(« À votre service », « Tout ouïe… », « Je prends note… », « Je cogite… », « Je
+note les tâches… » — §Indicateur d'état ci-dessus). Le reste des textes de
+l'app (placeholders, boutons, messages d'erreur, confirmations, onboarding,
+emails/notifications) reste au ton neutre habituel d'un logiciel. À faire :
+**passe de relecture éditoriale** sur l'ensemble des textes visibles pour
+qu'Alfred parle **comme un vrai majordome** de bout en bout, pas seulement à
+l'indicateur d'état — tout en restant sobre (pas de sur-jeu qui nuit à la
+lisibilité d'un message d'erreur, par ex.).
 
 ## Design / palette
 

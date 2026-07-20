@@ -256,11 +256,27 @@ de `transcription-complete` :
 `alfred-intelligence/Todo.md` (avec les sections Prioritaire / En cours / À faire /
 Archivé). Idempotent.
 
+## Écran de fin — 📝 à faire
+
+L'étape de clôture du wizard (`Onboarding.tsx`, « Tout est prêt ! ») et l'étape
+« Vous êtes équipé » de la visite guidée (`GuidedTour.tsx`, case `closing`) sont
+aujourd'hui des panneaux génériques (icône + titre + texte), sans rapport visuel
+avec le reste de l'app. **Reprendre le habillage de la page de guidage
+d'enregistrement** (`/recording`, `RecordingGuide.tsx` — spec/03 : ambiance,
+mise en page) pour que la dernière chose vue à l'onboarding ressemble à ce que
+l'utilisateur retrouvera pour son prochain enregistrement, au lieu d'un écran
+générique déconnecté.
+
 ## Retiré / déplacé
 
 - **Étape « Connecter Google »** + slide agenda → **retirées** (calendrier hors v1).
-- **Étape Whisper** (modèle / langue / téléchargement) → **déplacée en Paramètres**
-  (`small` embarqué, transcription active par défaut — spec/04).
+- ~~**Étape Whisper** (modèle / langue / téléchargement) → déplacée en Paramètres~~
+  **Revu** : le modèle n'est plus embarqué (spec/04 — téléchargé au premier besoin,
+  cf CI packaging). Une **étape de téléchargement du modèle** revient donc dans
+  l'onboarding (📝 à faire, propriétaire Tanguy) : déclencher `download_model`
+  pendant le wizard (avec la progression) plutôt que de laisser l'utilisateur
+  découvrir un modèle manquant à son premier enregistrement. Le choix de
+  **langue** reste en Paramètres.
 - **Slides d'intro** : 6 → **2**.
 
 ## Commandes Tauri utilisées
@@ -281,5 +297,4 @@ l'écran /resolve mode contexte).
 
 ## Hors v1 / plus tard
 
-Connexion Google / Microsoft, choix du modèle Whisper dans l'onboarding,
-indexation d'un gros vault existant à l'import.
+Connexion Google / Microsoft, indexation d'un gros vault existant à l'import.

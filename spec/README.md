@@ -60,10 +60,12 @@ par nous).
 | 12  | Permissions                 | 🚧 | **Spec faite.** Cross-platform ; micro + capture système ; retirer apple-events/calendrier ; signature macOS/Windows |
 | 13  | Onboarding                  | 🚧 | Intro (2 slides) + détection/création vault + choix clé perso / AlfredIA + test micro ✅ ; **visite guidée = contexte à la voix** (téléprompteur avec pause/revue → visite de l'app pendant la transcription → pop-up « vérifiez » → `/resolve` mode contexte → clôture) ✅ ; **contenu de démarrage (seed)** ✅ ; **reste : finitions du wizard** |
 | 14  | Feedback                    | ✅ | **Construit.** Onglet texte + images (collage) + email de contact ; catégories bug/feature/praise ; stockage Postgres via backend. 🟡 **widget discret topbar** en cours (Tanguy) |
-| 15  | Backend AlfredIA + Metrics  | ✅ | **Construit + validé en prod.** Rust/axum, **Coolify** (self-hosted), `api.alfred.do-now.io`, **Postgres**, Stripe 20€/mois (+ annuel) ; proxy, loopback, metrics, feedback |
+| 15  | Backend AlfredIA + Metrics  | ✅ | **Construit + validé en prod.** Rust/axum, **Coolify** (self-hosted), `api.alfred.do-now.io`, **Postgres**, Stripe 20€/mois (+ annuel) ; proxy, loopback, metrics, feedback. **Reste : recette du paiement** (sandbox rejouée de bout en bout, puis validation prod — jamais rejoué depuis le code) |
 | 16  | Contexte interne            | ✅ | **Construit.** Note `Contexte Alfred.md` (contexte maison) injectée dans l'ingestion + Settings ; source du glossaire (spec 17). **Transcription live abandonnée** (code retiré) |
 | 17  | Glossaire & qualité de transcription | ✅ | **Construit.** Glossaire (initial_prompt) dérivé de `Contexte Alfred.md` (régén auto) ; beam + seuils anti-hallucination ; **transcription parallèle par tranches** (longs fichiers) ; ingestion augmentée + écran `/resolve` ; contexte à la voix (onboarding) |
 | 18  | Partage de notes            | ✅ | **Construit** (à déployer/tester en réel). `POST /share` + `GET /s/{slug}` (rendu comrak **mode sûr**, `noindex`, CSP) + `PUT`/`DELETE` ; bouton **Partager** (Notes + Tâches) → URL publique par lien, révocable, re-partage = même URL. Tout en Postgres |
+| 19  | Site web (`alfred.do-now.io`) | 📝 | **Rien n'existe** — le footer des pages partagées (spec 18) pointe déjà vers ce domaine, mais aucun site (landing/marketing) n'est construit ni spécifié. Spec à écrire (contenu, hébergement) avant de coder |
+| 20  | Rendre le projet open source | 📝 | **Pas encore spécifié** — licence, ce qui reste privé (secrets Coolify/Stripe/clés déjà hors repo) vs code publié, dépôt cible. Décisions produit/légales à prendre avant d'écrire la spec |
 | —   | Ingest « run Claude » (CLI) | ❌ | **Supprimé** — remplacé par l'ingestion API (spec 05) |
 
 ## Deux modes d'accès à l'IA

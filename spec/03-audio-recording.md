@@ -86,6 +86,16 @@ live) : par ex. un enregistrement fait ailleurs, ou l'audio extrait d'une vidéo
   avant toute mise en file.
 - **Metrics** : émet `recording_completed` avec `{ source: "import" }`.
 
+### Intégration UI du bouton — 📝 à faire
+
+Le bouton **« Importer un audio »** existe (page de guidage + accueil, ROADMAP
+Phase C) mais reste visuellement un ajout à côté du bouton d'enregistrement
+principal plutôt qu'un geste intégré. À revoir : l'incorporer dans les points
+d'entrée existants (ex. option secondaire du logo/carte d'enregistrement, ou
+menu contextuel) au lieu d'un second bouton côte à côte — le comportement
+(picker `.wav` → même file de transcription) ne change pas, seul le
+placement/l'affordance est à retravailler.
+
 ## Segmentation
 
 Le WAV continu reste **LE** fichier audio : un seul fichier jusqu'au `stop`,

@@ -9,6 +9,18 @@ Affiché si `onboarding_completed` ≠ `"true"` **et** aucun vault configuré
 onboardé). Rejouable via « Revoir l'introduction » (Paramètres). À la fin :
 `set_config('onboarding_completed', 'true')`.
 
+**Bug — écran blanc en fin de replay — ✅ fait.** « Revoir l'introduction »
+(`sessionStorage.alfred_force_onboarding` + `window.location.reload()`) →
+wizard rejoué → « Terminer » restait bloqué sur la garde de chargement
+(`onboarded === null`, fond uni sans sidebar). Cause : `forceOnboarding` était
+une simple lecture de `sessionStorage` à **chaque rendu**, pas un état React —
+sur une install déjà onboardée, `onboarded` vaut déjà `true` quand le replay
+se termine, donc `setOnboarded(true)` est un no-op (React n'y voit aucun
+changement, ne re-rend pas) et rien ne force `App` à ressortir de la branche
+`forceOnboarding`. Fix : `forceOnboarding` est maintenant un `useState`,
+explicitement remis à `false` dans `finishOnboarding`/`finishOnboardingReplay`
+— garantit un rendu quel que soit l'état précédent d'`onboarded`.
+
 ## Flux (assistant à étapes — points de progression, Précédent / Suivant / Passer)
 
 0. **Langue / Language** (📝 à faire, spec/21) — sélecteur **Français / English**

@@ -527,8 +527,16 @@ export default function App() {
 
   // Escape hatch: "Revoir l'introduction" (Settings) sets this so the wizard can
   // be replayed even on a fully-configured install, without mutating persisted
-  // config. Session-scoped, so it clears when the app quits.
-  const forceOnboarding = sessionStorage.getItem("alfred_force_onboarding") === "1";
+  // config. Session-scoped, so it clears when the app quits. **État React** —
+  // pas une simple lecture de `sessionStorage` à chaque rendu (bug écran blanc,
+  // spec/13, feedback tests) : sur une install déjà onboardée, `onboarded` vaut
+  // déjà `true` quand le replay se termine, donc `setOnboarded(true)` est un
+  // no-op (React n'y voit aucun changement) — sans état dédié, rien ne force le
+  // nouveau rendu qui sortirait de la branche `forceOnboarding`, et l'app reste
+  // bloquée sur l'écran vide de la garde de chargement juste en dessous.
+  const [forceOnboarding, setForceOnboarding] = useState(
+    () => sessionStorage.getItem("alfred_force_onboarding") === "1"
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -553,12 +561,14 @@ export default function App() {
   // tour has its own separate "Revoir la visite guidée" entry.
   const finishOnboarding = () => {
     sessionStorage.removeItem("alfred_force_onboarding");
+    setForceOnboarding(false);
     setOnboarded(true);
     useTourStore.getState().start();
   };
 
   const finishOnboardingReplay = () => {
     sessionStorage.removeItem("alfred_force_onboarding");
+    setForceOnboarding(false);
     setOnboarded(true);
   };
 

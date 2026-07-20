@@ -179,16 +179,18 @@ un groupe de projet) : glisser une **note** sur un **dossier** de l'arbre la
 déplace dedans (`move_note_file`, collision → suffixe numéroté) ; déposer sur
 le vide de l'arbre la remonte à la racine du vault.
 
-### Glisser-déposer de fichiers externes — 📝 à faire
+### Glisser-déposer de fichiers externes — Hors v1 (décision produit)
 
-Le seul glisser-déposer existant est **interne** (déplacer une note vers un
-groupe de projet, MIME custom `text/alfred-note-path`). Glisser un fichier
-depuis le Finder/l'Explorateur (PDF, image, document) dans l'arbre ou le
-contenu de Notes ne fait **rien** : aucun handler `dataTransfer.files`, et
-`dragDropEnabled: false` (tauri.conf.json, nécessaire au DnD HTML5 du Kanban)
-désactive aussi le drag&drop natif de fichiers OS au niveau du webview. À
-concevoir : où le fichier atterrit (copié dans le vault ? pièce jointe d'une
-note ?), et comment réconcilier avec `dragDropEnabled: false`.
+Le seul glisser-déposer existant est **interne** (déplacer une note dans
+l'arbre, ou vers un groupe de projet — MIME custom `text/alfred-note-path`).
+Glisser un fichier depuis le Finder/l'Explorateur (PDF, image, document) dans
+l'arbre ou le contenu de Notes ne fait **rien** : aucun handler
+`dataTransfer.files`, et `dragDropEnabled: false` (tauri.conf.json, nécessaire
+au DnD HTML5 du Kanban) désactive aussi le drag&drop natif de fichiers OS au
+niveau du webview. **Décision (feedback tests) : volontairement pas fait pour
+la v1** — à rouvrir plus tard si besoin (restera à concevoir : où le fichier
+atterrit — copié dans le vault ? pièce jointe d'une note ? — et comment
+réconcilier avec `dragDropEnabled: false`).
 
 ### Nom du dossier des transcriptions brutes — 📝 décision ouverte
 

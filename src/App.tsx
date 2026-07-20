@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink, useNavigate, useLocation } from 
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  MdHome, MdCheckBox, MdStickyNote2,
+  MdCheckBox, MdStickyNote2,
   MdAutoAwesome, MdSettings, MdHub, MdMic, MdStop, MdUploadFile,
 } from "react-icons/md";
 import alfredLogo from "./assets/alfred-logo.png";
@@ -12,7 +12,6 @@ import Notes from "./screens/Notes";
 import Tasks from "./screens/Tasks";
 import Graph from "./screens/Graph";
 import Settings from "./screens/Settings";
-import AIActions from "./screens/AIActions";
 import RecordingGuide from "./screens/RecordingGuide";
 import Feedback from "./screens/Feedback";
 import Onboarding from "./screens/Onboarding";
@@ -96,11 +95,16 @@ function AlfredLogo() {
           transition: "border-color 0.2s",
         }}
       >
+        {/* Recadrage CSS (spec/03, feedback tests) : l'asset source est carré
+            mais son contenu ne l'est pas (portrait en haut, mot "ALFRED" sous
+            le cercle) — on zoome/recentre sur le portrait pour un cadrage
+            carré propre plutôt que le décalage vertical d'un simple
+            width:100%/height:auto. */}
         <img
           src={alfredLogo}
           alt="Alfred"
           style={{
-            width: "100%", height: "auto", borderRadius: 18, display: "block",
+            position: "absolute", width: "160%", height: "160%", left: "-30%", top: "-26.4%",
             filter: hover || isRecording ? "brightness(0.55)" : "none", transition: "filter 0.15s",
           }}
         />
@@ -293,11 +297,10 @@ function Sidebar() {
       <AlfredLogo />
 
       <nav style={{ flex: 1, overflowY: "auto", paddingBottom: 8 }}>
-        <NavItem to="/" icon={<MdHome />} label="Aujourd'hui" end />
+        <NavItem to="/" icon={<MdAutoAwesome />} label="Alfred" tourId="nav-chat" end />
         <NavItem to="/tasks" icon={<MdCheckBox />} label="Tâches" tourId="nav-tasks" />
         <NavItem to="/notes" icon={<MdStickyNote2 />} label="Notes" tourId="nav-notes" />
         <NavItem to="/graph" icon={<MdHub />} label="Graphe" tourId="nav-graph" />
-        <NavItem to="/ai-actions" icon={<MdAutoAwesome />} label="Alfred" tourId="nav-chat" />
 
         <div style={{ height: 1, background: "var(--border)", margin: "12px 16px" }} />
         <Recents />
@@ -431,7 +434,6 @@ function AppInner() {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/notes" element={<Notes />} />
             <Route path="/graph" element={<Graph />} />
-            <Route path="/ai-actions" element={<AIActions />} />
             <Route path="/feedback" element={<Feedback />} />
             <Route path="/resolve" element={<Resolve />} />
             <Route path="/settings" element={<Settings />} />

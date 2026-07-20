@@ -5,7 +5,7 @@ import { MdMic, MdStop, MdAdd, MdClose, MdCheckCircle, MdWarning, MdHourglassEmp
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import { useAlfredStatusStore } from "../store/alfredStatusStore";
 import VolumeMeter from "../components/VolumeMeter";
-import alfredLogo from "../assets/alfred-logo.png";
+import AlfredAvatar from "../components/AlfredAvatar";
 
 // The recording guidance page (spec/03): reached by clicking the sidebar logo
 // (or the Dashboard's recording card). Shows live feedback (timer + volume) and
@@ -261,7 +261,7 @@ export default function RecordingGuide() {
     <div style={{ height: "100%", overflowY: "auto", display: "flex", justifyContent: "center", padding: "40px 24px" }}>
       <div style={{ width: "100%", maxWidth: 560, display: "flex", flexDirection: "column", gap: 20 }}>
         <div className="card" style={{ padding: "32px 28px", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center" }}>
-          <img src={alfredLogo} alt="Alfred" style={{ width: 56, height: "auto", borderRadius: 14 }} />
+          <AlfredAvatar size={56} radius={14} />
 
           {isRecording && (
             <>

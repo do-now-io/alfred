@@ -10,7 +10,7 @@ import { useAlfredStatusStore } from "../../store/alfredStatusStore";
 import type { NoteFile } from "../../bindings/NoteFile";
 import { Spotlight } from "./Spotlight";
 import Teleprompter from "./Teleprompter";
-import alfredLogo from "../../assets/alfred-logo.png";
+import AlfredAvatar from "../AlfredAvatar";
 
 // The guided tour (spec/13): a real, event-driven walkthrough right after
 // onboarding. The first recording IS the creation of `Contexte Alfred.md` — the
@@ -73,7 +73,7 @@ function TourModal({
           : "0 12px 48px rgba(0,0,0,0.3)",
         transition: "box-shadow 0.6s ease",
       }}>
-        <img src={alfredLogo} alt="Alfred" style={{ width: 56, height: "auto", borderRadius: 14 }} />
+        <AlfredAvatar size={56} radius={14} />
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>{title}</h2>
         <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.6, color: "var(--text-secondary)" }}>{text}</p>
         <div style={{ display: "flex", alignItems: "center", gap: 18, marginTop: 8 }}>
@@ -156,7 +156,7 @@ const VISIT_STEPS: Array<{
     text: "Je relie vos notes entre elles par projets et participants — pratique pour retrouver le fil d'un sujet.",
   },
   {
-    step: "visit-chat", next: "waiting", target: "nav-chat", route: "/ai-actions",
+    step: "visit-chat", next: "waiting", target: "nav-chat", route: "/",
     title: "Questions à Alfred — et comment enregistrer",
     text: "Posez vos questions ici, je réponds en citant vos notes. Et pour enregistrer : cliquez mon logo (en haut à gauche), la carte d'accueil, ou importez un audio.",
   },

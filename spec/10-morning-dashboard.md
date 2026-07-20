@@ -18,19 +18,16 @@ Topbar **sans barre de recherche**.
 
   | Icône | Label | Route |
   |---|---|---|
-  | 🏠 | Aujourd'hui | `/` |
+  | ✦ | Alfred | `/` |
   | ☑️ | Tâches | `/tasks` |
   | 📝 | Notes | `/notes` |
   | 🕸 | Graphe | `/graph` |
-  | ✦ | Alfred | `/ai-actions` |
   | 💬 | Feedback | `/feedback` |
   | ⚙️ | Paramètres | `/settings` (épinglé en bas) |
 
-  **Écart assumé** : la cible ci-dessus fusionnait « Alfred » sur `/` (chat
-  intégré à l'accueil). Tant que l'historique/liste de conversations (item
-  séparé de la ROADMAP) n'est pas fait, **`/ai-actions` reste une route à part**
-  pour porter la conversation complète — le teaser de chat de l'accueil y renvoie
-  (spec/10 §Page Alfred). Fusion à faire quand l'historique atterrira.
+  **Fusion faite** (✅, débloquée par l'historique de chat) : « Alfred » a pris
+  la place d'« Aujourd'hui » sur `/` — `/ai-actions` a disparu comme route à
+  part (nav, route, écran `AIActions.tsx` retirés). Voir §Page Alfred cible.
 - Section **« Récents »** (5 notes récemment modifiées — inchangé).
 - ✅ **Retirés** : `/meetings`, `/calendar` (routes mortes, aucun lien nav ne les
   atteignait déjà — supprimées avec `Placeholder.tsx`). Pas de « Actions IA »
@@ -109,35 +106,31 @@ recordingId? }` — alimentée par les mêmes événements (`recording-status-ch
 en résolvant le `recording_id` → chemin de note dès qu'elle existe. Le point ambre
 et le clic lisent cette cible.
 
-## Page Alfred (`/`) — trois blocs (état actuel, à fusionner — voir cible ci-dessous)
+## Page Alfred (`/`) — layout 2 colonnes — ✅ fait
 
-1. **« Aujourd'hui »** — ✅ brief quotidien (spec/05, `generate_daily_brief`/
-   `get_daily_brief`) : titre + texte court Markdown (rendu via `BriefingContent`,
-   wikilinks cliquables) + « Généré le {date} » + bouton **régénérer**. Auto-génération
-   au premier chargement du jour si rien en cache. État vide : message d'accueil.
-2. **Tâches** — ✅ bloc **dépliable** (`TasksSection`, `Dashboard.tsx`) : sections
-   Prioritaire / En cours / À faire (regroupées depuis `Todo.md` par les en-têtes
-   `## `, spec/06), cases à cocher, lien « voir toutes les tâches » → `/tasks`.
-3. **Input Alfred** (chat, spec/07b) — 🚧 **teaser** fait (champ + exemples
-   cliquables, `ChatTeaser`) mais envoie vers `/ai-actions` plutôt que de dérouler
-   la conversation **sur la page** — l'historique/liste de conversations (section
-   suivante) n'est pas fait, donc la conversation inline reste à construire avec.
-   ✅ **Dictée vocale** de la question (bouton micro dans la barre de
-   saisie, ici et dans `ChatPanel` — voir spec/07b §Dictée vocale).
+`Dashboard.tsx` — plus de trois blocs empilés, `/ai-actions` a disparu comme
+route à part (nav, route, écran `AIActions.tsx` retirés) :
+- **Colonne gauche : conversation Alfred** — `ChatPanel` complet (input +
+  historique de chat, spec/07b — voir ci-dessous), qui vivait auparavant sur
+  `/ai-actions`.
+- **Colonne droite : prise de note & résumé**, en lecture/consultation pendant
+  qu'on discute avec Alfred dans l'autre colonne :
+  1. **Carte d'enregistrement** (`HeroCard`) — 2ᵉ point d'entrée (spec/03),
+     placée en tête de colonne (pas listée dans la cible d'origine, ajoutée ici
+     faute d'autre emplacement évident).
+  2. **« Aujourd'hui »** — brief quotidien (spec/05, `generate_daily_brief`/
+     `get_daily_brief`) : titre + texte court Markdown (rendu via
+     `BriefingContent`, wikilinks cliquables) + « Généré le {date} » + bouton
+     **régénérer**. Auto-génération au premier chargement du jour si rien en
+     cache. État vide : message d'accueil.
+  3. **Tâches** — bloc **dépliable** (`TasksSection`) : sections Prioritaire /
+     En cours / À faire (regroupées depuis `Todo.md` par les en-têtes `## `,
+     spec/06), cases à cocher, lien « voir toutes les tâches » → `/tasks`.
 
-### Cible — fusion Alfred/Aujourd'hui, layout 2 colonnes — 📝 à faire
-
-Le nav (§Sidebar) fusionne « Alfred » sur `/` : `/ai-actions` disparaît comme
-route à part, et `/` devient la conversation Alfred elle-même — **layout 2
-colonnes** plutôt que les trois blocs empilés ci-dessus :
-- **Colonne gauche : conversation Alfred** — l'input + historique de chat
-  (`ChatPanel`, spec/07b) qui vit aujourd'hui sur `/ai-actions`.
-- **Colonne droite : prise de note & résumé** — brief quotidien + bloc tâches
-  (les deux premiers blocs actuels), en lecture/consultation pendant qu'on
-  discute avec Alfred dans l'autre colonne.
-
-Dépend de l'historique de conversations déjà fait (§ci-dessous) — le blocage
-initial (pas d'historique) est levé, cette fusion peut être reprise.
+L'ancien **teaser de chat** (`ChatTeaser`, champ + exemples qui renvoyait vers
+`/ai-actions`) est retiré — redondant, la conversation complète est maintenant
+directement sur la page. ✅ **Dictée vocale** de la question (bouton micro
+dans la barre de saisie de `ChatPanel` — voir spec/07b §Dictée vocale).
 
 ### Chat — historique & liste des conversations — ✅ fait
 

@@ -3,12 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { MdUploadFile } from "react-icons/md";
-import { useChatStore } from "../store/chatStore";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import { useNotesStore } from "../store/notesStore";
 import { useTourTarget } from "../store/tourStore";
 import BriefingContent from "../components/BriefingContent";
-import DictationButton from "../components/DictationButton";
+import ChatPanel from "../components/chat/ChatPanel";
 import type { NoteFile } from "../bindings/NoteFile";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
 import { toggleChecked, groupTasksBySection, type TaskLine } from "../utils/todoTasks";
@@ -385,93 +384,24 @@ function BriefCard() {
   );
 }
 
-// ─── Input Alfred — teaser de chat (spec/10, historique complet dans /ai-actions) ─
-
-const CHAT_EXAMPLES = [
-  "Résume mes notes récentes",
-  "Sur quoi ai-je travaillé cette semaine ?",
-  "Quelles sont mes tâches en retard ?",
-];
-
-function ChatTeaser() {
-  const [text, setText] = useState("");
-  const navigate = useNavigate();
-  const send = useChatStore(s => s.send);
-  const clear = useChatStore(s => s.clear);
-
-  const submit = (question: string) => {
-    const q = question.trim();
-    if (!q) return;
-    setText("");
-    clear(); // the home input always starts a fresh conversation (spec/10)
-    send(q);
-    navigate("/ai-actions");
-  };
-
-  return (
-    <div className="card" style={{ padding: "18px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ color: "var(--accent)", fontSize: 16 }}>✦</span>
-        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>Demander à Alfred</h2>
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <input
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") submit(text); }}
-          placeholder="Posez une question sur vos notes…"
-          style={{
-            flex: 1, border: "1px solid var(--border)", borderRadius: 8,
-            padding: "8px 12px", fontSize: 13.5, background: "var(--bg)", color: "var(--text-primary)",
-          }}
-        />
-        {/* Dictée vocale (spec/07b/10) — texte inséré, éditable, pas d'envoi auto. */}
-        <DictationButton size={16} onText={(t) => setText((prev) => (prev.trim() ? `${prev.trimEnd()} ${t}` : t))} />
-        <button
-          onClick={() => submit(text)}
-          disabled={!text.trim()}
-          style={{
-            background: text.trim() ? "var(--accent)" : "var(--border)", color: "#fff", border: "none",
-            borderRadius: 8, padding: "8px 16px", cursor: text.trim() ? "pointer" : "not-allowed",
-            fontSize: 13, fontWeight: 500, whiteSpace: "nowrap",
-          }}
-        >
-          Envoyer
-        </button>
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {CHAT_EXAMPLES.map(ex => (
-          <button
-            key={ex}
-            onClick={() => submit(ex)}
-            style={{
-              background: "var(--active-bg)", border: "1px solid var(--border)",
-              borderRadius: 16, padding: "5px 12px", cursor: "pointer",
-              fontSize: 12, color: "var(--text-secondary)",
-            }}
-          >
-            {ex}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Dashboard ────────────────────────────────────────────────────────────────
-// Single column (spec/10): no right-side calendar panel — calendar is out of v1.
+// ─── Dashboard — fusion Alfred/Aujourd'hui, layout 2 colonnes (spec/10 cible) ──
+// Gauche : conversation Alfred (ChatPanel, avec son propre historique) — la
+// route `/ai-actions` disparaît, la page "/" EST la conversation. Droite :
+// prise de note & résumé (carte d'enregistrement, brief, tâches), en lecture
+// pendant qu'on discute avec Alfred dans l'autre colonne.
 
 export default function Dashboard() {
   return (
-    <div style={{ height: "100%", overflowY: "auto" }}>
-      <div style={{
-        maxWidth: 860, margin: "0 auto", padding: "24px 28px",
-        display: "flex", flexDirection: "column", gap: 20,
-      }}>
-        <BriefCard />
-        <HeroCard />
-        <TasksSection />
-        <ChatTeaser />
+    <div style={{ height: "100%", display: "flex", overflow: "hidden" }}>
+      <div style={{ flex: "1.3 1 0%", minWidth: 0, borderRight: "1px solid var(--border)", overflow: "hidden" }}>
+        <ChatPanel />
+      </div>
+      <div style={{ flex: "1 1 0%", minWidth: 340, maxWidth: 480, overflowY: "auto" }}>
+        <div style={{ padding: "24px 24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+          <HeroCard />
+          <BriefCard />
+          <TasksSection />
+        </div>
       </div>
     </div>
   );

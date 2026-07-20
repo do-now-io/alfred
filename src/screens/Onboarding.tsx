@@ -6,7 +6,7 @@ import {
   MdArrowBack, MdArrowForward, MdHourglassEmpty, MdWarning,
 } from "react-icons/md";
 import { useNotesStore } from "../store/notesStore";
-import alfredLogo from "../assets/alfred-logo.png";
+import AlfredAvatar from "../components/AlfredAvatar";
 
 // ─── Shared bits ────────────────────────────────────────────────────────────
 
@@ -246,7 +246,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     {
       node: (
         <Panel
-          icon={<img src={alfredLogo} alt="Alfred" style={{ width: 84, height: "auto", borderRadius: 18 }} />}
+          icon={<AlfredAvatar size={84} radius={18} />}
           title="Bienvenue, je suis Alfred"
           text="Votre majordome personnel : j'écoute, je transcris, je résume et je retiens — pour que vous n'ayez plus à prendre de notes vous-même. Deux minutes d'installation, puis on essaie ensemble."
         />

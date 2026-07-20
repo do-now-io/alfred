@@ -84,11 +84,13 @@ silences — non implémentée, hors v1.)
 ## Machine à états
 
 ```
-Idle → Recording → (Terminer) → Revue « prise terminée »
-                                   ├─ Supprimer  → Idle (WAV jeté, rien en aval)
-                                   └─ Continuer  → Processing (traitements cochés) → Idle
+Idle → Recording → (Terminer) → Processing auto (transcription → analyse)
+                                   → /resolve (vérifier/corriger) → (Valider) → compte-rendu + tâches → Idle
 Recording → (Annuler) → Idle (WAV jeté, rien en aval)
 ```
+
+(Plus de panneau de sélection post-arrêt — feedback tests ; voir §Arrêt. La prise
+de **contexte** garde sa revue « Recommencer / Continuer », spec/13.)
 
 Événement émis : `recording-status-changed { status, duration_seconds, volume? }`.
 ✅ Pour la capture micro (`mic_only` et le volet micro de `mixed`), `duration_seconds`
@@ -149,36 +151,41 @@ aujourd'hui.
 `type`/participants) et/ou vers le nommage. Hors périmètre strict de cette tâche —
 signalé pour décision.
 
-## Arrêt : annuler / continuer + choix des traitements aval — ✅ fait (feedback tests)
+## Arrêt : traitement automatique (plus de panneau de sélection) — 📝 à revoir (feedback tests)
 
-« Terminer » ne déclenche plus rien : le pipeline aval est **optionnel et
-interruptible** :
+> **Changement (feedback tests) — retour arrière assumé sur le panneau de sélection.**
+> Le panneau post-arrêt « prise terminée » avec **cases *Transcription / Compte-rendu
+> / Tâches* + Supprimer / Continuer** (RecordingReview) est **retiré** : trop de
+> friction. Après l'arrêt, **tout est lancé automatiquement** : transcription →
+> compte-rendu → tâches. Plus de choix à faire.
 
-- **Annuler pendant l'enregistrement** — un bouton **Annuler** (à côté d'Arrêter,
-  visuellement distinct) stoppe la prise et **jette le WAV** sans rien lancer en
-  aval. Confirmation (« Supprimer cet enregistrement ? ») car l'audio est perdu.
-- **« Terminer » → état « prise terminée » (revue)** — au lieu de lancer direct,
-  on affiche un panneau proposant :
-  - **Supprimer** — jette la prise (équivaut à Annuler après coup).
-  - **Continuer** — lance **seulement** les traitements cochés.
-  - **Choix des traitements aval** (cases **cochées par défaut**) :
-    1. **Transcrire l'audio** (spec/04),
-    2. **Créer le compte-rendu** (spec/05),
-    3. **Créer les tâches** (spec/06).
+Nouveau flux :
 
-    **Dépendances** : compte-rendu et tâches nécessitent la transcription →
-    décocher (1) grise (2) et (3). Décocher tout revient à ne garder que le WAV /
-    la note brute.
+- **Arrêter → traitement automatique** : transcription **puis** analyse, sans écran
+  intermédiaire ni cases à cocher. Compte-rendu **et** tâches sont **toujours**
+  générés.
+- **La vérification `/resolve` est conservée** (spec/17, point 23) : le compte-rendu
+  et les tâches ne sont écrits **qu'après le « Valider »** de l'écran de
+  vérification/correction — c'est le seul point de contrôle, présenté après la
+  transcription (plus court s'il n'y a rien à corriger). Le panneau de **sélection**
+  disparaît, **pas** la vérification.
+- **Annuler / supprimer** (les deux conservés) :
+  - **Annuler pendant l'enregistrement** — bouton **Annuler** (à côté d'Arrêter,
+    visuellement distinct) : stoppe la prise et **jette le WAV**, rien en aval
+    (confirmation, l'audio est perdu).
+  - **Supprimer après coup** — si l'enregistrement était raté, supprimer la note /
+    les tâches produites (Notes / Tâches).
 
-> **Impact spec/05 (à acter).** Compte-rendu et tâches sortent aujourd'hui d'un
-> **seul appel d'ingestion fusionnée** (`run_ingestion_for_recording`). Le choix
-> **3 cases** (compte-rendu ≠ tâches, décidé au test) impose de **découpler** cette
-> sortie : soit deux appels, soit un appel à **sortie conditionnelle** (n'émettre
-> que la ou les sections demandées). Voir spec/05.
+**Impact spec/05** : le sélecteur `{summary, tasks}` de l'ingestion **reste** côté
+backend (capacité utile, ré-ingestion ciblée) mais **l'UI ne l'expose plus** — un
+enregistrement lance **toujours** compte-rendu + tâches (`{summary:true, tasks:true}`).
 
-Ce panneau de revue est **le même** que celui du téléprompteur de la visite guidée
-(spec/13 étape 2), au « purpose » près : en mode `context`, pas de cases
-compte-rendu/tâches (le traitement aval est la structuration du contexte).
+**Impact spec/13 (téléprompteur de contexte)** : la revue « Recommencer / Continuer »
+du téléprompteur (mode `context`) **reste** — l'utilisateur doit pouvoir se reprendre
+sur la prise de contexte ; c'est la **sélection de traitements aval** (réunion) qui
+disparaît, pas la reprise de prise. (Auparavant ce panneau était partagé ; il faut
+donc les **découpler** : garder Recommencer/Continuer côté contexte, retirer les
+cases côté réunion.)
 
 ## Nettoyage WAV
 

@@ -231,6 +231,26 @@ l'utilisateur **supprime quand il veut**.
 > utilisateur qui passe la visite arrive quand même sur des pages non vides). Le
 > semis est donc rattaché à l'**onboarding**, pas à la visite elle-même.
 
+#### Suppression en un clic du contenu de démarrage — 📝 à faire (feedback tests)
+
+Une fois que l'utilisateur a **joué** avec les données de démo, il doit pouvoir
+**tout supprimer d'un coup**. Bouton **one-shot** :
+
+- **Emplacement** : dans la **page Alfred** (spec/10) — ex. bandeau discret
+  *« Ces données sont des exemples — [Supprimer les données de démo] »*.
+- **Action** : commande **`delete_starter_content()`** qui retire **uniquement** le
+  contenu semé — les tâches checklist de `Todo.md`, les 2 notes de démo, la fausse
+  conversation de chat. **Ne touche à rien d'autre** (contenu réel de l'utilisateur).
+- **Ciblage sûr** : marquer le contenu semé pour le retrouver sans ambiguïté même
+  s'il a été déplacé/édité — frontmatter **`alfred_seed: true`** sur les notes de démo,
+  marqueur discret sur les lignes de tâches semées, drapeau sur la conversation de
+  chat de démo. La suppression ne cible **que** les éléments portant ce marqueur.
+- **One-shot** : le bouton n'apparaît que si du contenu de démo est **encore présent**
+  (drapeau de config, p. ex. `starter_content_present`, posé au semis). Après
+  suppression → drapeau à `false` → **le bouton disparaît définitivement** (et ne
+  revient pas, cohérent avec « ne jamais re-semer »). S'il ne reste plus de contenu
+  marqué (l'utilisateur a tout supprimé à la main), le bouton disparaît aussi.
+
 ### Nouvel événement backend
 
 `context-status-changed { status: "done" | "error", recording_id, sections_filled?,
@@ -307,7 +327,9 @@ générique déconnecté.
 spec/03) · **`discard_recording`** (✅ — bouton « Recommencer ») ·
 **`process_recording`** (✅ — bouton « Continuer », spec/03) ·
 **`seed_starter_content`** (✅ — contenu de démarrage, flag
-`starter_content_seeded`) · `build_context_from_transcription` (route
+`starter_content_seeded`) · **`delete_starter_content`** (📝 à faire — suppression
+one-shot du contenu de démo marqué `alfred_seed`, bouton page Alfred) ·
+`build_context_from_transcription` (route
 « mode contexte » → structure `Contexte Alfred.md` +
 `generate_glossary_from_context`, spec/17) · `read_recording_wav` (réécoute dans
 l'écran /resolve mode contexte).

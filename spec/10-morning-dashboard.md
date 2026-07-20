@@ -132,6 +132,11 @@ L'ancien **teaser de chat** (`ChatTeaser`, champ + exemples qui renvoyait vers
 directement sur la page. ✅ **Dictée vocale** de la question (bouton micro
 dans la barre de saisie de `ChatPanel` — voir spec/07b §Dictée vocale).
 
+📝 **Bouton one-shot « Supprimer les données de démo »** (feedback tests) — un
+bandeau discret sur cette page tant que du contenu de démarrage marqué `alfred_seed`
+subsiste (`delete_starter_content`, spec/13) ; disparaît définitivement une fois
+cliqué (ou quand il ne reste plus rien de marqué).
+
 ### Chat — historique & liste des conversations — ✅ fait
 
 - **Historique conservé.** Un **2ᵉ niveau de navigation** (colonne gauche de la

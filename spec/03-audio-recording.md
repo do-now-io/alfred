@@ -20,6 +20,17 @@ transcription au `stop`.
 (La table `recordings.source` accepte les trois valeurs. Sur macOS,
 `start_recording` refuse `system_only`/`mixed` avec un message clair.)
 
+**Défaut = `mixed` (📝 à faire, feedback tests).** La source par défaut passe de
+`mic_only` à **`mixed`** (micro + système) — on capte l'interlocuteur (visio, appel)
+sans réglage. Config `recording_source` (défaut `mixed`), modifiable dans les
+Réglages (spec/11). Les points de départ (accueil, `/recording`, bandeau) lisent
+cette config **au lieu de** `"mic_only"` codé en dur.
+
+**Repli gracieux** : là où `mixed`/`system_only` n'est pas dispo (macOS tant que le
+helper Swift n'est pas fait), retomber **automatiquement sur `mic_only`** (ne jamais
+échouer au démarrage à cause du défaut). Le **contexte à la voix** (visite guidée,
+spec/13) reste en `mic_only` (une seule voix, pas besoin du système).
+
 ## Capture micro — état réel (cpal)
 
 - `cpal`, `default_input_device`, **config native** du device (sample rate et

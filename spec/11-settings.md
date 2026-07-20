@@ -38,8 +38,9 @@ d'une note (Properties, spec/07). Édité ici.
 modèles plus gros **téléchargeables** → `download_model`, `download-progress`) +
 langue (`language_hint`).
 
-**Enregistrement** : source audio (`mic_only` / `system_only` / `mixed`) ; dossier
-d'enregistrement (défaut **`alfred-raw`**).
+**Enregistrement** : source audio (`mic_only` / `system_only` / `mixed`) —
+**défaut `mixed`** (📝 feedback tests ; repli auto sur `mic_only` si le système n'est
+pas dispo, cf. spec/03) ; dossier d'enregistrement (défaut **`alfred-raw`**).
 
 **Notes** : dossier vault (`get/set_vault_path`, `pick_vault_folder`).
 

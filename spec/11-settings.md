@@ -29,9 +29,10 @@ d'une note (Properties, spec/07). Édité ici.
 
 **Accès IA** (remplace « APIs ») — mode **clé perso** ou **AlfredIA** :
 - *Clé perso* : saisir `claude_api_key` + **Tester** (`test_api_key`).
-- *AlfredIA* : **statut** de l'abonnement (actif / essai / inactif) + bouton
-  **S'abonner** (loopback, spec/15) ; token `alfredia_token`. Gérer l'abonnement
-  (portail Stripe) = plus tard.
+- *AlfredIA* : **statut** de l'abonnement (actif / **essai (14 j)** / inactif) +
+  bouton **Commencer l'essai gratuit** / **S'abonner** (loopback, spec/15) ; token
+  `alfredia_token`. Pendant l'essai, afficher les **jours restants** si dispo. Gérer
+  l'abonnement (portail Stripe) = plus tard.
 - Basculer de mode **à tout moment**.
 
 **Transcription** (déplacé de l'onboarding) : modèle Whisper (`small` embarqué ;
@@ -45,6 +46,9 @@ pas dispo, cf. spec/03) ; dossier d'enregistrement (défaut **`alfred-raw`**).
 **Notes** : dossier vault (`get/set_vault_path`, `pick_vault_folder`).
 
 **Tâches** : fichier `Todo.md` (défaut **`alfred-intelligence/Todo.md`**).
+
+**Langue / Language** (📝 à faire, spec/21) : `app_language` (`fr` | `en`) —
+traduction entière de l'app ; changeable à tout moment (sans redémarrage).
 
 **Système** : lancer au démarrage (`get/set_launch_at_login` — LaunchAgent macOS /
 clé de registre Windows) ; **« Revoir l'introduction »** (rejoue l'onboarding).

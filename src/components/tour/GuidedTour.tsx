@@ -73,7 +73,7 @@ function TourModal({
           : "0 12px 48px rgba(0,0,0,0.3)",
         transition: "box-shadow 0.6s ease",
       }}>
-        <AlfredAvatar size={56} radius={14} />
+        <AlfredAvatar size={56} />
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>{title}</h2>
         <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.6, color: "var(--text-secondary)" }}>{text}</p>
         <div style={{ display: "flex", alignItems: "center", gap: 18, marginTop: 8 }}>

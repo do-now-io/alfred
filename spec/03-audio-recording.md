@@ -82,9 +82,8 @@ live) : par ex. un enregistrement fait ailleurs, ou l'audio extrait d'une vidéo
   puis le WAV est mis dans **la même file de transcription** que le live
   (aucun chemin de code séparé). La suite est identique : note dans `alfred-raw/`,
   déplacement du WAV dans le vault, ingestion (spec 04/05).
-- **UX** : petite icône **⬆ import** incrustée sur les points d'entrée existants
-  (logo Alfred de la sidebar, carte d'enregistrement de l'accueil) — visible
-  seulement à l'état repos, à côté/au-dessus du geste principal plutôt qu'un
+- **UX** : petite icône **⬆ import** incrustée sur la **carte d'enregistrement**
+  de l'accueil (coin haut-droit, visible seulement à l'état repos) — pas de
   second bouton pleine largeur côte à côte. Ouvre le sélecteur de fichier natif
   (filtré `.wav`). Un WAV illisible renvoie une erreur claire avant toute mise
   en file.
@@ -93,12 +92,13 @@ live) : par ex. un enregistrement fait ailleurs, ou l'audio extrait d'une vidéo
 ### Intégration UI du bouton — ✅ fait
 
 Le bouton pleine largeur « Importer un audio » (page de guidage + accueil) a
-été retiré ; l'import est désormais une petite icône incrustée sur le **logo**
-(sidebar, coin bas-droit du bouton, état repos) et sur la **carte
-d'enregistrement** de l'accueil (coin haut-droit). Le comportement (picker
-`.wav` → même file de transcription) ne change pas. La page de guidage
-(`/recording`) ne propose plus l'import directement (état repos rarement
-atteint là — après un « Annuler » — l'utilisateur revient au logo/à la carte).
+été retiré ; l'import est désormais une petite icône incrustée sur la **carte
+d'enregistrement** de l'accueil (coin haut-droit). **Retour (feedback tests)** :
+retiré du **logo** de la sidebar — celui-ci ne doit porter que le déclencheur
+d'enregistrement, rien d'autre. Le comportement (picker `.wav` → même file de
+transcription) ne change pas. La page de guidage (`/recording`) ne propose pas
+l'import directement (état repos rarement atteint là — après un « Annuler » —
+l'utilisateur revient au logo/à la carte).
 
 ## Segmentation
 

@@ -1,18 +1,18 @@
-import alfredLogo from "../assets/alfred-logo.png";
+import alfredLogoMinimal from "../assets/alfred-logo-minimal.png";
+import alfredLogoFull from "../assets/alfred-logo.png";
 
-// Recadrage CSS du portrait (spec/03/10, feedback tests) : l'asset source est
-// carré (2000×2000) mais son contenu ne l'est pas — le portrait occupe le haut
-// du cadre, le mot « ALFRED » le bas — d'où le décalage vertical perçu en
-// affichage width:100%/height:auto. On zoome/recentre sur le cercle du
-// portrait (masque le mot-symbole, déjà illisible aux tailles d'icône).
-export default function AlfredAvatar({ size, radius = 0 }: { size: number; radius?: number }) {
+// Portrait d'Alfred (spec/03/10, feedback tests) — deux assets fournis, fond
+// transparent, utilisés tels quels (pas de recadrage) : `minimal` (portrait
+// seul, sans le mot-symbole "ALFRED") pour les petites icônes, `full` (avec
+// "ALFRED") pour les grands formats.
+export default function AlfredAvatar({
+  size, radius = 0, variant = "minimal",
+}: { size: number; radius?: number; variant?: "minimal" | "full" }) {
   return (
-    <div style={{ width: size, height: size, borderRadius: radius, overflow: "hidden", position: "relative", flexShrink: 0 }}>
-      <img
-        src={alfredLogo}
-        alt="Alfred"
-        style={{ position: "absolute", width: "160%", height: "160%", left: "-30%", top: "-26.4%" }}
-      />
-    </div>
+    <img
+      src={variant === "full" ? alfredLogoFull : alfredLogoMinimal}
+      alt="Alfred"
+      style={{ width: size, height: size, borderRadius: radius, display: "block", flexShrink: 0, objectFit: "contain" }}
+    />
   );
 }

@@ -261,7 +261,7 @@ export default function RecordingGuide() {
     <div style={{ height: "100%", overflowY: "auto", display: "flex", justifyContent: "center", padding: "40px 24px" }}>
       <div style={{ width: "100%", maxWidth: 560, display: "flex", flexDirection: "column", gap: 20 }}>
         <div className="card" style={{ padding: "32px 28px", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center" }}>
-          <AlfredAvatar size={56} radius={14} />
+          <AlfredAvatar size={56} />
 
           {isRecording && (
             <>

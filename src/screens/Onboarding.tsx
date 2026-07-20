@@ -246,7 +246,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     {
       node: (
         <Panel
-          icon={<AlfredAvatar size={84} radius={18} />}
+          icon={<AlfredAvatar size={84} variant="full" />}
           title="Bienvenue, je suis Alfred"
           text="Votre majordome personnel : j'écoute, je transcris, je résume et je retiens — pour que vous n'ayez plus à prendre de notes vous-même. Deux minutes d'installation, puis on essaie ensemble."
         />

@@ -86,8 +86,31 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
    timestamps `segments_json`) → tranche à l'oreille.
 3. **Finalisation** — `submit_ingestion` sur le texte corrigé + réponses.
 
-**Jamais d'auto-application** d'une correction. Si Claude n'a rien à signaler,
-l'ingestion enchaîne **automatiquement** (aucune friction).
+**Jamais d'auto-application** d'une correction.
+
+### La finalisation attend la vérification (📝 à revoir, feedback tests)
+
+Constat test : après la transcription, **compte-rendu et tâches semblent créés tout
+de suite** — comme si la finalisation ne passait pas par la vérification. C'est le
+raccourci « si Claude n'a rien à signaler, l'ingestion enchaîne **automatiquement** »
+qui fait sauter l'étape de contrôle.
+
+**Nouveau comportement voulu : le compte-rendu et les tâches ne sont générés
+qu'APRÈS la vérification/correction**, jamais en même temps que la transcription.
+
+- L'étape **Résolution** (`/resolve`) est **toujours** présentée après la
+  transcription — **même quand il n'y a rien à corriger** : l'utilisateur relit le
+  texte et **Valide** ; c'est **cette validation** qui déclenche `finalize_ingestion`
+  (donc le compte-rendu + les tâches).
+- Sans clarification, l'écran est simplement **plus court** (texte + « Valider »),
+  mais **l'étape reste** — plus d'auto-enchaînement silencieux.
+- Vaut pour un enregistrement de réunion **et** pour le contexte (spec/13, même
+  écran unifié — la « finalisation » du contexte étant
+  `build_context_from_transcription`).
+
+> **Compromis assumé** : cela ajoute un « Valider » à chaque enregistrement (léger
+> quand il n'y a rien à corriger). C'est le prix du contrôle demandé — l'utilisateur
+> veut décider avant que le compte-rendu/les tâches partent.
 
 ## §4 — Enrichissement du contexte & onboarding
 

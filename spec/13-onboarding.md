@@ -123,12 +123,19 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    + aperçu (sections remplies + *« {n} noms propres ajoutés au glossaire »*).
    **Un seul bouton : « Revoir / corriger »** (l'ancien bouton « Continuer » est
    **retiré** — on veut forcer le passage par la vérification).
-5. **Correction du contexte (écran /resolve)** — « Revoir / corriger » ouvre un
-   **écran de correction dédié** — **réutilise l'écran `/resolve`** de l'ingestion
-   augmentée (spec/17) en **mode contexte** : les 4 sections structurées
-   (entreprise / équipe / vocabulaire & noms propres / projets) sont **éditables**,
-   avec ce qu'Alfred a compris et la **réécoute du WAV** (`read_recording_wav`),
-   puis **Valider**. On n'ouvre **plus** la note brute dans `/notes`.
+5. **Correction du contexte — MÊME écran que pour un vrai enregistrement** (📝 à
+   revoir, feedback tests) — « Revoir / corriger » ouvre **exactement le même écran
+   `/resolve`** et **le même flux de vérification/correction** que la correction d'une
+   note d'enregistrement normale (spec/17). **Pas de page ni de variante spécifiques
+   à l'onboarding** : même composant, même route, mêmes interactions (texte éditable
+   CodeMirror, cartes appliquer/ignorer, réécoute WAV via `read_recording_wav`,
+   **Valider**). Seul le **contenu** injecté diffère (issu du traitement contexte),
+   pas l'UI. On n'ouvre **plus** la note brute dans `/notes`.
+
+   > **Correctif (feedback tests) :** l'onboarding présentait une page `/resolve`
+   > **différente** de celle d'une vérification normale. À **unifier** : supprimer
+   > toute page/variante « mode contexte » spécifique — l'onboarding passe par le
+   > même écran et le même parcours que n'importe quel enregistrement.
 6. **Clôture** — après validation, carte chaleureuse, ton majordome : *« Vous êtes
    équipé »* / *« Désormais : parlez, Alfred écoute, résume et retient — et il
    connaît votre univers. Le reste, vous le découvrirez en l'utilisant. »* →

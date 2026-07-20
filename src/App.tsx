@@ -6,7 +6,7 @@ import {
   MdCheckBox, MdStickyNote2,
   MdAutoAwesome, MdSettings, MdHub, MdMic, MdStop,
 } from "react-icons/md";
-import alfredAvatar from "./assets/alfred-logo-minimal.png";
+import alfredAvatar from "./assets/alfred-logo.png";
 import Dashboard from "./screens/Dashboard";
 import Notes from "./screens/Notes";
 import Tasks from "./screens/Tasks";

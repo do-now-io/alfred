@@ -162,19 +162,22 @@ plein-texte globale, hors v1 — spec/10) :
 - Effet de bord assumé : l'écran `/resolve` réutilise le même éditeur →
   Ctrl/Cmd+F y est disponible quand l'éditeur a le focus.
 
-### Gestion des dossiers — clic droit (créer / renommer / supprimer) — 📝 à faire
+### Gestion des dossiers — clic droit (créer / renommer / supprimer) — ✅ fait
 
-L'arbre ne gère aujourd'hui que des **fichiers** : `rename_note_file` suffixe
-systématiquement `.md` (casse un nom de dossier) et `delete_note_file` appelle
-`remove_file` (échoue sur un répertoire) — aucune commande `create_folder` côté
-Rust. Le menu contextuel (`FileTreeNode.tsx`) est câblé sur les dossiers
-(`onContextMenu`) mais le popup ne se rend que dans la branche fichier : **clic
-droit sur un dossier ne montre rien** aujourd'hui (vestige non fonctionnel).
+Commandes Tauri dédiées (`notes/vault.rs`) : `create_folder(parent, name)`
+(collision → suffixe numéroté, comme `create_note_file`), `rename_folder`
+(refuse si le nom cible existe déjà), `delete_folder` (`remove_dir_all`,
+confirmation `window.confirm` côté UI car un dossier peut contenir des notes).
 
-À faire : commandes Tauri dédiées (`create_folder`, `rename_folder`,
-`delete_folder` — `remove_dir_all` avec confirmation, un dossier peut contenir
-des notes), menu contextuel dossier réellement affiché, et une entrée
-« Nouveau dossier » (le bouton **+** actuel ne crée qu'une note).
+Menu contextuel dossier réellement affiché (`FileTreeNode.tsx` — le bug où le
+popup ne se rendait que dans la branche fichier est corrigé) : **Nouveau
+dossier / Renommer / Supprimer**. Entrée « Nouveau dossier » aussi dans
+l'en-tête de l'arbre (racine du vault), à côté du **+** qui ne crée qu'une note.
+
+**Glisser-déposer interne** (même MIME `text/alfred-note-path` que le drop sur
+un groupe de projet) : glisser une **note** sur un **dossier** de l'arbre la
+déplace dedans (`move_note_file`, collision → suffixe numéroté) ; déposer sur
+le vide de l'arbre la remonte à la racine du vault.
 
 ### Glisser-déposer de fichiers externes — 📝 à faire
 

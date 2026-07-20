@@ -900,6 +900,49 @@ async fn rename_note_file(
 }
 
 #[tauri::command]
+async fn move_note_file(
+    path: String,
+    dest_folder: String,
+    _state: tauri::State<'_, AppState>,
+) -> Result<notes::NoteFile, String> {
+    notes::vault::move_note_file(std::path::Path::new(&path), std::path::Path::new(&dest_folder))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn create_folder(
+    parent: String,
+    name: String,
+    _state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    notes::vault::create_folder(std::path::Path::new(&parent), &name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn rename_folder(
+    old_path: String,
+    new_name: String,
+    _state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    notes::vault::rename_folder(std::path::Path::new(&old_path), &new_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_folder(
+    path: String,
+    _state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    notes::vault::delete_folder(std::path::Path::new(&path))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn get_recent_notes(
     limit: Option<usize>,
     state: tauri::State<'_, AppState>,
@@ -1551,6 +1594,10 @@ pub fn run() {
             update_note_file,
             delete_note_file,
             rename_note_file,
+            move_note_file,
+            create_folder,
+            rename_folder,
+            delete_folder,
             get_recent_notes,
             get_notes_by_project,
             get_vault_graph,

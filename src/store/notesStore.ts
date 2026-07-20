@@ -37,6 +37,10 @@ interface NotesStore {
   updateNote: (path: string, metadata: NoteMetadata, body: string) => Promise<void>;
   deleteNote: (path: string) => Promise<void>;
   renameNote: (oldPath: string, newName: string) => Promise<void>;
+  moveNote: (path: string, destFolder: string) => Promise<void>;
+  createFolder: (parent: string, name: string) => Promise<void>;
+  renameFolder: (oldPath: string, newName: string) => Promise<void>;
+  deleteFolder: (path: string) => Promise<void>;
   fetchVaultPath: () => Promise<void>;
   setVaultPath: (path: string) => Promise<void>;
   pickVaultFolder: () => Promise<string | null>;
@@ -151,6 +155,46 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
       selectedFile: file,
       history: get().history.map(p => (p === oldPath ? file.path : p)),
     });
+  },
+
+  moveNote: async (path, destFolder) => {
+    const file = await invoke<NoteFile>("move_note_file", { path, destFolder });
+    await get().fetchTree();
+    const { selectedFile } = get();
+    set({
+      selectedFile: selectedFile?.path === path ? file : selectedFile,
+      history: get().history.map(p => (p === path ? file.path : p)),
+    });
+  },
+
+  createFolder: async (parent, name) => {
+    await invoke<string>("create_folder", { parent, name });
+    await get().fetchTree();
+  },
+
+  renameFolder: async (oldPath, newName) => {
+    const newPath = await invoke<string>("rename_folder", { oldPath, newName });
+    await get().fetchTree();
+    // Les notes sous ce dossier ont un chemin qui commence par l'ancien préfixe
+    // — on le fait suivre pour ne pas perdre la sélection/l'historique en cours.
+    const prefix = oldPath.endsWith("/") ? oldPath : `${oldPath}/`;
+    const rebase = (p: string) => (p === oldPath || p.startsWith(prefix) ? newPath + p.slice(oldPath.length) : p);
+    const { selectedFile, history } = get();
+    set({ history: history.map(rebase) });
+    if (selectedFile && (selectedFile.path === oldPath || selectedFile.path.startsWith(prefix))) {
+      await get().selectFile(rebase(selectedFile.path));
+    }
+  },
+
+  deleteFolder: async (path) => {
+    await invoke("delete_folder", { path });
+    const prefix = path.endsWith("/") ? path : `${path}/`;
+    const { selectedFile, history } = get();
+    if (selectedFile && (selectedFile.path === path || selectedFile.path.startsWith(prefix))) {
+      set({ selectedFile: null });
+    }
+    set({ history: history.filter(p => p !== path && !p.startsWith(prefix)) });
+    await get().fetchTree();
   },
 
   fetchVaultPath: async () => {

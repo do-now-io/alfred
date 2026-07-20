@@ -379,6 +379,77 @@ pub async fn delete_note_file(path: &Path) -> Result<()> {
         .map_err(|e| anyhow!("Cannot delete {:?}: {}", path, e))
 }
 
+/// Move a note into a different folder, keeping its filename (collision →
+/// numbered suffix, same convention as `create_note_file`). Used by the
+/// tree's drag & drop onto a folder (spec/07).
+pub async fn move_note_file(path: &Path, dest_folder: &Path) -> Result<NoteFile> {
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("No file name"))?;
+    if path.parent() == Some(dest_folder) {
+        return get_note_file(path).await; // already there — no-op
+    }
+
+    tokio::fs::create_dir_all(dest_folder).await?;
+
+    let mut new_path = dest_folder.join(file_name);
+    if new_path.exists() {
+        let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let mut counter = 2;
+        loop {
+            new_path = dest_folder.join(format!("{} {}.md", stem, counter));
+            if !new_path.exists() { break; }
+            counter += 1;
+        }
+    }
+
+    tokio::fs::rename(path, &new_path).await
+        .map_err(|e| anyhow!("Cannot move {:?} to {:?}: {}", path, new_path, e))?;
+    get_note_file(&new_path).await
+}
+
+// ─── Folders ────────────────────────────────────────────────────────────────
+
+pub async fn create_folder(parent: &Path, name: &str) -> Result<String> {
+    let safe = sanitize_filename(name);
+    if safe.is_empty() {
+        return Err(anyhow!("Nom de dossier invalide"));
+    }
+    let mut folder_path = parent.join(&safe);
+    let mut counter = 2;
+    while folder_path.exists() {
+        folder_path = parent.join(format!("{} {}", safe, counter));
+        counter += 1;
+    }
+    tokio::fs::create_dir_all(&folder_path).await
+        .map_err(|e| anyhow!("Cannot create folder {:?}: {}", folder_path, e))?;
+    Ok(folder_path.to_string_lossy().to_string())
+}
+
+pub async fn rename_folder(old_path: &Path, new_name: &str) -> Result<String> {
+    let safe = sanitize_filename(new_name);
+    if safe.is_empty() {
+        return Err(anyhow!("Nom de dossier invalide"));
+    }
+    let new_path = old_path
+        .parent()
+        .ok_or_else(|| anyhow!("No parent dir"))?
+        .join(&safe);
+
+    if new_path.exists() {
+        return Err(anyhow!("Un dossier nommé « {} » existe déjà ici", new_name));
+    }
+
+    tokio::fs::rename(old_path, &new_path).await
+        .map_err(|e| anyhow!("Cannot rename folder {:?}: {}", old_path, e))?;
+    Ok(new_path.to_string_lossy().to_string())
+}
+
+pub async fn delete_folder(path: &Path) -> Result<()> {
+    tokio::fs::remove_dir_all(path).await
+        .map_err(|e| anyhow!("Cannot delete folder {:?}: {}", path, e))
+}
+
 // ─── Vault scaffolding (spec/13 onboarding) ─────────────────────────────────────
 
 /// Idempotently create the vault's expected structure on first setup:

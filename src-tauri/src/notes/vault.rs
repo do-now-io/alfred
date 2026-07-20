@@ -398,7 +398,7 @@ pub async fn scaffold_vault(
         if let Some(parent) = todo_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        let (skeleton, _) = crate::notes::todo_md::merge_tasks(None, &[]);
+        let (skeleton, _) = crate::notes::todo_md::merge_tasks(None, &[], None);
         tokio::fs::write(&todo_path, skeleton).await?;
     }
 

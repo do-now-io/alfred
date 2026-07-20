@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useNavigate } from "react-router-dom";
-import ForceGraph2D from "react-force-graph-2d";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { MdRefresh, MdHub } from "react-icons/md";
 import { useNotesStore } from "../store/notesStore";
 import type { VaultGraph } from "../bindings/VaultGraph";
@@ -34,6 +34,13 @@ export default function Graph() {
 
   const navigate = useNavigate();
   const selectFile = useNotesStore(s => s.selectFile);
+  // Provenance d'une tâche → « Voir dans le graphe » (spec/06 2e passe) :
+  // `/graph?focus=<titre de la note>` centre et met en évidence ce nœud une
+  // fois la simulation stabilisée.
+  const [searchParams] = useSearchParams();
+  const focusLabel = searchParams.get("focus");
+  const fgRef = useRef<ForceGraphMethods<GNode, { source: string; target: string }> | undefined>(undefined);
+  const focusedRef = useRef(false);
 
   const fetchGraph = useCallback(() => {
     invoke<VaultGraph>("get_vault_graph")
@@ -178,6 +185,7 @@ export default function Graph() {
       {!error && data && (
         <>
           <ForceGraph2D
+            ref={fgRef as never}
             width={size.width}
             height={size.height}
             graphData={data.graphData}
@@ -185,6 +193,17 @@ export default function Graph() {
             nodeCanvasObject={paintNode as never}
             nodePointerAreaPaint={paintPointerArea as never}
             nodeLabel={() => ""}
+            onEngineStop={() => {
+              if (!focusLabel || focusedRef.current) return;
+              const node = data.nodes.find(n => n.label.toLowerCase() === focusLabel.toLowerCase());
+              if (node && node.x != null && node.y != null) {
+                focusedRef.current = true;
+                fgRef.current?.centerAt(node.x, node.y, 800);
+                fgRef.current?.zoom(3, 800);
+                setHoverNode(node);
+                setTimeout(() => setHoverNode(null), 2500);
+              }
+            }}
             linkColor={(l: { source: unknown; target: unknown }) => {
               // follow the eased opacity of the link's endpoints (read-only —
               // the node paint pass drives the animation)

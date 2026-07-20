@@ -66,13 +66,16 @@ on ne ré-ajoute pas une tâche déjà présente. *(L'ancienne dédup SQLite par
 - **Onglet Tâches** : ~~liste éditable~~ → **refonte en tableau Kanban** (ci-dessous).
 - **Accueil « Alfred »** : bloc dépliable Prioritaire / En cours / À faire (spec 10).
 
-## Refonte Kanban de la page Tâches — 🚧 fait partiellement (feedback tests + demande utilisateurs)
+## Refonte Kanban de la page Tâches — ✅ fait (feedback tests + demande utilisateurs)
 
-> **À finir (feedback tests) :** le **glisser-déposer ne fonctionne pas** — on ne peut
-> **pas** changer une carte de colonne à la souris, ni **déplier** une carte. La
-> commande `move_todo` existe côté backend ; c'est le **câblage UX du DnD** (et le
-> dépliage/ouverture de carte → fiche tâche, cf. § Évolutions Tâches) qui reste à
-> faire côté front.
+> **Bug corrigé (feedback tests) :** le glisser-déposer ne fonctionnait pas — la
+> cause n'était pas le câblage React (correct dès la 1ʳᵉ version) mais la config
+> Tauri : `dragDropEnabled` (par défaut `true`) fait intercepter nativement tous
+> les événements de drag par l'OS pour l'API `file-drop`, ce qui empêche le
+> **HTML5 drag-and-drop du webview** de recevoir quoi que ce soit. Mis à
+> `false` dans `tauri.conf.json` → corrige aussi le glisser-déposer de la vue
+> Projets (spec/07). L'ouverture/dépliage de carte est fait (fiche tâche, cf.
+> § Évolutions Tâches).
 
 La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
 **tableau Kanban** (demande explicite d'utilisateurs). La source de vérité **reste
@@ -105,65 +108,75 @@ La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
   aux autres filtres ; Échap vide le champ. C'est la recherche **locale à
   `Todo.md`** (la recherche globale reste hors v1, spec/10).
 
-**Décisions ouvertes (à trancher)** :
-- **Projet sur une tâche** : les tâches de `Todo.md` ne portent pas de projet
-  aujourd'hui. Pour filtrer/colorer par projet, il faudrait un marqueur par tâche
-  (ex. `+Projet` façon `@responsable`). À décider (utile mais élargit le format).
-- **Priorité** : gérée uniquement par la colonne « Prioritaire », ou champ dédié ?
-- **Réordonnancement fin** : conserver l'ordre dans le fichier suffit-il, ou faut-il
-  un index explicite ?
+**Décisions tranchées** (2e passe, ci-dessous) :
+- **Projet sur une tâche** : oui, marqueur `+Projet` (façon `@responsable`).
+- **Priorité** : champ dédié `!haute`/`!moyenne`/`!basse`, en plus de la colonne
+  « Prioritaire » (les deux coexistent — la colonne reste le tri principal, le champ
+  sert au filtre/affichage).
+- **Réordonnancement fin** : l'ordre des lignes dans le fichier suffit (pas d'index
+  explicite) — `move_todo(id, section, position?)`.
 
 Contrainte : tout doit rester **compatible Obsidian** (édition directe du fichier),
 donc les enrichissements passent par des marqueurs inline simples, pas de
 frontmatter par tâche.
 
-## Évolutions Tâches — 📝 à faire (feedback tests, 2e passe)
+## Évolutions Tâches — ✅ fait (feedback tests, 2e passe)
 
-Le Kanban est en place ; on l'enrichit sans jeter la lecture Markdown.
+Le Kanban est enrichi sans jeter la lecture Markdown.
 
-### Deux vues, même `Todo.md` — bascule sur la page Tâches
+### Deux vues, même `Todo.md` — bascule sur la page Tâches — ✅ fait
 
 - **Sélecteur Kanban / Markdown** en tête de la page Tâches. Les deux affichent le
-  **même `Todo.md`** (source de vérité unique).
+  **même `Todo.md`** (source de vérité unique, la même liste `Todo[]` récupérée par
+  `get_all_todos` alimente les deux rendus — pas un second parseur).
 - **Vue Markdown** = la lecture en lignes, avec **sections repliables** (Prioritaire /
-  En cours / À faire / Archivé). C'est la vue « document », proche d'Obsidian.
-- **Vue Kanban** = colonnes (déjà faite).
+  En cours / À faire / Archivé, Archivé replié par défaut). C'est la vue « document ».
+- **Vue Kanban** = colonnes.
 
-### Fiche tâche (ouvrable depuis le Kanban ET la vue Markdown)
+### Fiche tâche (ouvrable depuis le Kanban ET la vue Markdown) — ✅ fait
 
-Cliquer une tâche (carte Kanban ou ligne Markdown) ouvre une **fiche** (panneau /
-modale) présentant et éditant tout ce que la tâche porte. On peut y **ajouter des
-infos** :
+Cliquer une tâche (carte Kanban ou ligne Markdown) ouvre une **fiche** (`TaskSheet.tsx`,
+modale) présentant et éditant tout ce que la tâche porte :
 
-- **Sous-puces libres** (notes / checklist) sous la ligne de tâche dans `Todo.md`
-  (compatible Obsidian).
-- **Champs structurés inline** : **projet** (`+Projet`, façon `@responsable`),
-  **priorité**, **estimation** — marqueurs inline simples, **filtrables** dans le
-  Kanban (tranche la décision « projet/priorité par tâche » laissée ouverte plus haut).
-- **Description longue** (bloc multi-lignes rattaché à la tâche).
+- **Sous-puces libres** (`  - texte`) sous la ligne de tâche dans `Todo.md` (compatible
+  Obsidian — indentation Markdown standard, pas de frontmatter).
+- **Champs structurés inline** : **projet** (`+Projet`), **priorité** (`!haute` /
+  `!moyenne` / `!basse`), **estimation** (`⏱2h`) — marqueurs inline simples,
+  **filtrables** dans le Kanban (décision « projet/priorité par tâche » tranchée : oui).
+- **Description longue** (`  > texte`, un paragraphe par ligne, bloc multi-lignes
+  rattaché à la tâche).
 
-Contrainte inchangée : tout reste **compatible Obsidian** (marqueurs inline + sous-
-puces, pas de frontmatter par tâche ; l'identité reste le titre normalisé).
+Contrainte respectée : tout reste **compatible Obsidian** (marqueurs inline + sous-
+puces indentées, pas de frontmatter par tâche ; l'identité reste le titre normalisé).
+Édition en 2 chemins pour ne jamais écraser silencieusement un champ non affiché :
+`update_todo` (legacy, 3 champs, préserve projet/priorité/estimation sur disque) et
+`update_todo_fields` (fiche tâche, les 6 champs de ligne d'un coup ; la provenance
+n'est **jamais** éditable — toujours relue du fichier et réappliquée).
 
-### Provenance & contexte de la tâche
-
-Constat test : une tâche créée par un enregistrement perd son origine. On rattache :
+### Provenance & contexte de la tâche — ✅ fait
 
 - **Provenance = wikilink sur la ligne.** À l'ingestion (spec/05), la tâche générée
   reçoit un **`[[Compte-rendu source]]`** (nommé par sujet, spec/05/07) + la **date**
-  sur sa ligne `Todo.md`. Cliquable, crée un **lien dans le graphe** (spec/07c), et la
-  fiche affiche **d'où / quand** vient la tâche.
+  sur sa ligne `Todo.md` (uniquement quand le compte-rendu est réellement écrit —
+  pas de lien mort si l'utilisateur avait décoché « Compte-rendu », spec/03). Le
+  **lien dans le graphe** (spec/07c) est automatique : `Todo.md` est un fichier du
+  vault comme un autre, son wikilink est résolu par le mécanisme standard — aucun
+  code dédié n'a été nécessaire. La fiche affiche **d'où / quand** vient la tâche +
+  un lien « Voir dans le graphe » (`/graph?focus=<titre>`, centre et met en évidence
+  le nœud une fois la simulation stabilisée).
 - **Bouton « Rassembler le contexte pour cette tâche »** (dans la fiche) = **action IA
-  à la demande** (RAG, spec/07b) : retrouve le compte-rendu source + les notes liées
-  (tags / projet communs) et **résume le contexte utile** pour réaliser la tâche.
-  Jamais automatique — déclenché par l'utilisateur.
+  à la demande** (`gather_task_context`, réutilise la boucle agentique du chat,
+  spec/07b) : retrouve le compte-rendu source + les notes liées et **résume le
+  contexte utile** pour réaliser la tâche. Jamais automatique, jamais persisté dans
+  l'historique de conversation.
 
-### Commandes / événements à prévoir
+### Commandes — ✅ ajoutées
 
-`move_todo` existe (Kanban). À ajouter : lecture/écriture des **sous-puces**,
-**description** et **marqueurs inline** (`+Projet`, priorité, estimation) d'une tâche
-donnée (extension de `update_todo` ou nouvelles commandes ciblées sur le bloc de la
-tâche) ; l'action IA « contexte tâche » côté chat/RAG (spec/07b).
+`move_todo` (Kanban). `get_all_todos` (Kanban + Markdown, tâches cochées/archivées
+comprises). `update_todo_fields(id, {title, responsable, echeance, project, priority,
+estimate})` (fiche tâche). `update_todo_block(id, notes[], description[])` (sous-puces
++ description). `gather_task_context(title, project?, source_note?) -> ChatResponse`
+(action IA à la demande, spec/07b).
 
 ## Commandes Tauri — ✅ refondues vers le fichier
 

@@ -3,16 +3,25 @@
 //! Two layers:
 //! - append/merge used by the merged ingestion (spec/05): deduped tasks into
 //!   `## À faire`;
-//! - full parse + line mutations (check, archive, edit) used by the `todos`
-//!   module now that the SQLite table is gone.
+//! - full parse + line mutations (check, archive, edit, move) used by the
+//!   `todos` module now that the SQLite table is gone.
 //!
 //! Tasks have no stored id: identity is the **normalized title** (spec/06 dedups
 //! on it file-wide, so it's unique by construction).
+//!
+//! **Fiche tâche (spec/06 2e passe)** : au-delà du titre/@responsable/📅échéance,
+//! une tâche peut porter des champs inline supplémentaires sur sa ligne
+//! (`+Projet`, `!priorité`, `⏱estimation`, provenance `[[Note source]] (date)`)
+//! et un **bloc indenté** en dessous (sous-puces libres `  - ...` + description
+//! longue `  > ...`). Tout reste compatible Obsidian — pas de frontmatter par
+//! tâche, uniquement des marqueurs inline + de l'indentation Markdown standard.
 
 use anyhow::{anyhow, Result};
 use std::path::Path;
 
-/// One task extracted by the ingestion AI call (spec/05's `taches[]`).
+/// One task extracted by the ingestion AI call (spec/05's `taches[]`) — the
+/// minimal shape Claude produces. Richer fields (project/priority/estimate/
+/// provenance) are stamped separately (see `merge_tasks`'s `provenance` arg).
 #[derive(Debug, Clone)]
 pub struct IngestTask {
     pub titre: String,
@@ -20,43 +29,260 @@ pub struct IngestTask {
     pub echeance: Option<String>,
 }
 
+/// The full set of fields a task LINE can carry (spec/06 2e passe). Sub-bullets
+/// and description live in the task's trailing indented block, not here (see
+/// `TaskBlock`).
+#[derive(Debug, Clone, Default)]
+pub struct TaskFields {
+    pub titre: String,
+    pub responsable: Option<String>,
+    pub echeance: Option<String>,
+    /// `+Projet` — un seul projet par tâche (marqueur inline, spec/06).
+    pub project: Option<String>,
+    /// `!haute` / `!moyenne` / `!basse`.
+    pub priority: Option<String>,
+    /// `⏱2h` — texte libre.
+    pub estimate: Option<String>,
+    /// Provenance (spec/05/06) : titre du compte-rendu source — système, jamais
+    /// édité par l'utilisateur (préservé automatiquement lors des éditions).
+    pub source_note: Option<String>,
+    /// Provenance : date de la note source (YYYY-MM-DD).
+    pub source_date: Option<String>,
+}
+
+impl From<&IngestTask> for TaskFields {
+    fn from(t: &IngestTask) -> Self {
+        TaskFields {
+            titre: t.titre.clone(),
+            responsable: t.responsable.clone(),
+            echeance: t.echeance.clone(),
+            ..Default::default()
+        }
+    }
+}
+
+/// Le bloc indenté sous une ligne de tâche (spec/06 2e passe « fiche tâche »).
+#[derive(Debug, Clone, Default)]
+pub struct TaskBlock {
+    /// Description longue — un paragraphe par ligne (`  > ...`).
+    pub description: Vec<String>,
+    /// Sous-puces libres / mini-checklist (`  - ...`).
+    pub notes: Vec<String>,
+}
+
 /// Section order mandated by spec/06. New tasks always land in "À faire".
 const SECTIONS: [&str; 4] = ["Prioritaire", "En cours", "À faire", "Archivé"];
 const TARGET_SECTION: &str = "À faire";
+
+const VALID_PRIORITIES: [&str; 3] = ["haute", "moyenne", "basse"];
 
 /// Lowercase + collapse whitespace, for cross-section dedup (spec/06).
 pub fn normalize_title(s: &str) -> String {
     s.trim().to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Render one task as a checkbox line: `- [ ] Titre — @Resp — 📅 date`.
-fn render_line(task: &IngestTask) -> String {
-    let mut line = format!("- [ ] {}", task.titre);
-    if let Some(ref r) = task.responsable {
+/// Render one task as a checkbox line — spec/06 2e passe field order:
+/// `- [ ] Titre — @Resp — 📅 date — +Projet — !priorité — ⏱estimation — [[source]] (date source)`.
+fn render_line(fields: &TaskFields) -> String {
+    let mut line = format!("- [ ] {}", fields.titre);
+    if let Some(ref r) = fields.responsable {
         if !r.trim().is_empty() {
             line.push_str(&format!(" — @{}", r.trim()));
         }
     }
-    if let Some(ref d) = task.echeance {
+    if let Some(ref d) = fields.echeance {
         if !d.trim().is_empty() {
             line.push_str(&format!(" — 📅 {}", d.trim()));
+        }
+    }
+    if let Some(ref p) = fields.project {
+        if !p.trim().is_empty() {
+            line.push_str(&format!(" — +{}", p.trim()));
+        }
+    }
+    if let Some(ref p) = fields.priority {
+        let p = p.trim().to_lowercase();
+        if VALID_PRIORITIES.contains(&p.as_str()) {
+            line.push_str(&format!(" — !{}", p));
+        }
+    }
+    if let Some(ref e) = fields.estimate {
+        if !e.trim().is_empty() {
+            line.push_str(&format!(" — ⏱{}", e.trim()));
+        }
+    }
+    if let Some(ref note) = fields.source_note {
+        if !note.trim().is_empty() {
+            match fields.source_date.as_deref().map(str::trim).filter(|d| !d.is_empty()) {
+                Some(date) => line.push_str(&format!(" — [[{}]] ({})", note.trim(), date)),
+                None => line.push_str(&format!(" — [[{}]]", note.trim())),
+            }
         }
     }
     line
 }
 
-/// Extract the normalized title from an existing checkbox line
-/// (`- [ ] Titre — @Resp — 📅 date` → "titre").
+/// Extrait la provenance `[[Note]] (date)` en FIN de ligne (regex maison, pas de
+/// dépendance) et renvoie `(reste_du_texte, source_note, source_date)`. Traité
+/// à part du split " — " général : le titre d'un compte-rendu (nommé par sujet,
+/// spec/05/07) peut lui-même contenir " — ", ce qui rendrait un split naïf ambigu.
+fn extract_provenance(rest: &str) -> (String, Option<String>, Option<String>) {
+    let Some(idx) = rest.rfind("[[") else { return (rest.to_string(), None, None) };
+    let Some(rel_end) = rest[idx..].find("]]") else { return (rest.to_string(), None, None) };
+    let close = idx + rel_end + 2;
+    // The wikilink must be a trailing token (only trailing whitespace/date after it).
+    let target = rest[idx + 2..idx + rel_end].trim().to_string();
+    if target.is_empty() {
+        return (rest.to_string(), None, None);
+    }
+
+    let after = rest[close..].trim_start();
+    let mut date = None;
+    let mut consumed_after = 0usize;
+    if let Some(rest2) = after.strip_prefix('(') {
+        if let Some(cend) = rest2.find(')') {
+            let candidate = rest2[..cend].trim();
+            if !candidate.is_empty() {
+                date = Some(candidate.to_string());
+                consumed_after = 1 + cend + 1;
+            }
+        }
+    }
+    if !after[consumed_after..].trim().is_empty() {
+        // Trailing garbage after the wikilink/date — not a provenance suffix
+        // after all, leave the line untouched (safer than mis-parsing).
+        return (rest.to_string(), None, None);
+    }
+
+    let mut before = rest[..idx].to_string();
+    for sep in [" — ", " - "] {
+        if before.ends_with(sep) {
+            before.truncate(before.len() - sep.len());
+            break;
+        }
+    }
+    (before, Some(target), date)
+}
+
+/// Parse one checkbox line into `(checked, TaskFields)`. Requires the line to
+/// start at column 0 (indented lines belong to a task's trailing block, not a
+/// new task — see `is_task_checkbox_line`).
+fn parse_line(line: &str) -> Option<(bool, TaskFields)> {
+    if !is_task_checkbox_line(line) {
+        return None;
+    }
+    let trimmed = line.trim_start();
+    let (checked, rest) = if let Some(r) = trimmed.strip_prefix("- [ ]") {
+        (false, r)
+    } else {
+        (true, trimmed.strip_prefix("- [x]").or_else(|| trimmed.strip_prefix("- [X]"))?)
+    };
+
+    let (rest, source_note, source_date) = extract_provenance(rest.trim());
+
+    let mut titre = rest.trim().to_string();
+    let mut responsable = None;
+    let mut echeance = None;
+    let mut project = None;
+    let mut priority = None;
+    let mut estimate = None;
+
+    let parts: Vec<&str> = rest.split(" — ").map(|p| p.trim()).collect();
+    if parts.len() > 1 {
+        titre = parts[0].to_string();
+        for part in &parts[1..] {
+            if let Some(r) = part.strip_prefix('@') {
+                responsable = Some(r.trim().to_string());
+            } else if let Some(d) = part.strip_prefix("📅") {
+                echeance = Some(d.trim().to_string());
+            } else if let Some(p) = part.strip_prefix('+') {
+                project = Some(p.trim().to_string());
+            } else if let Some(p) = part.strip_prefix('!') {
+                let p = p.trim().to_lowercase();
+                if VALID_PRIORITIES.contains(&p.as_str()) {
+                    priority = Some(p);
+                }
+            } else if let Some(e) = part.strip_prefix('⏱') {
+                estimate = Some(e.trim().to_string());
+            }
+        }
+    }
+
+    if titre.is_empty() {
+        return None;
+    }
+    Some((
+        checked,
+        TaskFields { titre, responsable, echeance, project, priority, estimate, source_note, source_date },
+    ))
+}
+
+/// Extract the normalized title from an existing checkbox line — used for
+/// file-wide dedup (spec/06).
 fn title_from_line(line: &str) -> Option<String> {
-    let rest = line.trim_start().strip_prefix("- [ ]").or_else(|| line.trim_start().strip_prefix("- [x]"))?;
-    let title = rest.split(" — ").next().unwrap_or(rest).trim();
-    if title.is_empty() { None } else { Some(normalize_title(title)) }
+    parse_line(line).map(|(_, f)| normalize_title(&f.titre))
+}
+
+/// A top-level task checkbox line MUST start at column 0 — an indented line
+/// (`  - ...` / `  > ...`) belongs to the PRECEDING task's block, never a task
+/// of its own (spec/06 2e passe).
+fn is_task_checkbox_line(line: &str) -> bool {
+    if line.starts_with(' ') || line.starts_with('\t') {
+        return false;
+    }
+    let t = line.trim_start();
+    t.starts_with("- [ ]") || t.starts_with("- [x]") || t.starts_with("- [X]")
+}
+
+/// A task's trailing block line: indented by at least one space/tab and non-blank.
+fn is_block_line(line: &str) -> bool {
+    (line.starts_with(' ') || line.starts_with('\t')) && !line.trim().is_empty()
+}
+
+/// Parse a task's trailing indented lines into its `TaskBlock` (spec/06 2e passe).
+/// `  > texte` → description line ; `  - texte` → sous-puce ; anything else
+/// indented is kept as an extra description line rather than silently dropped
+/// (e.g. hand-edited content in Obsidian that doesn't match our exact markers).
+fn parse_block_lines(lines: &[String]) -> TaskBlock {
+    let mut block = TaskBlock::default();
+    for line in lines {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("> ").or_else(|| t.strip_prefix('>')) {
+            block.description.push(rest.trim().to_string());
+        } else if let Some(rest) = t.strip_prefix("- ").or_else(|| t.strip_prefix('-')) {
+            block.notes.push(rest.trim().to_string());
+        } else if !t.is_empty() {
+            block.description.push(t.to_string());
+        }
+    }
+    block
+}
+
+/// Render a `TaskBlock`'s lines (description first, then sous-puces) — the
+/// counterpart of `parse_block_lines`.
+fn render_block_lines(block: &TaskBlock) -> Vec<String> {
+    let mut out = Vec::new();
+    for d in &block.description {
+        let d = d.trim();
+        if !d.is_empty() {
+            out.push(format!("  > {}", d));
+        }
+    }
+    for n in &block.notes {
+        let n = n.trim();
+        if !n.is_empty() {
+            out.push(format!("  - {}", n));
+        }
+    }
+    out
 }
 
 /// Merge `tasks` into `existing` content (spec/06 format), appending non-duplicate
-/// tasks (by normalized title, across the whole file) to `## À faire`. Returns
-/// the new full file content and how many tasks were actually added.
-pub fn merge_tasks(existing: Option<&str>, tasks: &[IngestTask]) -> (String, usize) {
+/// tasks (by normalized title, across the whole file) to `## À faire`. When
+/// `provenance` is `Some((source_note, source_date))` (spec/05/06), every
+/// appended task is stamped with it — the ingestion call that produced them.
+/// Returns the new full file content and how many tasks were actually added.
+pub fn merge_tasks(existing: Option<&str>, tasks: &[IngestTask], provenance: Option<(&str, &str)>) -> (String, usize) {
     // section name -> lines already in that section (in original order).
     let mut sections: Vec<(String, Vec<String>)> =
         SECTIONS.iter().map(|s| (s.to_string(), Vec::new())).collect();
@@ -99,7 +325,12 @@ pub fn merge_tasks(existing: Option<&str>, tasks: &[IngestTask]) -> (String, usi
         if norm.is_empty() || seen.contains(&norm) {
             continue;
         }
-        sections[target_idx].1.push(render_line(task));
+        let mut fields = TaskFields::from(task);
+        if let Some((note, date)) = provenance {
+            fields.source_note = Some(note.to_string());
+            fields.source_date = Some(date.to_string());
+        }
+        sections[target_idx].1.push(render_line(&fields));
         added += 1;
     }
 
@@ -119,8 +350,14 @@ pub fn merge_tasks(existing: Option<&str>, tasks: &[IngestTask]) -> (String, usi
 }
 
 /// Read `{vault_root}/{todo_rel_path}` (missing file = empty doc), merge `tasks`
-/// into it, and write the result back. Returns how many tasks were added.
-pub async fn append_tasks(vault_root: &Path, todo_rel_path: &str, tasks: &[IngestTask]) -> Result<usize> {
+/// into it (stamped with `provenance` — spec/05/06 « provenance de la tâche »),
+/// and write the result back. Returns how many tasks were added.
+pub async fn append_tasks(
+    vault_root: &Path,
+    todo_rel_path: &str,
+    tasks: &[IngestTask],
+    provenance: Option<(&str, &str)>,
+) -> Result<usize> {
     if tasks.is_empty() {
         return Ok(0);
     }
@@ -131,7 +368,7 @@ pub async fn append_tasks(vault_root: &Path, todo_rel_path: &str, tasks: &[Inges
     }
 
     let existing = tokio::fs::read_to_string(&path).await.ok();
-    let (new_content, added) = merge_tasks(existing.as_deref(), tasks);
+    let (new_content, added) = merge_tasks(existing.as_deref(), tasks, provenance);
 
     if added > 0 {
         tokio::fs::write(&path, new_content).await?;
@@ -142,159 +379,151 @@ pub async fn append_tasks(vault_root: &Path, todo_rel_path: &str, tasks: &[Inges
 
 // ─── Full parse + line mutations (spec/06 lifecycle) ────────────────────────────
 
-/// One parsed task line, with enough context to display and to mutate it.
+/// One parsed task, with enough context to display and to mutate it — line
+/// fields plus its trailing block (spec/06 2e passe « fiche tâche »).
 #[derive(Debug, Clone)]
 pub struct ParsedTask {
     pub section: String,
-    pub titre: String,
-    pub responsable: Option<String>,
-    pub echeance: Option<String>,
+    pub fields: TaskFields,
     pub checked: bool,
-}
-
-fn parse_line(line: &str) -> Option<(bool, IngestTask)> {
-    let trimmed = line.trim_start();
-    let (checked, rest) = if let Some(r) = trimmed.strip_prefix("- [ ]") {
-        (false, r)
-    } else if let Some(r) = trimmed.strip_prefix("- [x]").or_else(|| trimmed.strip_prefix("- [X]")) {
-        (true, r)
-    } else {
-        return None;
-    };
-
-    let mut titre = rest.trim().to_string();
-    let mut responsable = None;
-    let mut echeance = None;
-    // Fields are " — "-separated: `Titre — @Resp — 📅 date` (render_line's format).
-    let parts: Vec<&str> = rest.split(" — ").map(|p| p.trim()).collect();
-    if parts.len() > 1 {
-        titre = parts[0].to_string();
-        for part in &parts[1..] {
-            if let Some(r) = part.strip_prefix('@') {
-                responsable = Some(r.trim().to_string());
-            } else if let Some(d) = part.strip_prefix("📅") {
-                echeance = Some(d.trim().to_string());
-            }
-        }
-    }
-
-    if titre.is_empty() {
-        return None;
-    }
-    Some((checked, IngestTask { titre, responsable, echeance }))
+    pub block: TaskBlock,
 }
 
 /// Every task in the file, in order, tagged with the `## Section` it sits under.
+/// Each task's trailing indented lines (sub-bullets/description) are consumed
+/// into its `block`, not surfaced as separate entries.
 pub fn parse_all(content: &str) -> Vec<ParsedTask> {
+    let lines: Vec<&str> = content.lines().collect();
     let mut section = String::new();
     let mut out = Vec::new();
-    for line in content.lines() {
+    let mut i = 0usize;
+    while i < lines.len() {
+        let line = lines[i];
         if let Some(name) = line.trim().strip_prefix("## ") {
             section = name.trim().to_string();
+            i += 1;
             continue;
         }
-        if let Some((checked, task)) = parse_line(line) {
+        if let Some((checked, fields)) = parse_line(line) {
+            let mut end = i + 1;
+            while end < lines.len() && is_block_line(lines[end]) {
+                end += 1;
+            }
+            let block_lines: Vec<String> = lines[i + 1..end].iter().map(|s| s.to_string()).collect();
             out.push(ParsedTask {
                 section: section.clone(),
-                titre: task.titre,
-                responsable: task.responsable,
-                echeance: task.echeance,
+                fields,
                 checked,
+                block: parse_block_lines(&block_lines),
             });
+            i = end;
+        } else {
+            i += 1;
         }
     }
     out
 }
 
-/// Apply `f` to the single task line whose normalized title matches `id`.
-/// Returns the new content, or an error if no such task exists.
-fn map_task_line(content: &str, id: &str, mut f: impl FnMut(&str, bool, &IngestTask) -> Option<String>) -> Result<String> {
-    let mut lines: Vec<Option<String>> = content.lines().map(|l| Some(l.to_string())).collect();
-    let mut found = false;
-
-    for slot in lines.iter_mut() {
-        let line = slot.as_ref().unwrap().clone();
-        if let Some((checked, task)) = parse_line(&line) {
-            if normalize_title(&task.titre) == id {
-                *slot = f(&line, checked, &task);
-                found = true;
-                break;
+/// Locate the task whose normalized title matches `id` → its block's
+/// `[start, end)` line-index range (task line included, trailing indented
+/// lines included, next top-level line excluded).
+fn find_task_block(lines: &[&str], id: &str) -> Option<(usize, usize)> {
+    for (i, line) in lines.iter().enumerate() {
+        if let Some((_, fields)) = parse_line(line) {
+            if normalize_title(&fields.titre) == id {
+                let mut end = i + 1;
+                while end < lines.len() && is_block_line(lines[end]) {
+                    end += 1;
+                }
+                return Some((i, end));
             }
         }
     }
-
-    if !found {
-        return Err(anyhow!("Tâche introuvable dans Todo.md : {id}"));
-    }
-
-    let mut out = String::new();
-    for slot in lines.into_iter().flatten() {
-        out.push_str(&slot);
-        out.push('\n');
-    }
-    Ok(out)
+    None
 }
 
-/// Check / uncheck a task in place (spec/06: done stays where it is).
+/// Apply `f` to the task block (its checkbox line + trailing indented lines)
+/// whose normalized title matches `id`. `f` returns the replacement lines (or
+/// `None` to delete the block entirely). Returns an error if no such task exists.
+fn map_task_block(
+    content: &str,
+    id: &str,
+    mut f: impl FnMut(&[String], bool, &TaskFields, &TaskBlock) -> Option<Vec<String>>,
+) -> Result<String> {
+    let lines: Vec<String> = content.lines().map(str::to_string).collect();
+    let refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+    let Some((start, end)) = find_task_block(&refs, id) else {
+        return Err(anyhow!("Tâche introuvable dans Todo.md : {id}"));
+    };
+    let (checked, fields) = parse_line(&lines[start]).expect("find_task_block validated this line");
+    let block = parse_block_lines(&lines[start + 1..end]);
+    let block_lines = &lines[start..end];
+    let replacement = f(block_lines, checked, &fields, &block);
+
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    out.extend_from_slice(&lines[..start]);
+    if let Some(rep) = replacement {
+        out.extend(rep);
+    }
+    out.extend_from_slice(&lines[end..]);
+    Ok(out.join("\n").trim_end().to_string() + "\n")
+}
+
+/// Check / uncheck a task in place (spec/06: done stays where it is; its block is untouched).
 pub fn set_checked(content: &str, id: &str, checked: bool) -> Result<String> {
-    map_task_line(content, id, |_, _, task| {
-        let rendered = render_line(task);
-        Some(if checked {
-            rendered.replacen("- [ ]", "- [x]", 1)
-        } else {
-            rendered
-        })
+    map_task_block(content, id, |block, _, fields, _| {
+        let mut line0 = render_line(fields);
+        if checked {
+            line0 = line0.replacen("- [ ]", "- [x]", 1);
+        }
+        let mut out = vec![line0];
+        out.extend(block[1..].iter().cloned());
+        Some(out)
     })
 }
 
 /// Move a task to `## Archivé` (spec/06 "archiver" — nothing is ever deleted).
+/// The whole block (task line + sous-puces/description) moves together.
 pub fn archive_task(content: &str, id: &str) -> Result<String> {
-    let mut archived_line: Option<(bool, IngestTask)> = None;
-    let without = map_task_line(content, id, |_, checked, task| {
-        archived_line = Some((checked, task.clone()));
-        None // drop the line from its current section
+    let mut captured: Option<Vec<String>> = None;
+    let without = map_task_block(content, id, |block, _, _, _| {
+        captured = Some(block.to_vec());
+        None // drop the block from its current section
     })?;
-
-    let (checked, task) = archived_line.expect("map_task_line found the task");
-    let mut line = render_line(&task);
-    if checked {
-        line = line.replacen("- [ ]", "- [x]", 1);
-    }
+    let block = captured.expect("map_task_block found the task");
 
     // Re-parse sections and append to Archivé (created by merge_tasks if absent).
-    let (mut out, _) = merge_tasks(Some(&without), &[]);
+    let (mut out, _) = merge_tasks(Some(&without), &[], None);
     if let Some(pos) = out.find("## Archivé") {
         let insert_at = out[pos..].find('\n').map(|i| pos + i + 1).unwrap_or(out.len());
-        out.insert_str(insert_at, &format!("{}\n", line));
+        let inserted = block.iter().map(|l| format!("{}\n", l)).collect::<String>();
+        out.insert_str(insert_at, &inserted);
     }
     Ok(out)
 }
 
-/// Déplace une tâche vers `## section`, à `position` (index 0-based dans la
-/// section ; hors bornes / absent → fin de section). Conserve `@responsable`,
-/// `📅 échéance` et l'état coché (spec/06 — Kanban : colonne = section, ordre =
-/// ordre des lignes). La section cible est créée si absente (sections inconnues
-/// préservées par `merge_tasks`).
+/// Déplace une tâche vers `## section`, à `position` (index 0-based parmi les
+/// TÂCHES de la section ; hors bornes / absent → fin de section). Le bloc entier
+/// (ligne + sous-puces/description) se déplace ensemble ; `@responsable`,
+/// `📅 échéance` et tous les autres champs sont conservés tels quels (spec/06 —
+/// Kanban : colonne = section, ordre = ordre des lignes). La section cible est
+/// créée si absente (sections inconnues préservées par `merge_tasks`).
 pub fn move_task(content: &str, id: &str, section: &str, position: Option<usize>) -> Result<String> {
     let section = section.trim();
     if section.is_empty() {
         return Err(anyhow!("Section cible vide"));
     }
 
-    // 1. Retirer la ligne de sa section actuelle (en mémorisant son rendu exact).
-    let mut moved: Option<(bool, IngestTask)> = None;
-    let without = map_task_line(content, id, |_, checked, task| {
-        moved = Some((checked, task.clone()));
+    // 1. Retirer le bloc de sa section actuelle.
+    let mut captured: Option<Vec<String>> = None;
+    let without = map_task_block(content, id, |block, _, _, _| {
+        captured = Some(block.to_vec());
         None
     })?;
-    let (checked, task) = moved.expect("map_task_line found the task");
-    let mut line = render_line(&task);
-    if checked {
-        line = line.replacen("- [ ]", "- [x]", 1);
-    }
+    let block = captured.expect("map_task_block found the task");
 
     // 2. Normaliser les sections (squelette garanti), puis insérer dans la cible.
-    let (normalized, _) = merge_tasks(Some(&without), &[]);
+    let (normalized, _) = merge_tasks(Some(&without), &[], None);
     let heading = format!("## {}", section);
     let mut out: Vec<String> = Vec::new();
     let mut inserted = false;
@@ -310,15 +539,18 @@ pub fn move_task(content: &str, id: &str, section: &str, position: Option<usize>
                 while out.last().map(|s| s.trim().is_empty()).unwrap_or(false) {
                     out.pop();
                 }
-                out.push(line.clone());
+                out.extend(block.iter().cloned());
                 out.push(String::new());
                 inserted = true;
             }
             in_target = l.trim() == heading;
             task_index = 0;
-        } else if in_target && !inserted && parse_line(l).is_some() {
+            out.push(l.to_string());
+            continue;
+        }
+        if in_target && !inserted && is_task_checkbox_line(l) {
             if position.map(|p| task_index >= p).unwrap_or(false) {
-                out.push(line.clone());
+                out.extend(block.iter().cloned());
                 inserted = true;
             }
             task_index += 1;
@@ -326,27 +558,46 @@ pub fn move_task(content: &str, id: &str, section: &str, position: Option<usize>
         out.push(l.to_string());
     }
     if in_target && !inserted {
-        out.push(line.clone());
+        out.extend(block.iter().cloned());
         inserted = true;
     }
     if !inserted {
         // Section inconnue du fichier → on la crée en fin (avant rien).
         out.push(String::new());
         out.push(heading);
-        out.push(line);
+        out.extend(block.iter().cloned());
     }
 
     Ok(out.join("\n").trim_end().to_string() + "\n")
 }
 
-/// Rewrite a task's title / responsable / échéance (keeps its checked state + place).
-pub fn edit_task(content: &str, id: &str, new_task: &IngestTask) -> Result<String> {
-    map_task_line(content, id, |_, checked, _| {
-        let mut line = render_line(new_task);
+/// Rewrite a task's fields (title/responsable/échéance/projet/priorité/estimation)
+/// in place — keeps its checked state, its block (sous-puces/description)
+/// UNTOUCHED, and its provenance (source_note/source_date) PRESERVED regardless
+/// of what `patch` carries there (provenance is system-set, never user-editable
+/// through this path — spec/06).
+pub fn edit_task(content: &str, id: &str, patch: &TaskFields) -> Result<String> {
+    map_task_block(content, id, |block, checked, current, _| {
+        let mut new_fields = patch.clone();
+        new_fields.source_note = current.source_note.clone();
+        new_fields.source_date = current.source_date.clone();
+        let mut line0 = render_line(&new_fields);
         if checked {
-            line = line.replacen("- [ ]", "- [x]", 1);
+            line0 = line0.replacen("- [ ]", "- [x]", 1);
         }
-        Some(line)
+        let mut out = vec![line0];
+        out.extend(block[1..].iter().cloned());
+        Some(out)
+    })
+}
+
+/// Rewrite a task's trailing block (sous-puces + description, spec/06 2e passe
+/// « fiche tâche »). The task line itself (and all its fields) is untouched.
+pub fn update_task_block(content: &str, id: &str, block: &TaskBlock) -> Result<String> {
+    map_task_block(content, id, |current_block, _, _, _| {
+        let mut out = vec![current_block[0].clone()];
+        out.extend(render_block_lines(block));
+        Some(out)
     })
 }
 
@@ -364,7 +615,7 @@ mod tests {
 
     #[test]
     fn creates_skeleton_when_missing() {
-        let (out, added) = merge_tasks(None, &[task("Relire le contrat", Some("Jean"), Some("2026-07-10"))]);
+        let (out, added) = merge_tasks(None, &[task("Relire le contrat", Some("Jean"), Some("2026-07-10"))], None);
         assert_eq!(added, 1);
         assert!(out.contains("## Prioritaire\n"));
         assert!(out.contains("## À faire\n"));
@@ -373,9 +624,20 @@ mod tests {
     }
 
     #[test]
+    fn stamps_provenance_on_ingested_tasks() {
+        let (out, added) = merge_tasks(
+            None,
+            &[task("Envoyer le rapport", None, None)],
+            Some(("Réunion Flexiflit — migration GKE", "2026-07-01")),
+        );
+        assert_eq!(added, 1);
+        assert!(out.contains("- [ ] Envoyer le rapport — [[Réunion Flexiflit — migration GKE]] (2026-07-01)"));
+    }
+
+    #[test]
     fn dedups_across_sections_by_normalized_title() {
         let existing = "## Prioritaire\n- [ ] Relire   le contrat — @Jean\n\n## En cours\n\n## À faire\n\n## Archivé\n";
-        let (out, added) = merge_tasks(Some(existing), &[task("relire le contrat", None, None)]);
+        let (out, added) = merge_tasks(Some(existing), &[task("relire le contrat", None, None)], None);
         assert_eq!(added, 0);
         assert_eq!(out.matches("relire le contrat").count() + out.matches("Relire   le contrat").count(), 1);
     }
@@ -386,11 +648,48 @@ mod tests {
         let tasks = parse_all(content);
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0].section, "Prioritaire");
-        assert_eq!(tasks[0].titre, "Relire le contrat");
-        assert_eq!(tasks[0].responsable.as_deref(), Some("Jean"));
-        assert_eq!(tasks[0].echeance.as_deref(), Some("2026-07-10"));
+        assert_eq!(tasks[0].fields.titre, "Relire le contrat");
+        assert_eq!(tasks[0].fields.responsable.as_deref(), Some("Jean"));
+        assert_eq!(tasks[0].fields.echeance.as_deref(), Some("2026-07-10"));
         assert!(!tasks[0].checked);
         assert!(tasks[1].checked);
+    }
+
+    #[test]
+    fn parses_inline_project_priority_estimate_and_provenance() {
+        let content = "## À faire\n- [ ] Préparer la démo — @Marie — 📅 2026-08-01 — +Atlas — !haute — ⏱2h — [[Point projet Atlas]] (2026-07-20)\n";
+        let tasks = parse_all(content);
+        assert_eq!(tasks.len(), 1);
+        let f = &tasks[0].fields;
+        assert_eq!(f.titre, "Préparer la démo");
+        assert_eq!(f.responsable.as_deref(), Some("Marie"));
+        assert_eq!(f.echeance.as_deref(), Some("2026-08-01"));
+        assert_eq!(f.project.as_deref(), Some("Atlas"));
+        assert_eq!(f.priority.as_deref(), Some("haute"));
+        assert_eq!(f.estimate.as_deref(), Some("2h"));
+        assert_eq!(f.source_note.as_deref(), Some("Point projet Atlas"));
+        assert_eq!(f.source_date.as_deref(), Some("2026-07-20"));
+    }
+
+    #[test]
+    fn provenance_title_containing_em_dash_is_not_split() {
+        // The compte-rendu title (spec/05/07 nommage par sujet) can itself
+        // contain " — " — must not confuse the field splitter.
+        let content = "## À faire\n- [ ] Envoyer le rapport — [[Réunion Flexiflit — migration GKE]] (2026-07-01)\n";
+        let tasks = parse_all(content);
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].fields.titre, "Envoyer le rapport");
+        assert_eq!(tasks[0].fields.source_note.as_deref(), Some("Réunion Flexiflit — migration GKE"));
+        assert_eq!(tasks[0].fields.source_date.as_deref(), Some("2026-07-01"));
+    }
+
+    #[test]
+    fn parses_sub_bullets_and_description_block() {
+        let content = "## À faire\n- [ ] Préparer la démo\n  > Contexte : client Acme, version 2.\n  > Deuxième ligne.\n  - Vérifier les slides\n  - Tester le micro\n\n## Archivé\n";
+        let tasks = parse_all(content);
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].block.description, vec!["Contexte : client Acme, version 2.", "Deuxième ligne."]);
+        assert_eq!(tasks[0].block.notes, vec!["Vérifier les slides", "Tester le micro"]);
     }
 
     #[test]
@@ -403,36 +702,50 @@ mod tests {
     }
 
     #[test]
-    fn archives_to_archive_section() {
-        let content = "## Prioritaire\n- [ ] Relire le contrat\n\n## Archivé\n- [ ] Déjà là\n";
+    fn archives_to_archive_section_with_block() {
+        let content = "## Prioritaire\n- [ ] Relire le contrat\n  - une sous-puce\n\n## Archivé\n- [ ] Déjà là\n";
         let out = archive_task(content, &normalize_title("Relire le contrat")).unwrap();
         let archive_pos = out.find("## Archivé").unwrap();
         let task_pos = out.find("- [ ] Relire le contrat").unwrap();
         assert!(task_pos > archive_pos, "task should now live under Archivé:\n{out}");
+        assert!(out.contains("  - une sous-puce"), "sub-bullet should follow the task:\n{out}");
         assert!(out.contains("- [ ] Déjà là"));
     }
 
     #[test]
-    fn edits_title_and_fields() {
-        let content = "## À faire\n- [x] Vieille formulation — @Jean\n";
+    fn edits_fields_and_preserves_provenance_and_block() {
+        let content = "## À faire\n- [x] Vieille formulation — @Jean — [[Note source]] (2026-01-01)\n  - garder cette sous-puce\n";
         let out = edit_task(
             content,
             &normalize_title("Vieille formulation"),
-            &task("Nouvelle formulation", None, Some("2026-08-01")),
+            &TaskFields { titre: "Nouvelle formulation".into(), echeance: Some("2026-08-01".into()), ..Default::default() },
         )
         .unwrap();
-        assert!(out.contains("- [x] Nouvelle formulation — 📅 2026-08-01"));
+        assert!(out.contains("- [x] Nouvelle formulation — 📅 2026-08-01 — [[Note source]] (2026-01-01)"));
         assert!(!out.contains("Vieille formulation"));
+        assert!(out.contains("  - garder cette sous-puce"), "block should survive an edit:\n{out}");
     }
 
     #[test]
-    fn moves_between_sections_keeping_fields() {
-        let content = "## Prioritaire\n\n## En cours\n\n## À faire\n- [x] Relire le contrat — @Jean — 📅 2026-07-10\n- [ ] Autre tâche\n\n## Archivé\n";
+    fn updates_block_without_touching_line() {
+        let content = "## À faire\n- [ ] Une tâche — @Jean\n  - ancienne sous-puce\n";
+        let new_block = TaskBlock { description: vec!["Une description.".into()], notes: vec!["nouvelle sous-puce".into()] };
+        let out = update_task_block(content, &normalize_title("Une tâche"), &new_block).unwrap();
+        assert!(out.contains("- [ ] Une tâche — @Jean"));
+        assert!(out.contains("  > Une description."));
+        assert!(out.contains("  - nouvelle sous-puce"));
+        assert!(!out.contains("ancienne sous-puce"));
+    }
+
+    #[test]
+    fn moves_between_sections_keeping_fields_and_block() {
+        let content = "## Prioritaire\n\n## En cours\n\n## À faire\n- [x] Relire le contrat — @Jean — 📅 2026-07-10\n  - une note\n- [ ] Autre tâche\n\n## Archivé\n";
         let out = move_task(content, &normalize_title("Relire le contrat"), "En cours", None).unwrap();
         let en_cours = out.find("## En cours").unwrap();
         let a_faire = out.find("## À faire").unwrap();
         let pos = out.find("- [x] Relire le contrat — @Jean — 📅 2026-07-10").unwrap();
         assert!(pos > en_cours && pos < a_faire, "task should sit under En cours:\n{out}");
+        assert!(out.contains("  - une note"));
         assert!(out.contains("- [ ] Autre tâche"));
     }
 
@@ -464,12 +777,23 @@ mod tests {
     #[test]
     fn preserves_existing_lines_and_unknown_sections() {
         let existing = "## Prioritaire\n- [x] Déjà fait\n\n## En cours\n\n## À faire\n- [ ] Ancienne tâche\n\n## Archivé\n\n## Notes perso\n- pense-bête\n";
-        let (out, added) = merge_tasks(Some(existing), &[task("Nouvelle tâche", None, None)]);
+        let (out, added) = merge_tasks(Some(existing), &[task("Nouvelle tâche", None, None)], None);
         assert_eq!(added, 1);
         assert!(out.contains("- [x] Déjà fait"));
         assert!(out.contains("- [ ] Ancienne tâche"));
         assert!(out.contains("- [ ] Nouvelle tâche"));
         assert!(out.contains("## Notes perso"));
         assert!(out.contains("- pense-bête"));
+    }
+
+    #[test]
+    fn indented_dash_line_is_not_mistaken_for_a_new_task() {
+        // A "- pense-bête" style line under an unrelated section header must
+        // never be swallowed into a preceding task's block just because it
+        // starts with "- ": it's not indented, so it stays its own top-level
+        // (non-task) line.
+        let content = "## Notes perso\n- pense-bête\n";
+        let tasks = parse_all(content);
+        assert!(tasks.is_empty());
     }
 }

@@ -12,4 +12,32 @@ echeance: string | null,
 /**
  * Which `## Section` the task sits under (Prioritaire / En cours / À faire / Archivé).
  */
-section: string, checked: boolean, };
+section: string, checked: boolean, 
+/**
+ * `+Projet` — un seul projet par tâche (spec/06 2e passe).
+ */
+project: string | null, 
+/**
+ * `!haute` / `!moyenne` / `!basse`.
+ */
+priority: string | null, 
+/**
+ * `⏱2h` — texte libre.
+ */
+estimate: string | null, 
+/**
+ * Provenance (spec/05/06) : titre du compte-rendu source posé par l'ingestion.
+ */
+source_note: string | null, 
+/**
+ * Provenance : date de la note source.
+ */
+source_date: string | null, 
+/**
+ * Sous-puces libres (fiche tâche, spec/06 2e passe).
+ */
+notes: Array<string>, 
+/**
+ * Description longue — un paragraphe par ligne.
+ */
+description: Array<string>, };

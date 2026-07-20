@@ -1,21 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { MdCheckBox, MdFolderOff, MdAdd, MdExpandMore, MdExpandLess } from "react-icons/md";
+import {
+  MdCheckBox, MdFolderOff, MdAdd, MdExpandMore, MdExpandLess,
+  MdViewColumn, MdViewList, MdChevronRight,
+} from "react-icons/md";
 import ShareButton from "../components/ShareButton";
+import TaskSheet from "../components/tasks/TaskSheet";
 import { useNotesStore } from "../store/notesStore";
 import { renderInlineMd, stripInlineMd } from "../utils/inlineMd";
 import type { Todo } from "../bindings/Todo";
 
-// Page Tâches — vue KANBAN sur `Todo.md` (spec/06, feedback tests + demande
-// users). Le fichier RESTE la source de vérité (compatible Obsidian) : les
-// colonnes sont ses sections `##`, le glisser-déposer réécrit le fichier via
-// `move_todo` (responsable / échéance / état coché conservés).
+// Page Tâches — vue KANBAN et vue MARKDOWN (document) sur `Todo.md` (spec/06,
+// feedback tests + demande users, 2e passe). Le fichier RESTE la source de
+// vérité (compatible Obsidian) : les colonnes/sections sont ses `##`, le
+// glisser-déposer et les cases à cocher réécrivent le fichier via les commandes
+// (`move_todo`/`complete_todo`) ; les deux vues affichent le même `Todo.md`.
+// Cliquer une carte (Kanban) ou une ligne (Markdown) ouvre la **fiche tâche**
+// (sous-puces, description, +Projet/priorité/estimation, provenance).
 
 const COLUMNS = ["Prioritaire", "En cours", "À faire", "Archivé"] as const;
 
-/** Comparaison insensible à la casse et aux accents (« reunion » matche « Réunion »). */
-const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+/** Comparaison insensible à la casse et aux accents (« reunion » matche « Réunion »).
+ *  Le range ci-dessous couvre le bloc Unicode "Combining Diacritical Marks"
+ *  (U+0300–U+036F) — les marques d'accent isolées par `normalize("NFD")`. */
+const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 const CHIP_COLORS = [
   { bg: "#EDE9FE", text: "#6D28D9" },
@@ -53,6 +62,12 @@ const DUE_STYLE: Record<NonNullable<ReturnType<typeof dueKind>>, { bg: string; t
   later: { bg: "var(--bg)", text: "var(--text-muted)", label: "" },
 };
 
+const PRIORITY_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+  haute: { bg: "#FEE2E2", text: "#B91C1C", label: "Haute" },
+  moyenne: { bg: "#FEF3C7", text: "#B45309", label: "Moyenne" },
+  basse: { bg: "var(--bg)", text: "var(--text-muted)", label: "Basse" },
+};
+
 interface DragInfo {
   id: string;
 }
@@ -63,17 +78,23 @@ export default function Tasks() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [todoRel, setTodoRel] = useState<string>("");
+  const [view, setView] = useState<"kanban" | "markdown">("kanban");
   const [archiveOpen, setArchiveOpen] = useState(false);
-  // Filtres (spec/06) : recherche texte + responsable + échéance.
+  // Filtres (spec/06) : recherche texte + responsable + échéance + projet.
   const [textFilter, setTextFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState<string>("");
   const [dueFilter, setDueFilter] = useState<"" | "late" | "week">("");
+  const [projectFilter, setProjectFilter] = useState<string>("");
   // Drag en cours + cible de dépôt (colonne, index d'insertion).
   const [drag, setDrag] = useState<DragInfo | null>(null);
   const [dropCol, setDropCol] = useState<string | null>(null);
   // Ajout rapide par colonne.
   const [adding, setAdding] = useState<string | null>(null);
   const [addText, setAddText] = useState("");
+  // Sections repliées en vue Markdown (Archivé replié par défaut).
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set(["Archivé"]));
+  // Fiche tâche ouverte (Kanban ET Markdown, spec/06 2e passe).
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -105,6 +126,14 @@ export default function Tasks() {
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [todos]);
 
+  const projects = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of todos) if (t.project) set.add(t.project);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [todos]);
+
+  const openTask = useMemo(() => todos.find((t) => t.id === openTaskId) ?? null, [todos, openTaskId]);
+
   const visible = useCallback((t: Todo) => {
     if (textFilter.trim()) {
       const q = norm(textFilter.trim());
@@ -113,13 +142,14 @@ export default function Tasks() {
       if (!norm(stripInlineMd(t.title)).includes(q) && !(t.responsable && norm(t.responsable).includes(q))) return false;
     }
     if (ownerFilter && t.responsable !== ownerFilter) return false;
+    if (projectFilter && t.project !== projectFilter) return false;
     if (dueFilter) {
       const k = dueKind(t.echeance);
       if (dueFilter === "late" && k !== "late") return false;
       if (dueFilter === "week" && k !== "today" && k !== "soon" && k !== "late") return false;
     }
     return true;
-  }, [textFilter, ownerFilter, dueFilter]);
+  }, [textFilter, ownerFilter, dueFilter, projectFilter]);
 
   const byColumn = useMemo(() => {
     const map = new Map<string, Todo[]>(COLUMNS.map((c) => [c, []]));
@@ -169,6 +199,14 @@ export default function Tasks() {
     load();
   };
 
+  const toggleSection = (section: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) next.delete(section); else next.add(section);
+      return next;
+    });
+  };
+
   const showBoard = loaded && vaultPath && !error;
 
   return (
@@ -182,9 +220,29 @@ export default function Tasks() {
         <MdCheckBox style={{ color: "var(--accent)", fontSize: 18 }} />
         <h1 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--text-primary)" }}>Tâches</h1>
 
+        {/* Bascule Kanban / Markdown (spec/06 2e passe) — même Todo.md. */}
+        {showBoard && (
+          <div style={{ display: "flex", gap: 4, marginLeft: 12 }}>
+            <button
+              onClick={() => setView("kanban")}
+              title="Vue Kanban"
+              style={viewToggleBtn(view === "kanban")}
+            >
+              <MdViewColumn size={15} /> Kanban
+            </button>
+            <button
+              onClick={() => setView("markdown")}
+              title="Vue Markdown (document)"
+              style={viewToggleBtn(view === "markdown")}
+            >
+              <MdViewList size={15} /> Markdown
+            </button>
+          </div>
+        )}
+
         {/* Filtres (spec/06) */}
         {showBoard && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 16, flexWrap: "wrap" }}>
             <input
               value={textFilter}
               onChange={(e) => setTextFilter(e.target.value)}
@@ -206,6 +264,17 @@ export default function Tasks() {
               <option value="">Tous les responsables</option>
               {owners.map((o) => <option key={o} value={o}>@{o}</option>)}
             </select>
+            {projects.length > 0 && (
+              <select
+                className="alfred-select"
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value)}
+                title="Filtrer par projet"
+              >
+                <option value="">Tous les projets</option>
+                {projects.map((p) => <option key={p} value={p}>+{p}</option>)}
+              </select>
+            )}
             <select
               className="alfred-select"
               value={dueFilter}
@@ -231,8 +300,8 @@ export default function Tasks() {
         </div>
       </div>
 
-      {/* Board */}
-      <div style={{ flex: 1, overflow: "auto", padding: "18px 24px" }}>
+      {/* Content */}
+      <div style={{ flex: 1, overflow: "auto", padding: view === "kanban" ? "18px 24px" : "18px 24px 40px" }}>
         {!loaded ? null : !vaultPath || error ? (
           <div style={{
             height: "100%", display: "flex", flexDirection: "column",
@@ -243,7 +312,7 @@ export default function Tasks() {
               {!vaultPath ? "Aucun dossier Notes configuré" : `Impossible de lire ${todoRel}`}
             </div>
           </div>
-        ) : (
+        ) : view === "kanban" ? (
           <div style={{ display: "flex", gap: 14, alignItems: "flex-start", minHeight: "100%" }}>
             {COLUMNS.map((col) => {
               const tasks = (byColumn.get(col) ?? []).filter(visible);
@@ -325,6 +394,7 @@ export default function Tasks() {
                       key={t.id}
                       task={t}
                       onToggle={() => toggleChecked(t)}
+                      onOpen={() => setOpenTaskId(t.id)}
                       onDragStart={() => setDrag({ id: t.id })}
                       onDragEnd={() => { setDrag(null); setDropCol(null); }}
                       onDropBefore={() => {
@@ -348,17 +418,95 @@ export default function Tasks() {
               );
             })}
           </div>
+        ) : (
+          // Vue Markdown (document) — sections repliables, même Todo.md (spec/06 2e passe).
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 720, margin: "0 auto" }}>
+            {COLUMNS.map((col) => {
+              const tasks = (byColumn.get(col) ?? []).filter(visible);
+              const isCollapsed = collapsedSections.has(col);
+              return (
+                <div key={col} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
+                  <button
+                    onClick={() => toggleSection(col)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6, width: "100%",
+                      background: "none", border: "none", cursor: "pointer",
+                      padding: "8px 4px", fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)",
+                    }}
+                  >
+                    <MdChevronRight size={16} style={{ transform: isCollapsed ? "none" : "rotate(90deg)", transition: "transform 0.12s", color: "var(--text-muted)" }} />
+                    {col}
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>({tasks.length})</span>
+                  </button>
+                  {!isCollapsed && (
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      {tasks.map((t) => (
+                        <div
+                          key={t.id}
+                          onClick={() => setOpenTaskId(t.id)}
+                          style={{
+                            display: "flex", alignItems: "flex-start", gap: 8,
+                            padding: "6px 8px 6px 26px", cursor: "pointer", borderRadius: 6,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--active-bg)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={t.checked}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={() => toggleChecked(t)}
+                            style={{ accentColor: "var(--accent)", marginTop: 3, cursor: "pointer" }}
+                          />
+                          <span style={{ fontSize: 13.5, lineHeight: 1.5, color: "var(--text-primary)", textDecoration: t.checked ? "line-through" : "none" }}>
+                            {renderInlineMd(t.title)}
+                            {t.responsable && <span style={{ color: "var(--text-muted)", fontSize: 12 }}> — @{t.responsable}</span>}
+                            {t.echeance && <span style={{ color: "var(--text-muted)", fontSize: 12 }}> — 📅 {t.echeance}</span>}
+                            {t.project && <span style={{ color: "var(--accent)", fontSize: 12 }}> — +{t.project}</span>}
+                          </span>
+                        </div>
+                      ))}
+                      {tasks.length === 0 && (
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "4px 26px" }}>Aucune tâche</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
+
+      {openTask && (
+        <TaskSheet
+          todo={openTask}
+          owners={owners}
+          projects={projects}
+          onClose={() => setOpenTaskId(null)}
+          onSaved={(updated) => setTodos((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))}
+        />
+      )}
     </div>
   );
 }
 
+function viewToggleBtn(active: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex", alignItems: "center", gap: 5,
+    background: active ? "var(--active-bg)" : "transparent",
+    color: active ? "var(--accent)" : "var(--text-secondary)",
+    border: "1px solid var(--border)", borderRadius: 6,
+    padding: "5px 10px", cursor: "pointer", fontSize: 12.5, fontWeight: active ? 600 : 400,
+  };
+}
+
 function TaskCard({
-  task, onToggle, onDragStart, onDragEnd, onDropBefore,
+  task, onToggle, onOpen, onDragStart, onDragEnd, onDropBefore,
 }: {
   task: Todo;
   onToggle: () => void;
+  onOpen: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
   /** Déposer une autre carte SUR celle-ci = insérer avant (réordonnancement). */
@@ -366,9 +514,11 @@ function TaskCard({
 }) {
   const due = dueKind(task.echeance);
   const owner = task.responsable;
+  const hasBlock = task.notes.length > 0 || task.description.length > 0;
   return (
     <div
       draggable
+      onClick={onOpen}
       onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart(); }}
       onDragEnd={onDragEnd}
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -395,8 +545,24 @@ function TaskCard({
           {renderInlineMd(task.title)}
         </span>
       </div>
-      {(owner || due) && (
+      {(owner || due || task.project || task.priority || hasBlock) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingLeft: 24 }}>
+          {task.priority && PRIORITY_STYLE[task.priority] && (
+            <span style={{
+              background: PRIORITY_STYLE[task.priority].bg, color: PRIORITY_STYLE[task.priority].text,
+              borderRadius: 20, padding: "1px 8px", fontSize: 11.5, fontWeight: 600,
+            }}>
+              {PRIORITY_STYLE[task.priority].label}
+            </span>
+          )}
+          {task.project && (
+            <span style={{
+              background: "var(--active-bg)", color: "var(--accent)",
+              borderRadius: 20, padding: "1px 8px", fontSize: 11.5, fontWeight: 500,
+            }}>
+              +{task.project}
+            </span>
+          )}
           {owner && (() => {
             const { bg, text } = ownerColor(owner);
             return (
@@ -418,6 +584,11 @@ function TaskCard({
               borderRadius: 20, padding: "1px 8px", fontSize: 11.5, fontWeight: 500,
             }}>
               📅 {task.echeance}{DUE_STYLE[due].label ? ` · ${DUE_STYLE[due].label}` : ""}
+            </span>
+          )}
+          {hasBlock && (
+            <span title="Cette tâche a des détails (sous-tâches / description)" style={{ color: "var(--text-muted)", fontSize: 12 }}>
+              ≡
             </span>
           )}
         </div>

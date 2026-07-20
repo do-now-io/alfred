@@ -321,6 +321,7 @@ async fn run_ingestion_core(
         let t = output.titre.trim();
         if t.is_empty() { note_title.to_string() } else { t.to_string() }
     };
+    let report_date = chrono::Local::now().format("%Y-%m-%d").to_string();
 
     if let Some(vault_root) = vault_root {
         // 1. Compte-rendu → alfred-intelligence/{titre}.md — only when requested.
@@ -361,7 +362,14 @@ async fn run_ingestion_core(
                     echeance: t.echeance.clone(),
                 })
                 .collect();
-            match crate::notes::todo_md::append_tasks(vault_root, &todo_rel_path, &tasks).await {
+            // Provenance (spec/05/06 « fiche tâche ») : wikilink + date sur la
+            // ligne, pour retrouver d'où vient une tâche. Pointe vers le
+            // compte-rendu (nommé par sujet) quand il est réellement écrit
+            // (summary=true) ; sinon vers la note brute de transcription
+            // (toujours écrite) — jamais un lien mort.
+            let provenance_title = if summary { report_title.as_str() } else { note_title };
+            let provenance = Some((provenance_title, report_date.as_str()));
+            match crate::notes::todo_md::append_tasks(vault_root, &todo_rel_path, &tasks, provenance).await {
                 Ok(n) => {
                     eprintln!("[ingestion] {} task(s) added to {}", n, todo_rel_path);
                     if n > 0 {

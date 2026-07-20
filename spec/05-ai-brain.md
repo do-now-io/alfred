@@ -96,11 +96,12 @@ même note sert de source au **glossaire Whisper** (spec/17).
    réunion peut relever de **plusieurs projets** (feedback tests) ; l'IA renvoie 0..n
    projets « clairement identifiables ».
 2. Tâches → `alfred-intelligence/Todo.md` (section `## À faire`, dédup par titre
-   normalisé). **Provenance (📝 à faire, spec/06)** : chaque tâche générée reçoit un
+   normalisé). **Provenance (✅ fait, spec/06)** : chaque tâche générée reçoit un
    **wikilink de provenance** sur sa ligne — `[[compte-rendu source]]` (nommé par
    sujet) si le compte-rendu est produit, sinon `[[note brute de transcription]]` —
-   + la date. But : cliquable, lien dans le graphe (spec/07c), et la **fiche tâche**
-   (spec/06) sait **d'où / quand** vient la tâche.
+   + la date. Cliquable, lien automatique dans le graphe (spec/07c — `Todo.md` est un
+   fichier du vault comme un autre, son wikilink est résolu par le mécanisme
+   standard), et la **fiche tâche** (spec/06) sait **d'où / quand** vient la tâche.
 
 **Événement** : `ingestion_completed { ai_mode }` (metrics, spec/15) + `notes-updated`
 (+ `todos-updated` pour la partie SQLite, transitoire).

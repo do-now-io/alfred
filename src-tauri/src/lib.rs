@@ -718,6 +718,64 @@ async fn update_todo(
         .map_err(|e| e.to_string())
 }
 
+/// Édition complète depuis la fiche tâche (spec/06 2e passe) : title/
+/// responsable/echeance/project/priority/estimate en un seul appel.
+#[tauri::command]
+async fn update_todo_fields(
+    id: String,
+    input: todos::TaskFieldsInput,
+    state: tauri::State<'_, AppState>,
+) -> Result<todos::Todo, String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    todos::update_todo_fields(&id, &input, &state.db, vault_root.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Réécrit le bloc d'une tâche — sous-puces + description (fiche tâche, spec/06 2e passe).
+#[tauri::command]
+async fn update_todo_block(
+    id: String,
+    notes: Vec<String>,
+    description: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<todos::Todo, String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    todos::update_todo_block(&id, notes, description, &state.db, vault_root.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// « Rassembler le contexte pour cette tâche » (spec/06 2e passe, action IA à la
+/// demande — jamais automatique) : réutilise la boucle agentique du chat
+/// (spec/07b) avec une question synthétisée à partir de la tâche, sa provenance
+/// et son projet. Ne persiste rien dans l'historique de conversation.
+#[tauri::command]
+async fn gather_task_context(
+    title: String,
+    project: Option<String>,
+    source_note: Option<String>,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<ai::chat::ChatResponse, String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    let mut question = format!(
+        "Rassemble le contexte utile pour réaliser cette tâche : « {} ». ",
+        title
+    );
+    if let Some(ref note) = source_note {
+        question.push_str(&format!("Elle vient du compte-rendu « {} » — commence par le lire. ", note));
+    }
+    if let Some(ref p) = project {
+        question.push_str(&format!("Elle concerne le projet « {} » — retrouve aussi les autres notes de ce projet. ", p));
+    }
+    question.push_str("Résume en quelques points ce qu'il faut savoir pour s'y mettre.");
+
+    ai::chat::answer_question(question, vec![], vault_root, &state.db, &app)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // ─── Notes (vault) commands ───────────────────────────────────────────────────
 
 fn get_vault_root(state: &tauri::State<'_, AppState>) -> Result<std::path::PathBuf, String> {
@@ -1447,6 +1505,9 @@ pub fn run() {
             complete_todo,
             dismiss_todo,
             update_todo,
+            update_todo_fields,
+            update_todo_block,
+            gather_task_context,
             move_todo,
             // Notes (vault)
             get_vault_tree,

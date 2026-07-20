@@ -90,7 +90,7 @@ pub async fn seed_starter_content(db: &SqlitePool, vault_root: Option<&Path>) ->
         }
         let existing = tokio::fs::read_to_string(&path).await.ok();
         // Squelette de sections garanti par merge_tasks (aucune tâche ajoutée ici).
-        let (mut content, _) = crate::notes::todo_md::merge_tasks(existing.as_deref(), &[]);
+        let (mut content, _) = crate::notes::todo_md::merge_tasks(existing.as_deref(), &[], None);
         for (section, titre, responsable, checked) in SEED_TASKS {
             let norm = crate::notes::todo_md::normalize_title(titre);
             if content

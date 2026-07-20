@@ -10,7 +10,7 @@ use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
-use crate::notes::todo_md::{self, IngestTask};
+use crate::notes::todo_md::{self, IngestTask, TaskBlock, TaskFields};
 
 #[derive(Debug, Serialize, Deserialize, Clone, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
@@ -24,6 +24,20 @@ pub struct Todo {
     /// Which `## Section` the task sits under (Prioritaire / En cours / À faire / Archivé).
     pub section: String,
     pub checked: bool,
+    /// `+Projet` — un seul projet par tâche (spec/06 2e passe).
+    pub project: Option<String>,
+    /// `!haute` / `!moyenne` / `!basse`.
+    pub priority: Option<String>,
+    /// `⏱2h` — texte libre.
+    pub estimate: Option<String>,
+    /// Provenance (spec/05/06) : titre du compte-rendu source posé par l'ingestion.
+    pub source_note: Option<String>,
+    /// Provenance : date de la note source.
+    pub source_date: Option<String>,
+    /// Sous-puces libres (fiche tâche, spec/06 2e passe).
+    pub notes: Vec<String>,
+    /// Description longue — un paragraphe par ligne.
+    pub description: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS)]
@@ -35,6 +49,22 @@ pub struct CreateTodoInput {
     /// Section cible (Kanban « + » par colonne, spec/06). Défaut : « À faire ».
     #[serde(default)]
     pub section: Option<String>,
+}
+
+/// Édition complète des champs de ligne depuis la fiche tâche (spec/06 2e passe)
+/// — `title`/`responsable`/`echeance` + les nouveaux champs inline. La
+/// provenance (`source_note`/`source_date`) n'est PAS éditable ici : elle est
+/// toujours préservée automatiquement (posée par l'ingestion, jamais par
+/// l'utilisateur).
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct TaskFieldsInput {
+    pub title: String,
+    pub responsable: Option<String>,
+    pub echeance: Option<String>,
+    pub project: Option<String>,
+    pub priority: Option<String>,
+    pub estimate: Option<String>,
 }
 
 /// Vault-relative path of the shared to-do list (spec/06). Configurable via
@@ -73,12 +103,19 @@ async fn write_file(path: &Path, content: &str) -> Result<()> {
 
 fn to_todo(t: todo_md::ParsedTask) -> Todo {
     Todo {
-        id: todo_md::normalize_title(&t.titre),
-        title: t.titre,
-        responsable: t.responsable,
-        echeance: t.echeance,
+        id: todo_md::normalize_title(&t.fields.titre),
+        title: t.fields.titre,
+        responsable: t.fields.responsable,
+        echeance: t.fields.echeance,
         section: t.section,
         checked: t.checked,
+        project: t.fields.project,
+        priority: t.fields.priority,
+        estimate: t.fields.estimate,
+        source_note: t.fields.source_note,
+        source_date: t.fields.source_date,
+        notes: t.block.notes,
+        description: t.block.description,
     }
 }
 
@@ -109,7 +146,7 @@ pub async fn create_todo(input: &CreateTodoInput, db: &SqlitePool, vault_root: O
         responsable: input.responsable.clone().filter(|s| !s.trim().is_empty()),
         echeance: input.echeance.clone().filter(|s| !s.trim().is_empty()),
     };
-    todo_md::append_tasks(root, &rel, std::slice::from_ref(&task)).await?;
+    todo_md::append_tasks(root, &rel, std::slice::from_ref(&task), None).await?;
 
     // Section cible ≠ « À faire » (ajout rapide Kanban) → déplace la ligne.
     let mut section = "À faire".to_string();
@@ -125,6 +162,13 @@ pub async fn create_todo(input: &CreateTodoInput, db: &SqlitePool, vault_root: O
         echeance: task.echeance,
         section,
         checked: false,
+        project: None,
+        priority: None,
+        estimate: None,
+        source_note: None,
+        source_date: None,
+        notes: vec![],
+        description: vec![],
     })
 }
 
@@ -139,7 +183,7 @@ pub async fn get_all_todos(db: &SqlitePool, vault_root: Option<&Path>) -> Result
 }
 
 /// Déplace une tâche vers `section` à `position` (Kanban, spec/06) — conserve
-/// responsable / échéance / état coché.
+/// tous les champs de ligne + le bloc (sous-puces/description).
 pub async fn move_todo(
     id: &str,
     section: &str,
@@ -169,7 +213,10 @@ pub async fn archive_todo(id: &str, db: &SqlitePool, vault_root: Option<&Path>) 
     write_file(&path, &new_content).await
 }
 
-/// Rewrite a task's title / responsable / échéance in place.
+/// Rewrite a task's title / responsable / échéance in place — `project`/
+/// `priority`/`estimate` are read from disk and PRESERVED (this entry point
+/// only ever carried the 3 legacy fields; see `update_todo_fields` for the
+/// fiche tâche's full edit).
 pub async fn update_todo(id: &str, input: &CreateTodoInput, db: &SqlitePool, vault_root: Option<&Path>) -> Result<Todo> {
     let title = input.title.trim();
     if title.is_empty() {
@@ -178,18 +225,81 @@ pub async fn update_todo(id: &str, input: &CreateTodoInput, db: &SqlitePool, vau
 
     let path = resolve_path(db, vault_root).await?;
     let content = read_file(&path).await.ok_or_else(|| anyhow!("Todo.md introuvable"))?;
-    let task = IngestTask {
+    let current = todo_md::parse_all(&content)
+        .into_iter()
+        .find(|t| todo_md::normalize_title(&t.fields.titre) == id)
+        .ok_or_else(|| anyhow!("Tâche introuvable dans Todo.md : {id}"))?;
+
+    let patch = TaskFields {
         titre: title.to_string(),
         responsable: input.responsable.clone().filter(|s| !s.trim().is_empty()),
         echeance: input.echeance.clone().filter(|s| !s.trim().is_empty()),
+        project: current.fields.project,
+        priority: current.fields.priority,
+        estimate: current.fields.estimate,
+        source_note: None, // preserved automatically by edit_task regardless
+        source_date: None,
     };
-    let new_content = todo_md::edit_task(&content, id, &task)?;
+    let new_content = todo_md::edit_task(&content, id, &patch)?;
     write_file(&path, &new_content).await?;
 
     // Re-read to return the task's actual state (section + checked preserved).
     let updated = todo_md::parse_all(&new_content)
         .into_iter()
-        .find(|t| todo_md::normalize_title(&t.titre) == todo_md::normalize_title(title))
+        .find(|t| todo_md::normalize_title(&t.fields.titre) == todo_md::normalize_title(title))
+        .ok_or_else(|| anyhow!("Tâche modifiée mais introuvable à la relecture"))?;
+    Ok(to_todo(updated))
+}
+
+/// Édition complète depuis la fiche tâche (spec/06 2e passe) : title/
+/// responsable/echeance/project/priority/estimate en un seul appel — la
+/// provenance est préservée automatiquement par `edit_task`.
+pub async fn update_todo_fields(id: &str, input: &TaskFieldsInput, db: &SqlitePool, vault_root: Option<&Path>) -> Result<Todo> {
+    let title = input.title.trim();
+    if title.is_empty() {
+        return Err(anyhow!("Le titre de la tâche est vide"));
+    }
+
+    let path = resolve_path(db, vault_root).await?;
+    let content = read_file(&path).await.ok_or_else(|| anyhow!("Todo.md introuvable"))?;
+    let patch = TaskFields {
+        titre: title.to_string(),
+        responsable: input.responsable.clone().filter(|s| !s.trim().is_empty()),
+        echeance: input.echeance.clone().filter(|s| !s.trim().is_empty()),
+        project: input.project.clone().filter(|s| !s.trim().is_empty()),
+        priority: input.priority.clone().filter(|s| !s.trim().is_empty()),
+        estimate: input.estimate.clone().filter(|s| !s.trim().is_empty()),
+        source_note: None,
+        source_date: None,
+    };
+    let new_content = todo_md::edit_task(&content, id, &patch)?;
+    write_file(&path, &new_content).await?;
+
+    let updated = todo_md::parse_all(&new_content)
+        .into_iter()
+        .find(|t| todo_md::normalize_title(&t.fields.titre) == todo_md::normalize_title(title))
+        .ok_or_else(|| anyhow!("Tâche modifiée mais introuvable à la relecture"))?;
+    Ok(to_todo(updated))
+}
+
+/// Réécrit le bloc d'une tâche — sous-puces + description (fiche tâche, spec/06
+/// 2e passe). Les champs de la ligne (titre, responsable…) ne sont pas touchés.
+pub async fn update_todo_block(
+    id: &str,
+    notes: Vec<String>,
+    description: Vec<String>,
+    db: &SqlitePool,
+    vault_root: Option<&Path>,
+) -> Result<Todo> {
+    let path = resolve_path(db, vault_root).await?;
+    let content = read_file(&path).await.ok_or_else(|| anyhow!("Todo.md introuvable"))?;
+    let block = TaskBlock { description, notes };
+    let new_content = todo_md::update_task_block(&content, id, &block)?;
+    write_file(&path, &new_content).await?;
+
+    let updated = todo_md::parse_all(&new_content)
+        .into_iter()
+        .find(|t| todo_md::normalize_title(&t.fields.titre) == id)
         .ok_or_else(|| anyhow!("Tâche modifiée mais introuvable à la relecture"))?;
     Ok(to_todo(updated))
 }

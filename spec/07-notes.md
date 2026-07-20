@@ -95,6 +95,13 @@ Dossiers) : le compte-rendu porte le `project`, la transcription est affichée
 projet ». Le lien `recording_id` sert aussi au graphe (spec/07c) et au nommage
 (ci-dessous).
 
+**Vue Projets — repliée par défaut (feedback tests).** La transcription
+appariée n'est plus affichée en permanence en retrait sous le compte-rendu :
+un **chevron** (▶/▼, `FileTree.tsx::ProjectNoteRow`) la déplie/replie à la
+demande — une seule ligne par entrée par défaut, comme dans la vue Dossiers.
+Sans transcription appariée, pas de chevron (ligne simple, comportement
+inchangé).
+
 ## Différenciation des types & nommage — ✅ fait (feedback tests)
 
 Problème constaté : impossible de savoir **sans ouvrir** une note si c'est une

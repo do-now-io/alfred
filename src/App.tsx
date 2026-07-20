@@ -87,18 +87,27 @@ function AlfredLogo() {
         title={title}
         style={{
           position: "relative", padding: 0, background: "none",
-          cursor: "pointer", width: 132, height: 132, borderRadius: 20,
-          display: "block", overflow: "hidden",
-          border: isRecording ? "2px solid var(--danger)" : "2px solid transparent",
-          transition: "border-color 0.2s",
+          cursor: "pointer", width: 132, height: 132,
+          display: "block",
         }}
       >
+        {/* L'encadré rouge d'enregistrement suivait un border-radius CSS fixe qui
+            ne correspondait pas au contour réel (arrondi "squircle") de l'asset
+            transparent — décalage visible aux coins (feedback tests). Un
+            drop-shadow épouse le contour alpha réel de l'image, quel que soit
+            son tracé, au lieu d'un cadre géométrique séparé. */}
         <img
           src={alfredAvatar}
           alt="Alfred"
           style={{
             width: "100%", height: "100%", display: "block",
-            filter: hover || isRecording ? "brightness(0.55)" : "none", transition: "filter 0.15s",
+            filter: [
+              hover || isRecording ? "brightness(0.55)" : "",
+              isRecording
+                ? "drop-shadow(2px 0 0 var(--danger)) drop-shadow(-2px 0 0 var(--danger)) drop-shadow(0 2px 0 var(--danger)) drop-shadow(0 -2px 0 var(--danger))"
+                : "",
+            ].filter(Boolean).join(" ") || "none",
+            transition: "filter 0.15s",
           }}
         />
         {isRecording ? (

@@ -10,6 +10,14 @@ use std::sync::OnceLock;
 
 const METRICS_URL: &str = "https://api.alfred.do-now.io/metrics";
 
+/// Anti-spam key (spec/15 §D) — baked in at **compile time** from the
+/// `ALFRED_METRICS_APP_KEY` build env var (set in CI, see
+/// `.github/workflows/desktop-build.yml`), sent back as `x-metrics-key`. Must
+/// match the backend's `METRICS_APP_KEY` (Coolify). Empty/unset in local dev
+/// builds — the backend only enforces the header when it has a key configured
+/// (open otherwise), so this is safe either way.
+const METRICS_APP_KEY: Option<&str> = option_env!("ALFRED_METRICS_APP_KEY");
+
 struct Ctx {
     http: reqwest::Client,
     install_id: String,
@@ -64,6 +72,10 @@ pub fn send(event: &str, props: Value) {
     });
     let http = ctx.http.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = http.post(METRICS_URL).json(&body).send().await;
+        let mut req = http.post(METRICS_URL).json(&body);
+        if let Some(key) = METRICS_APP_KEY.filter(|k| !k.is_empty()) {
+            req = req.header("x-metrics-key", key);
+        }
+        let _ = req.send().await;
     });
 }

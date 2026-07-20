@@ -97,8 +97,14 @@ jobs:
         run: npm ci
 
       # beforeBuildCommand (tauri.conf.json) enchaîne tsc + vite build.
+      # ALFRED_METRICS_APP_KEY (secret repo, optionnel) : clé anti-spam metrics
+      # (spec/15 §D) embarquée à la compilation — doit correspondre au
+      # METRICS_APP_KEY configuré côté Coolify. Vide en local (pas bloquant,
+      # le backend n'exige le header que s'il a lui-même une clé configurée).
       - name: Build Tauri
         shell: bash
+        env:
+          ALFRED_METRICS_APP_KEY: ${{ secrets.ALFRED_METRICS_APP_KEY }}
         run: npm run tauri -- build
 
       # Le .app macOS n'est pas uploadé : upload-artifact ne préserve ni les

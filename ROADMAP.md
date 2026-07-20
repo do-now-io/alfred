@@ -46,7 +46,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | Notes : frontmatter **`project` + `participants`** (peuplés par l'ingestion) ; structure `alfred-raw`/`alfred-intelligence` ✅ ; **regroupement par projet** (vue « Projets » dans l'arbre, dossiers virtuels — `get_notes_by_project`) ✅ ; **plus de `.claude`/skills** ✅. *Rangement physique par projet = hors v1* | UC |
 | [x] | **Brief quotidien** (`generate/get_daily_brief`) | UC |
 | [x] | **Chat** : historique multi-conversations + liste (persistance SQLite, migration 006 ; liste/reprise/suppression dans le panneau chat) | UC |
-| [~] | **Metrics** : `install_id` anonyme + envoi des événements | UC |
+| [x] | **Metrics** : `install_id` anonyme + envoi des événements (`install_created`/`app_launched`/`recording_completed`/`ingestion_completed`/`ai_request`) — tous câblés. Manquait la clé anti-spam `x-metrics-key` côté app : embarquée à la compilation (`option_env!`) via le secret CI `ALFRED_METRICS_APP_KEY`, doit correspondre au `METRICS_APP_KEY` Coolify | CF |
 | [x] | **Contexte interne** : note vault `Contexte Alfred.md` + template + injection ingestion + Settings (spec 16) | T |
 | [x] | **Transcription live** (spec 16) : **abandonnée** — code retiré (revert `transcription/live.rs`, session acteur, événements `live-*`, `save_live_note`/`get_live_session`, miroir CodeMirror) ; le contexte interne subsiste | T/UC |
 

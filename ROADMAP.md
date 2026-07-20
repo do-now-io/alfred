@@ -99,7 +99,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | **Recherche dans le fichier courant (spec/06/07/10)** : Notes — Ctrl/Cmd+F dans l'éditeur (`@codemirror/search`, panneau FR, bouton loupe, raccourci global écran Notes) ; Tâches — champ « Rechercher… » qui filtre les cartes Kanban en direct (titre+responsable, insensible casse/accents). Recherche **locale** uniquement (globale toujours hors v1) | T |
 | [x] | **Settings** refonte (accès IA ✓, Whisper ✓, Vapi/Google/Places/calendrier/ingest CLI retirés ✓, défauts `alfred-*` ✓) | UC |
 | [x] | **Onglet Feedback** (formulaire + `submit_feedback`) | UC |
-| [~] | **Widget feedback discret** (topbar) : popover textarea + envoi rapide (catégorie `quick`) ; champ `view` (vue courante) bout en bout (widget → `submit_feedback` → backend → Postgres) ; onglet retiré de la sidebar (écran gardé, lien « formulaire détaillé »). **Code fait ✅ — reste : redéploiement backend Coolify** (auto-deploy pas parti après 35 min ; suspect : Watch Path `backend/*` qui ne matche pas les fichiers imbriqués → passer à `backend/**` + Redeploy manuel) | T |
+| [x] | **Widget feedback discret** (topbar) : popover textarea + envoi rapide (catégorie `quick`) ; champ `view` (vue courante) bout en bout (widget → `submit_feedback` → backend → Postgres) ; onglet retiré de la sidebar (écran gardé, lien « formulaire détaillé »). Déployé et vérifié en prod | T |
 
 ## Phase D — Nettoyage (retrait hors-v1)
 

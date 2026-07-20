@@ -101,19 +101,22 @@ Problème constaté : impossible de savoir **sans ouvrir** une note si c'est une
 **transcription**, un **compte-rendu**, une **tâche** ou une note libre — surtout
 dans le volet **Récents** (gauche), où seul le nom (souvent une date) s'affiche.
 
-- **Icône de type à l'œil** — ✅ refondues sur maquette (« Types de fichiers &
-  icônes », variante contour léger + glyphe coloré subtil) : chaque note affiche
-  une **feuille de document** (coin plié) avec un glyphe selon son type, dans
-  l'**arbre** et dans les **Récents** (`utils/noteType.tsx`, SVG maison). Type
-  dérivé du frontmatter `type` **et** du dossier :
+- **Icône de type à l'œil** — ✅ fait, glyphes **Material Design** (`react-icons/md`,
+  `utils/noteType.tsx`) : SVG inline embarqué au build, donc identique sur
+  Windows/macOS/Linux (aucune police d'icônes système). Une variante « feuille de
+  document + glyphe interne » (SVG maison) a été essayée puis **abandonnée**
+  (retour utilisateur : icônes trop petites/discrètes, trop semblables entre elles)
+  — revenu aux glyphes Material, plus reconnaissables en petit format. Type dérivé
+  du frontmatter `type` **et** du dossier, affiché dans l'**arbre** et les
+  **Récents** :
   - **audio** (`alfred-raw/`, nom daté `AAAA-MM-JJ HHhMM` ou `recording_id`) →
-    glyphe **forme d'onde** (accent doré) — transcription d'un enregistrement,
-  - **note brute** (`alfred-raw/` sans enregistrement) → glyphe **lignes** (RAW),
-  - **synthèse Alfred** (`alfred-intelligence/`, `type: meeting`) → glyphe
-    **étincelle** dorée (fichier généré par Alfred),
-  - tâche (`type: task`, `Todo.md`) → glyphe **liste à puces**,
-  - contexte (`Contexte Alfred.md`) → glyphe silhouette,
-  - note libre → glyphe chevrons (doc markdown).
+    `MdGraphicEq` (forme d'onde) — transcription d'un enregistrement,
+  - **note brute** (`alfred-raw/` sans enregistrement) → `MdSubject` (lignes),
+  - **synthèse Alfred** (`alfred-intelligence/`, `type: meeting`) → `MdDescription`
+    (document) — fichier généré par Alfred,
+  - tâche (`type: task`, `Todo.md`) → `MdCheckBox`,
+  - contexte (`Contexte Alfred.md`) → `MdContactPage`,
+  - note libre → `MdStickyNote2`.
 - **Récents plus lisibles** : icône de type + **nom** + **date/heure** en secondaire
   (pour distinguer deux enregistrements) plutôt que le seul nom.
 - **Nommage : sujet après ingestion, plus la date** — une fois l'intelligence faite,

@@ -248,7 +248,6 @@ export default function RecordingGuide() {
   const isIdle = status === "idle";
   const isPaused = status === "paused";
   const isRecording = status === "recording" || isPaused;
-  const isStopped = status === "stopped"; // revue — le panneau modal (App) prend la main
   const isProcessing = status === "stopping" || status === "processing";
   const isError = status === "error";
 
@@ -305,15 +304,6 @@ export default function RecordingGuide() {
                 >
                   <MdStop size={18} /> Terminer
                 </button>
-              </div>
-            </>
-          )}
-
-          {isStopped && (
-            <>
-              <MdCheckCircle size={30} style={{ color: "var(--accent)" }} />
-              <div style={{ fontSize: 15, color: "var(--text-secondary)" }}>
-                Prise terminée — choisissez ce qu'Alfred doit en faire.
               </div>
             </>
           )}

@@ -10,7 +10,6 @@ import { useAlfredStatusStore } from "../../store/alfredStatusStore";
 import type { NoteFile } from "../../bindings/NoteFile";
 import { Spotlight } from "./Spotlight";
 import Teleprompter from "./Teleprompter";
-import { parseContextSections } from "../../screens/Resolve";
 import alfredLogo from "../../assets/alfred-logo.png";
 
 // The guided tour (spec/13): a real, event-driven walkthrough right after
@@ -215,18 +214,23 @@ export default function GuidedTour() {
     return <TourModal title="Petit accroc" text={error} primary="Continuer" onPrimary={() => goto("closing")} />;
   }
 
-  // « Revoir / corriger » (spec/13 étape 5) : ouvre /resolve en MODE CONTEXTE —
-  // les 4 sections éditables + réécoute du WAV + Valider. Plus jamais la note
-  // brute dans /notes.
+  // « Revoir / corriger » (spec/13 étape 5) : ouvre /resolve — MÊME écran que la
+  // vérification d'un enregistrement de réunion (texte éditable + réécoute WAV +
+  // Valider), pas de variante spécifique à l'onboarding. Seul le contenu
+  // injecté diffère (le corps déjà structuré de Contexte Alfred.md). Plus
+  // jamais la note brute ouverte dans /notes.
   const openCorrection = async () => {
     try {
       const note = await invoke<NoteFile>("open_context_note");
       setResolveSession({
         mode: "context",
         recordingId: recap?.recordingId ?? "",
-        noteTitle: recap?.noteTitle ?? null,
+        noteTitle: recap?.noteTitle ?? "",
         contextPath: note.path,
-        sections: parseContextSections(note.body),
+        text: note.body,
+        clarifications: { transcription_fixes: [], unassigned_tasks: [], unclear_sentences: [], context_additions: [] },
+        summary: false,
+        tasks: false,
       });
       goto("correcting");
       navigate("/resolve");

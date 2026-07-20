@@ -11,8 +11,6 @@ export type RecordingStatus =
   | "processing"
   | "error";
 
-export type RecordingPurpose = "meeting" | "context";
-
 /** Traitements aval cochés au panneau de revue (spec/03/05). */
 export interface ProcessSelection {
   transcribe: boolean;
@@ -29,15 +27,13 @@ interface RecordingStore {
   /** Live mic RMS level (0..1), from `recording-status-changed` (spec/03 feedback live). */
   volume: number;
   errorMessage: string | null;
-  /** La prise en revue « prise terminée » (spec/03), après « Terminer ». */
+  /** La prise en revue « prise terminée » (spec/03, contexte uniquement), après « Terminer ». */
   reviewRecordingId: string | null;
-  reviewPurpose: RecordingPurpose;
   setStatus: (
     status: RecordingStatus,
     durationSeconds: number,
     volume?: number,
     recordingId?: string,
-    purpose?: string,
   ) => void;
   setError: (message: string) => void;
   /** `purpose` = "context" starts the guided-tour context recording (spec/13). */
@@ -63,9 +59,8 @@ export const useRecordingStore = create<RecordingStore>((set, get) => ({
   volume: 0,
   errorMessage: null,
   reviewRecordingId: null,
-  reviewPurpose: "meeting",
 
-  setStatus: (status, durationSeconds, volume, recordingId, purpose) =>
+  setStatus: (status, durationSeconds, volume, recordingId) =>
     set((s) => ({
       status,
       durationSeconds,
@@ -81,8 +76,6 @@ export const useRecordingStore = create<RecordingStore>((set, get) => ({
             : null,
       reviewRecordingId:
         status === "stopped" ? (recordingId ?? s.reviewRecordingId) : status === "idle" ? null : s.reviewRecordingId,
-      reviewPurpose:
-        status === "stopped" && purpose === "context" ? "context" : status === "stopped" ? "meeting" : s.reviewPurpose,
     })),
 
   setError: (message) => set({ status: "error", errorMessage: message, startedAt: null, volume: 0 }),

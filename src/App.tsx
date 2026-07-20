@@ -24,7 +24,6 @@ import { useNotesStore } from "./store/notesStore";
 import { useTourStore, useTourTarget } from "./store/tourStore";
 import { useAlfredStatusStore, alfredStatusLabel } from "./store/alfredStatusStore";
 import RecordingBar from "./components/RecordingBar";
-import RecordingReview from "./components/RecordingReview";
 import { NoteTypeIcon } from "./utils/noteType";
 import GuidedTour from "./components/tour/GuidedTour";
 import FeedbackWidget from "./components/FeedbackWidget";
@@ -335,7 +334,6 @@ function AppInner() {
         e.payload.duration_seconds,
         e.payload.volume,
         e.payload.recording_id,
-        e.payload.purpose,
       );
       if (e.payload.status === "recording" || e.payload.status === "paused") setAlfredState("recording");
       else if (e.payload.status === "stopping" || e.payload.status === "processing") setAlfredState("transcribing");
@@ -421,7 +419,6 @@ function AppInner() {
         </main>
       </div>
       <GuidedTour />
-      <ReviewModal />
       <ResolveBanner />
       {ingestError && (
         <div style={{
@@ -444,30 +441,6 @@ function AppInner() {
           </button>
         </div>
       )}
-    </div>
-  );
-}
-
-// Panneau de revue « prise terminée » (spec/03) — modal global : quel que soit
-// l'écran d'où on a cliqué « Terminer » (logo, bandeau, /recording, accueil), le
-// choix Supprimer / Continuer s'affiche. En mode contexte (visite guidée), c'est
-// le téléprompteur qui porte la revue — le modal s'efface.
-function ReviewModal() {
-  const status = useRecordingStore((s) => s.status);
-  const reviewRecordingId = useRecordingStore((s) => s.reviewRecordingId);
-  const reviewPurpose = useRecordingStore((s) => s.reviewPurpose);
-
-  if (status !== "stopped" || !reviewRecordingId || reviewPurpose === "context") return null;
-
-  return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 1800,
-      background: "rgba(0,0,0,0.45)",
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
-    }}>
-      <div className="card" style={{ width: "100%", maxWidth: 420, padding: "26px 28px", boxShadow: "0 12px 48px rgba(0,0,0,0.3)" }}>
-        <RecordingReview purpose="meeting" />
-      </div>
     </div>
   );
 }
@@ -506,10 +479,12 @@ function ResolveBanner() {
   // Le mode contexte (visite guidée) est piloté par la visite — pas de bannière.
   if (!session || session.mode !== "meeting" || location.pathname === "/resolve") return null;
 
+  // La finalisation n'est JAMAIS auto-enchaînée (spec/17 §3, feedback tests) —
+  // la bannière s'affiche donc même à 0 point à vérifier : sans elle, rien ne
+  // rappellerait qu'un « Valider » reste nécessaire pour obtenir le compte-rendu.
   const c = session.clarifications;
   const count =
     c.transcription_fixes.length + c.unclear_sentences.length + c.unassigned_tasks.length;
-  if (count === 0) return null;
 
   return (
     <div style={{
@@ -522,7 +497,9 @@ function ResolveBanner() {
       <span style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1, fontSize: 16 }}>💬</span>
       <div style={{ flex: 1, color: "var(--text-primary)", lineHeight: 1.5 }}>
         <div style={{ fontWeight: 600, marginBottom: 4 }}>
-          Alfred a {count} point{count > 1 ? "s" : ""} à vérifier
+          {count > 0
+            ? `Alfred a ${count} point${count > 1 ? "s" : ""} à vérifier`
+            : "Votre compte-rendu est prêt à valider"}
         </div>
         <button
           onClick={() => navigate("/resolve")}

@@ -391,10 +391,11 @@ async fn run_ingestion_core(
     Ok(())
 }
 
-/// Automatic trigger, right after `transcription-complete` (spec/05). Routes
-/// through the augmented two-step flow (spec/17 §3) when `augmented_ingestion` is
-/// enabled, otherwise runs the direct one-shot ingestion (default — no regression
-/// while the resolution UI is being built).
+/// Automatic trigger, right after `transcription-complete` (spec/05). **Toujours**
+/// routé par l'écran de vérification `/resolve` (spec/17 §3, feedback tests) : le
+/// compte-rendu et les tâches ne sont écrits qu'après le **Valider** de
+/// l'utilisateur, jamais auto-enchaînés — même quand Claude n'a rien à signaler
+/// (l'écran est alors juste plus court : texte + Valider, cf `Resolve.tsx`).
 pub async fn run_ingestion_for_recording(
     recording_id: &str,
     transcription_text: &str,
@@ -405,12 +406,10 @@ pub async fn run_ingestion_for_recording(
     vault_root: Option<&Path>,
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
-    if !augmented_ingestion_enabled(db).await {
-        return run_ingestion_core(transcription_text, note_title, Some(recording_id), summary, tasks, db, vault_root, app_handle).await;
-    }
-
-    // Augmented: analyze first. Any analysis failure falls back to a direct
-    // ingestion — we never drop the compte-rendu just because analysis broke.
+    // Analyse d'abord. Un échec d'analyse retombe sur l'ingestion directe — on ne
+    // perd jamais le compte-rendu pour une panne de l'analyse, mais ce repli
+    // reste une résilience d'erreur, pas un raccourci produit : il saute la
+    // vérification uniquement quand celle-ci n'a pas pu avoir lieu.
     let context = match vault_root {
         Some(root) => crate::notes::context::read_context(root, db).await,
         None => None,
@@ -427,16 +426,10 @@ pub async fn run_ingestion_for_recording(
         }
     };
 
-    if !clarifications.has_actionable() {
-        // Nothing worth validating → enchaîne automatiquement (spec/17 §3, aucune
-        // friction). Learned facts (non-blocking) are still written.
-        let adds = clarifications.context_addition_facts();
-        return finalize_ingestion(recording_id, transcription_text, note_title, adds, summary, tasks, db, vault_root, app_handle).await;
-    }
-
-    // Something to validate → hand off to the resolution screen (spec/17 §3). The
-    // compte-rendu is written only at `finalize_ingestion`, on the corrected text.
-    // The review-panel selection rides along so finalize honours it (spec/05).
+    // Toujours vers l'écran de vérification (spec/17 §3) — le compte-rendu est
+    // écrit seulement à `finalize_ingestion`, sur le texte corrigé. La sélection
+    // du panneau de revue voyage avec, pour que la finalisation la respecte
+    // (spec/05).
     let _ = app_handle.emit(
         "clarifications-ready",
         json!({
@@ -541,20 +534,6 @@ pub struct Clarifications {
     pub unclear_sentences: Vec<UnclearSentence>,
     #[serde(default)]
     pub context_additions: Vec<ContextAddition>,
-}
-
-impl Clarifications {
-    /// Whether anything needs the user to validate before finalizing.
-    /// `context_additions` are auto-written (non-blocking) so they don't count.
-    fn has_actionable(&self) -> bool {
-        !self.transcription_fixes.is_empty()
-            || !self.unassigned_tasks.is_empty()
-            || !self.unclear_sentences.is_empty()
-    }
-
-    fn context_addition_facts(&self) -> Vec<String> {
-        self.context_additions.iter().map(|c| c.fact.clone()).collect()
-    }
 }
 
 const ANALYZE_SYSTEM: &str = r#"Tu es Alfred. On te donne la transcription brute d'un enregistrement (réunion, note vocale, appel) et, éventuellement, le contexte interne de l'utilisateur (entreprise, équipe, vocabulaire). AVANT de rédiger le compte-rendu, tu repères ce qui mérite une VALIDATION humaine. Soumets tes propositions via l'outil `submit_clarifications`.
@@ -708,17 +687,6 @@ fn fill_timestamps(clar: &mut Clarifications, segments: &[crate::transcription::
     }
 }
 
-/// Is the augmented two-step ingestion enabled? (Config `augmented_ingestion`.)
-/// Default **ON** (spec/17 §3) — only an explicit "false"/"0" turns it off.
-async fn augmented_ingestion_enabled(db: &SqlitePool) -> bool {
-    let v: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = 'augmented_ingestion'")
-        .fetch_optional(db)
-        .await
-        .ok()
-        .flatten();
-    !matches!(v.as_deref(), Some("false") | Some("0"))
-}
-
 /// Debounce generation for glossary auto-regen (spec/17 §1/§4).
 static GLOSSARY_REGEN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 const GLOSSARY_REGEN_DEBOUNCE_MS: u64 = 4000;
@@ -768,8 +736,10 @@ pub async fn analyze_transcription(
 
 /// Finalization pass (spec/17 §3): write the compte-rendu from the CORRECTED text
 /// (+ the user's answers already folded into it), then auto-write any accepted
-/// learned facts to `## Appris automatiquement` and regenerate the glossary. Also
-/// the auto path when the analysis had nothing to validate.
+/// learned facts to `## Appris automatiquement` and regenerate the glossary.
+/// **The only path that ever writes the compte-rendu/tâches** — always triggered
+/// by the user's "Valider" on `/resolve` (spec/17 §3, feedback tests: no more
+/// auto-chaining when there was nothing to fix).
 pub async fn finalize_ingestion(
     recording_id: &str,
     corrected_text: &str,
@@ -1329,14 +1299,5 @@ mod tests {
     fn locate_quote_absent_returns_none() {
         let segs = vec![seg(0.0, 2.0, "Bonjour tout le monde")];
         assert_eq!(locate_quote("phrase absente totalement", &segs), (None, None));
-    }
-
-    #[test]
-    fn clarifications_actionable_ignores_context_only() {
-        let mut c = Clarifications::default();
-        c.context_additions.push(ContextAddition { fact: "Marie = cheffe".into() });
-        assert!(!c.has_actionable());
-        c.unassigned_tasks.push(UnassignedTask { task: "faire X".into(), question: "qui ?".into() });
-        assert!(c.has_actionable());
     }
 }

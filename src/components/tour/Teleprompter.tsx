@@ -68,7 +68,7 @@ export default function Teleprompter({
         boxShadow: "0 12px 48px rgba(0,0,0,0.3)",
       }}>
         {review ? (
-          <RecordingReview purpose="context" onDiscarded={onDiscarded} onContinued={onContinued} />
+          <RecordingReview onDiscarded={onDiscarded} onContinued={onContinued} />
         ) : (
           <>
             <div>

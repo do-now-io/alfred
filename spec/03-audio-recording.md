@@ -172,7 +172,7 @@ aujourd'hui.
 `type`/participants) et/ou vers le nommage. Hors périmètre strict de cette tâche —
 signalé pour décision.
 
-## Arrêt : traitement automatique (plus de panneau de sélection) — 📝 à revoir (feedback tests)
+## Arrêt : traitement automatique (plus de panneau de sélection) — ✅ fait
 
 > **Changement (feedback tests) — retour arrière assumé sur le panneau de sélection.**
 > Le panneau post-arrêt « prise terminée » avec **cases *Transcription / Compte-rendu

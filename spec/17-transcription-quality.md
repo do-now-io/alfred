@@ -88,7 +88,7 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
 
 **Jamais d'auto-application** d'une correction.
 
-### La finalisation attend la vérification (📝 à revoir, feedback tests)
+### La finalisation attend la vérification (✅ fait)
 
 Constat test : après la transcription, **compte-rendu et tâches semblent créés tout
 de suite** — comme si la finalisation ne passait pas par la vérification. C'est le

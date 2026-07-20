@@ -30,9 +30,9 @@ function HeroCard() {
 
   const isIdle = status === "idle";
   const isRecording = status === "recording" || status === "paused";
-  // "stopped" (revue) is lumped in: the review modal (App.tsx) is driving; the
-  // card just shows a neutral waiting state underneath.
-  const isProcessing = status === "stopping" || status === "processing" || status === "stopped";
+  // Cette carte ne lance que des prises "meeting" (spec/03) : stop_recording les
+  // envoie directement en traitement, "stopped" (revue) ne s'y produit jamais.
+  const isProcessing = status === "stopping" || status === "processing";
 
   // Same trigger + destination as the sidebar logo (spec/03): start, then hand
   // off to the guidance page for live feedback + capture tips.
@@ -99,7 +99,7 @@ function HeroCard() {
         )}
         {isProcessing && (
           <div style={{ fontSize: 16, color: "#9B9B9B" }}>
-            {status === "stopped" ? "Prise terminée — revue en cours…" : "Transcription en cours…"}
+            Transcription en cours…
           </div>
         )}
       </div>

@@ -68,9 +68,13 @@ async fn start_recording(
     Ok(())
 }
 
-/// « Terminer » (spec/03) — arrête la prise et la passe en revue « prise
-/// terminée ». **Ne lance plus l'aval** : c'est `process_recording` qui enfile
-/// les traitements cochés.
+/// « Terminer » (spec/03, feedback tests — retour arrière sur le panneau de
+/// sélection) : arrête la prise puis lance **automatiquement** transcription +
+/// compte-rendu + tâches pour une **réunion** (`purpose: "meeting"`) — plus de
+/// panneau de cases à cocher. La vérification `/resolve` reste le seul point de
+/// contrôle (spec/17 §3). Pour le **contexte** (`purpose: "context"`, téléprompteur
+/// de la visite guidée, spec/13) la prise reste en revue « prise terminée »
+/// (Recommencer / Continuer, découplé — `process_recording` reste utilisé là).
 #[tauri::command]
 async fn stop_recording(
     state: tauri::State<'_, AppState>,
@@ -88,7 +92,7 @@ async fn stop_recording(
         state.recording_pause_flag.clone(),
         state.recording_handle.clone(),
         state.db.clone(),
-        app,
+        app.clone(),
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -104,7 +108,61 @@ async fn stop_recording(
         serde_json::json!({ "source": source.unwrap_or_else(|| "mic_only".into()) }),
     );
 
+    let purpose: Option<String> = sqlx::query_scalar("SELECT purpose FROM recordings WHERE id = ?")
+        .bind(&recording_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
+    if purpose.as_deref().unwrap_or("meeting") == "meeting" {
+        enqueue_processing(&recording_id, &data_dir, true, true, &state, &app)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
     Ok(recording_id)
+}
+
+/// Enfile la transcription (+ ingestion, spec/05) d'une prise déjà arrêtée —
+/// factorisé entre l'auto-lancement réunion (`stop_recording`) et le bouton
+/// « Continuer » du panneau de revue contexte (`process_recording`).
+async fn enqueue_processing(
+    recording_id: &str,
+    data_dir: &std::path::Path,
+    summary: bool,
+    tasks: bool,
+    state: &tauri::State<'_, AppState>,
+    app: &tauri::AppHandle,
+) -> Result<(), anyhow::Error> {
+    let file_path = data_dir.join("recordings").join(format!("{}.wav", recording_id));
+    if !file_path.exists() {
+        return Err(anyhow::anyhow!("WAV introuvable pour cette prise: {:?}", file_path));
+    }
+
+    sqlx::query!("UPDATE recordings SET status = 'processing' WHERE id = ?", recording_id)
+        .execute(&state.db)
+        .await?;
+
+    let vault_path = state.vault_path.lock().unwrap().clone();
+    transcription::enqueue_job(
+        recording_id.to_string(),
+        file_path,
+        state.db.clone(),
+        app.clone(),
+        data_dir.to_path_buf(),
+        state.resource_dir.clone(),
+        vault_path,
+        summary,
+        tasks,
+        &state.transcription_tx,
+    )
+    .await?;
+
+    let _ = app.emit(
+        "recording-status-changed",
+        serde_json::json!({ "status": "processing", "duration_seconds": 0, "recording_id": recording_id }),
+    );
+    Ok(())
 }
 
 /// Bouton « Annuler » pendant la prise (spec/03) : arrête + jette le WAV, aucun aval.
@@ -199,32 +257,9 @@ async fn process_recording(
         return Ok(());
     }
 
-    sqlx::query!("UPDATE recordings SET status = 'processing' WHERE id = ?", recording_id)
-        .execute(&state.db)
+    enqueue_processing(&recording_id, &data_dir, summary, tasks, &state, &app)
         .await
-        .map_err(|e| e.to_string())?;
-
-    let vault_path = state.vault_path.lock().unwrap().clone();
-    transcription::enqueue_job(
-        recording_id.clone(),
-        file_path,
-        state.db.clone(),
-        app.clone(),
-        data_dir,
-        state.resource_dir.clone(),
-        vault_path,
-        summary,
-        tasks,
-        &state.transcription_tx,
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let _ = app.emit(
-        "recording-status-changed",
-        serde_json::json!({ "status": "processing", "duration_seconds": 0, "recording_id": recording_id }),
-    );
-    Ok(())
+        .map_err(|e| e.to_string())
 }
 
 /// Pause de la capture (spec/03/13) : les frames sont jetées, le chrono se fige,

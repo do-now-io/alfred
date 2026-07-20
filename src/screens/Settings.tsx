@@ -394,7 +394,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const [whisperModel, setWhisperModel] = useState("small");
   const [languageHint, setLanguageHint] = useState("auto");
-  const [recordingSource, setRecordingSource] = useState("mic_only");
+  const [recordingSource, setRecordingSource] = useState("mixed");
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 

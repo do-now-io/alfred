@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
   MdHome, MdCheckBox, MdStickyNote2,
-  MdAutoAwesome, MdSettings, MdHub, MdMic, MdStop,
+  MdAutoAwesome, MdSettings, MdHub, MdMic, MdStop, MdUploadFile,
 } from "react-icons/md";
 import alfredLogo from "./assets/alfred-logo.png";
 import Dashboard from "./screens/Dashboard";
@@ -40,12 +40,14 @@ function AlfredLogo() {
   const recStatus = useRecordingStore((s) => s.status);
   const startRecording = useRecordingStore((s) => s.startRecording);
   const stopRecording = useRecordingStore((s) => s.stopRecording);
+  const importAudioFile = useRecordingStore((s) => s.importAudioFile);
   const butler = useAlfredStatusStore((s) => s.state);
   const target = useAlfredStatusStore((s) => s.target);
   const progress = useAlfredStatusStore((s) => s.progress);
   const selectFile = useNotesStore((s) => s.selectFile);
 
   const isRecording = recStatus === "recording" || recStatus === "paused";
+  const isIdle = recStatus === "idle";
   const busy = butler !== "idle";
 
   const handleClick = () => {
@@ -80,6 +82,7 @@ function AlfredLogo() {
 
   return (
     <div style={{ padding: "20px 20px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ position: "relative", width: 132, height: 132 }}>
       <button
         onClick={handleClick}
         onMouseEnter={() => setHover(true)}
@@ -119,6 +122,23 @@ function AlfredLogo() {
           </span>
         ) : null}
       </button>
+      {/* Import d'un fichier audio existant (spec/03) — incorporé au point
+          d'entrée « logo » plutôt qu'un bouton séparé ; visible seulement au
+          repos, pour ne pas gêner le déclencheur d'enregistrement. */}
+      {isIdle && (
+        <button
+          onClick={(e) => { e.stopPropagation(); importAudioFile(); }}
+          title="Importer un fichier audio (.wav)"
+          style={{
+            position: "absolute", bottom: -2, right: -2, width: 30, height: 30, borderRadius: "50%",
+            background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text-secondary)",
+            display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0,
+          }}
+        >
+          <MdUploadFile size={15} />
+        </button>
+      )}
+      </div>
 
       {/* Butler status — THE status readout (no duplicate elsewhere). Cliquable
           quand Alfred travaille sur une cible : mène à ce qu'il fait (spec/10). */}

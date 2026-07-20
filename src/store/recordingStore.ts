@@ -80,10 +80,15 @@ export const useRecordingStore = create<RecordingStore>((set, get) => ({
 
   setError: (message) => set({ status: "error", errorMessage: message, startedAt: null, volume: 0 }),
 
-  startRecording: async (source = "mic_only", purpose?: string) => {
+  startRecording: async (source, purpose?: string) => {
     try {
+      // Points de départ sans source explicite (logo, carte d'accueil, page de
+      // guidage) lisent la config utilisateur — défaut `mixed` (spec/03/11) plutôt
+      // qu'un `mic_only` codé en dur ; repli sur le système côté backend si la
+      // plateforme ne supporte pas encore la capture système (macOS).
+      const resolvedSource = source ?? (await invoke<string | null>("get_config", { key: "recording_source" }).catch(() => null)) ?? "mixed";
       set({ status: "recording", durationSeconds: 0, startedAt: Date.now(), errorMessage: null, volume: 0, reviewRecordingId: null });
-      await invoke("start_recording", { source, purpose });
+      await invoke("start_recording", { source: resolvedSource, purpose });
     } catch (e) {
       set({ status: "error", errorMessage: String(e), startedAt: null, volume: 0 });
     }

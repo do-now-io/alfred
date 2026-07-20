@@ -39,7 +39,7 @@ modèles plus gros **téléchargeables** → `download_model`, `download-progres
 langue (`language_hint`).
 
 **Enregistrement** : source audio (`mic_only` / `system_only` / `mixed`) —
-**défaut `mixed`** (📝 feedback tests ; repli auto sur `mic_only` si le système n'est
+**défaut `mixed`** (✅ fait ; repli auto sur `mic_only` si le système n'est
 pas dispo, cf. spec/03) ; dossier d'enregistrement (défaut **`alfred-raw`**).
 
 **Notes** : dossier vault (`get/set_vault_path`, `pick_vault_folder`).

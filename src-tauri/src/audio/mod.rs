@@ -30,13 +30,12 @@ pub async fn start_recording(
     pause_flag: Arc<AtomicBool>,
     _transcription_tx: TranscriptionSender,
 ) -> Result<()> {
-    // System audio is Windows-only for now (macOS ScreenCaptureKit helper: later).
+    // System audio is Windows-only for now (macOS ScreenCaptureKit helper:
+    // later). Repli gracieux (spec/03) : jamais d'échec au démarrage à cause
+    // d'une source système indisponible — on retombe silencieusement sur le
+    // micro seul plutôt que de refuser l'enregistrement.
     #[cfg(not(target_os = "windows"))]
-    if source != "mic_only" {
-        return Err(anyhow!(
-            "L'audio système n'est pas encore disponible sur macOS — choisis « Microphone uniquement » dans les Réglages."
-        ));
-    }
+    let source = "mic_only";
 
     // Reset stop & pause flags
     stop_flag.store(false, Ordering::SeqCst);

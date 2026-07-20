@@ -42,11 +42,11 @@ function HeroCard() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
     <div
       ref={tourRef}
       onClick={isIdle ? handleStart : undefined}
       style={{
+        position: "relative",
         background: isRecording ? "#3D0A0A" : "var(--dark-card)",
         borderRadius: 16, padding: "20px 28px",
         display: "flex", alignItems: "center", gap: 20,
@@ -120,24 +120,21 @@ function HeroCard() {
           ⏹ Arrêter
         </button>
       )}
-    </div>
-
-    {/* Second entry point: import an existing audio file (spec/03), without
-        having to start a recording first. */}
-    {isIdle && (
-      <button
-        onClick={importAudioFile}
-        style={{
-          alignSelf: "flex-start",
-          background: "none", color: "var(--text-secondary)",
-          border: "1px solid var(--border)", borderRadius: 10,
-          padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 500,
-          display: "inline-flex", alignItems: "center", gap: 8,
-        }}
-      >
-        <MdUploadFile size={16} /> Importer un fichier audio (.wav)
-      </button>
-    )}
+      {/* Import d'un fichier audio existant (spec/03) — incorporé à la carte
+          plutôt qu'un bouton séparé sous celle-ci ; visible seulement au repos. */}
+      {isIdle && (
+        <button
+          onClick={(e) => { e.stopPropagation(); importAudioFile(); }}
+          title="Importer un fichier audio (.wav)"
+          style={{
+            position: "absolute", top: 10, right: 10, width: 32, height: 32, borderRadius: "50%",
+            background: "rgba(255,255,255,0.08)", border: "1px solid var(--border)", color: "#9B9B9B",
+            display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0,
+          }}
+        >
+          <MdUploadFile size={16} />
+        </button>
+      )}
     </div>
   );
 }

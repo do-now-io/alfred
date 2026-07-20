@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { MdMic, MdStop, MdAdd, MdClose, MdCheckCircle, MdWarning, MdHourglassEmpty, MdUploadFile, MdPause, MdPlayArrow } from "react-icons/md";
+import { MdMic, MdStop, MdAdd, MdClose, MdCheckCircle, MdWarning, MdHourglassEmpty, MdPause, MdPlayArrow } from "react-icons/md";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import { useAlfredStatusStore } from "../store/alfredStatusStore";
 import VolumeMeter from "../components/VolumeMeter";
@@ -240,7 +240,7 @@ function TipsEditor() {
 
 export default function RecordingGuide() {
   const navigate = useNavigate();
-  const { status, volume, errorMessage, startRecording, stopRecording, cancelRecording, pauseRecording, resumeRecording, importAudioFile } = useRecordingStore();
+  const { status, volume, errorMessage, startRecording, stopRecording, cancelRecording, pauseRecording, resumeRecording } = useRecordingStore();
   const elapsed = useRecordingElapsed();
   // Progression réelle de la transcription (spec/04, feedback tests).
   const transcriptionPercent = useAlfredStatusStore((s) => (s.state === "transcribing" ? s.progress : null));
@@ -360,16 +360,9 @@ export default function RecordingGuide() {
               >
                 <MdMic size={18} /> Démarrer l'enregistrement
               </button>
-              <button
-                onClick={importAudioFile}
-                style={{
-                  background: "none", color: "var(--text-secondary)", border: "1px solid var(--border)",
-                  borderRadius: 10, padding: "8px 18px", cursor: "pointer", fontSize: 13.5, fontWeight: 500,
-                  display: "inline-flex", alignItems: "center", gap: 8,
-                }}
-              >
-                <MdUploadFile size={17} /> Importer un audio (.wav)
-              </button>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Pour importer un fichier audio existant, utilisez le bouton dédié sur le logo Alfred ou la carte d'enregistrement de l'accueil.
+              </div>
             </>
           )}
         </div>

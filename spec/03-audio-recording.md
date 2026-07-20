@@ -20,16 +20,18 @@ transcription au `stop`.
 (La table `recordings.source` accepte les trois valeurs. Sur macOS,
 `start_recording` refuse `system_only`/`mixed` avec un message clair.)
 
-**Défaut = `mixed` (📝 à faire, feedback tests).** La source par défaut passe de
-`mic_only` à **`mixed`** (micro + système) — on capte l'interlocuteur (visio, appel)
-sans réglage. Config `recording_source` (défaut `mixed`), modifiable dans les
-Réglages (spec/11). Les points de départ (accueil, `/recording`, bandeau) lisent
-cette config **au lieu de** `"mic_only"` codé en dur.
+**Défaut = `mixed` (✅ fait).** La source par défaut est **`mixed`** (micro +
+système) — on capte l'interlocuteur (visio, appel) sans réglage. Config
+`recording_source` (défaut `mixed` si absente en base), modifiable dans les
+Réglages (spec/11). Les points de départ sans source explicite (logo, carte
+d'accueil, page de guidage) appellent `startRecording()` sans argument, qui lit
+cette config côté frontend **au lieu de** `"mic_only"` codé en dur.
 
-**Repli gracieux** : là où `mixed`/`system_only` n'est pas dispo (macOS tant que le
-helper Swift n'est pas fait), retomber **automatiquement sur `mic_only`** (ne jamais
-échouer au démarrage à cause du défaut). Le **contexte à la voix** (visite guidée,
-spec/13) reste en `mic_only` (une seule voix, pas besoin du système).
+**Repli gracieux (✅ fait)** : sur une plateforme où `mixed`/`system_only` n'est
+pas dispo (macOS tant que le helper Swift n'est pas fait), `start_recording`
+retombe **automatiquement sur `mic_only`** côté backend — jamais d'échec au
+démarrage. Le **contexte à la voix** (visite guidée, spec/13) reste en
+`mic_only` explicite (une seule voix, pas besoin du système).
 
 ## Capture micro — état réel (cpal)
 
@@ -80,21 +82,23 @@ live) : par ex. un enregistrement fait ailleurs, ou l'audio extrait d'une vidéo
   puis le WAV est mis dans **la même file de transcription** que le live
   (aucun chemin de code séparé). La suite est identique : note dans `alfred-raw/`,
   déplacement du WAV dans le vault, ingestion (spec 04/05).
-- **UX** : bouton **« Importer un audio »** sur la page de guidage (`/recording`,
-  état idle), à côté de « Démarrer l'enregistrement ». Ouvre le sélecteur de
-  fichier natif (filtré `.wav`). Un WAV illisible renvoie une erreur claire
-  avant toute mise en file.
+- **UX** : petite icône **⬆ import** incrustée sur les points d'entrée existants
+  (logo Alfred de la sidebar, carte d'enregistrement de l'accueil) — visible
+  seulement à l'état repos, à côté/au-dessus du geste principal plutôt qu'un
+  second bouton pleine largeur côte à côte. Ouvre le sélecteur de fichier natif
+  (filtré `.wav`). Un WAV illisible renvoie une erreur claire avant toute mise
+  en file.
 - **Metrics** : émet `recording_completed` avec `{ source: "import" }`.
 
-### Intégration UI du bouton — 📝 à faire
+### Intégration UI du bouton — ✅ fait
 
-Le bouton **« Importer un audio »** existe (page de guidage + accueil, ROADMAP
-Phase C) mais reste visuellement un ajout à côté du bouton d'enregistrement
-principal plutôt qu'un geste intégré. À revoir : l'incorporer dans les points
-d'entrée existants (ex. option secondaire du logo/carte d'enregistrement, ou
-menu contextuel) au lieu d'un second bouton côte à côte — le comportement
-(picker `.wav` → même file de transcription) ne change pas, seul le
-placement/l'affordance est à retravailler.
+Le bouton pleine largeur « Importer un audio » (page de guidage + accueil) a
+été retiré ; l'import est désormais une petite icône incrustée sur le **logo**
+(sidebar, coin bas-droit du bouton, état repos) et sur la **carte
+d'enregistrement** de l'accueil (coin haut-droit). Le comportement (picker
+`.wav` → même file de transcription) ne change pas. La page de guidage
+(`/recording`) ne propose plus l'import directement (état repos rarement
+atteint là — après un « Annuler » — l'utilisateur revient au logo/à la carte).
 
 ## Segmentation
 

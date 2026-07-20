@@ -62,11 +62,32 @@ Aujourd'hui `run_whisper` utilise le réglage le plus faible : `Greedy
 
 Une **passe unique** sur tout le WAV en v1 (pas de chunking — spec/17 Hors v1).
 
-## Progression
+## Progression — 📝 à faire (feedback tests)
 
-Émet `transcription-progress` à **0 % puis 100 %** seulement (pas de granularité).
-À améliorer (lié au feedback live, spec 03). Fin : `transcription-complete` ou
-`transcription-failed`.
+Aujourd'hui `transcription-progress` n'émet que **0 % puis 100 %** : pendant la
+transcription (longue, CPU), l'utilisateur n'a **aucune idée de l'avancement**. On
+veut une **progression réelle** affichée dans l'UI.
+
+**C'est faisable** — deux sources d'avancement selon le chemin :
+
+- **Fichier court (passe unique, `decode_buffer`)** : brancher le **callback de
+  progression de whisper** (`set_progress_callback`, 0–100) ; à défaut, estimer via
+  le **dernier segment horodaté** (`t1`) rapporté à la **durée totale** de l'audio
+  (`temps transcrit / durée totale`).
+- **Fichier long (transcription parallèle par tranches, spec/17 §5)** : agréger
+  l'avancement **par tranche** (tranches terminées / total, **pondérées par leur
+  durée**) — chaque worker rapporte sa progression locale, on recompose un %
+  global.
+
+**Contrat** : `transcription-progress { recording_id, percent }` émis
+**régulièrement** (débounce raisonnable, p. ex. ~500 ms / +1 %) pendant toute la
+passe, plus les bornes 0 % / 100 % existantes.
+
+**UI** (spec/03/10) : afficher l'avancement pendant la transcription — barre /
+pourcentage dans le **bandeau** et sur l'**indicateur d'état** (« Je prends
+note… {n} % »), et dans la **visite guidée** (bandeau de transcription, spec/13).
+
+Fin : `transcription-complete` ou `transcription-failed`.
 
 ## Sorties dans le vault (au succès, si vault configuré)
 
@@ -99,5 +120,6 @@ Table `transcriptions` (`raw_text`, `segments_json`, `whisper_model`,
 
 ## Hors v1 / plus tard
 
-Progression par segment, diarisation (locuteurs), VAD, backend GPU
+Diarisation (locuteurs), VAD, backend GPU (la progression fine passe **en v1** —
+voir §Progression)
 (CUDA / Vulkan / Metal) réglable.

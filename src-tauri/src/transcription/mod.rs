@@ -142,8 +142,17 @@ pub async fn enqueue_job(
 
 pub async fn run_transcription_worker(mut rx: mpsc::Receiver<TranscriptionJob>) {
     while let Some(job) = rx.recv().await {
+        let model_size = job.model_size.clone();
         if let Err(e) = process_job(job).await {
             eprintln!("Transcription error: {}", e);
+            // Message tronqué par prudence (anonyme, spec/15 §D) — les erreurs
+            // observées ici sont de courts messages internes whisper.cpp, mais
+            // on borne quand même la taille au cas où.
+            let msg: String = e.to_string().chars().take(200).collect();
+            crate::metrics::send(
+                "transcription_failed",
+                serde_json::json!({ "model": model_size, "error": msg }),
+            );
         }
     }
 }
@@ -233,6 +242,7 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
     let progress = ProgressEmitter::new(job.app_handle.clone(), recording_id.clone());
 
     // Run Whisper inference in a blocking thread (CPU-bound)
+    let decode_started = std::time::Instant::now();
     let (raw_text, segments, detected_language) = tokio::task::spawn_blocking(move || {
         run_whisper(
             &file_path,
@@ -244,6 +254,7 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
         )
     })
     .await??;
+    let decode_ms = decode_started.elapsed().as_millis() as u64;
 
     let now = chrono::Utc::now().to_rfc3339();
     let transcription_id = Uuid::new_v4().to_string();
@@ -334,6 +345,11 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
         "note_path": note_path,
         "purpose": job.purpose,
     }))?;
+
+    crate::metrics::send(
+        "transcription_completed",
+        serde_json::json!({ "model": model_size, "duration_ms": decode_ms, "purpose": job.purpose }),
+    );
 
     // Route the downstream by recording purpose (spec/13):
     //  - "context" → build `Contexte Alfred.md` + glossaire (no compte-rendu).

@@ -469,6 +469,7 @@ function ResolveBanner() {
     } catch {
       /* fall through — clearing still unblocks the UI */
     }
+    invoke("track_event", { event: "resolve_ignored", props: {} }).catch(() => {});
     clear();
     setDismissing(false);
   };

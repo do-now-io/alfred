@@ -61,6 +61,7 @@ pub async fn start_recording(
     let stop_flag_clone = stop_flag.clone();
     let pause_flag_clone = pause_flag.clone();
     let source_owned = source.to_string();
+    let source_for_metrics = source.to_string();
 
     // spawn_blocking runs the synchronous capture off the async executor.
     // No status is emitted when the capture ends: `stop_recording` (revue) and
@@ -74,8 +75,20 @@ pub async fn start_recording(
 
         match result {
             Ok(Ok(())) => {}
-            Ok(Err(e)) => eprintln!("Recording error: {}", e),
-            Err(e) => eprintln!("Recording task panicked: {:?}", e),
+            Ok(Err(e)) => {
+                eprintln!("Recording error: {}", e);
+                crate::metrics::send(
+                    "recording_failed",
+                    serde_json::json!({ "stage": "capture", "source": source_for_metrics }),
+                );
+            }
+            Err(e) => {
+                eprintln!("Recording task panicked: {:?}", e);
+                crate::metrics::send(
+                    "recording_failed",
+                    serde_json::json!({ "stage": "capture_panic", "source": source_for_metrics }),
+                );
+            }
         }
     });
 

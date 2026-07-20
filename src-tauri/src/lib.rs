@@ -95,7 +95,10 @@ async fn stop_recording(
         app.clone(),
     )
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| {
+        metrics::send("recording_failed", serde_json::json!({ "stage": "stop" }));
+        e.to_string()
+    })?;
 
     let source: Option<String> = sqlx::query_scalar("SELECT source FROM recordings WHERE id = ?")
         .bind(&recording_id)
@@ -136,6 +139,7 @@ async fn enqueue_processing(
 ) -> Result<(), anyhow::Error> {
     let file_path = data_dir.join("recordings").join(format!("{}.wav", recording_id));
     if !file_path.exists() {
+        metrics::send("recording_failed", serde_json::json!({ "stage": "enqueue" }));
         return Err(anyhow::anyhow!("WAV introuvable pour cette prise: {:?}", file_path));
     }
 
@@ -1304,6 +1308,14 @@ async fn run_ingest(
     .map_err(|e| e.to_string())
 }
 
+/// Frontend-callable anonymous metrics (spec/15 §D) — thin wrapper over
+/// `metrics::send`, for events only the UI can see (onboarding funnel, guided
+/// tour, `/resolve` outcome). Fire-and-forget, same as the Rust-side call sites.
+#[tauri::command]
+fn track_event(event: String, props: Option<serde_json::Value>) {
+    metrics::send(&event, props.unwrap_or_else(|| serde_json::json!({})));
+}
+
 #[tauri::command]
 async fn get_config(
     key: String,
@@ -1622,6 +1634,7 @@ pub fn run() {
             // Config & Keychain
             get_config,
             set_config,
+            track_event,
             run_ingest,
             get_todo_file,
             get_recording_folder,

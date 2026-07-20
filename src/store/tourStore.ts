@@ -55,7 +55,13 @@ const persistCompleted = () => {
   invoke("set_config", { key: "tour_completed", value: "true" }).catch(() => {});
 };
 
-export const useTourStore = create<TourState>((set) => ({
+/** Metrics (spec/15 §D) — entonnoir de la visite guidée : démarrée, terminée,
+ *  ou passée (avec l'étape où elle a été passée, pour voir où on décroche). */
+const track = (event: string, props: Record<string, unknown> = {}) => {
+  invoke("track_event", { event, props }).catch(() => {});
+};
+
+export const useTourStore = create<TourState>((set, get) => ({
   active: false,
   step: "intro",
   error: null,
@@ -66,7 +72,10 @@ export const useTourStore = create<TourState>((set) => ({
   registerTarget: (id, el) =>
     set((s) => (s.targets[id] === el ? s : { targets: { ...s.targets, [id]: el } })),
 
-  start: () => set({ active: true, step: "intro", error: null, recap: null, contextReady: false }),
+  start: () => {
+    set({ active: true, step: "intro", error: null, recap: null, contextReady: false });
+    track("guided_tour_started");
+  },
   goto: (step) => set({ step, error: null }),
   setRecap: (recap) => set({ recap, contextReady: true }),
   fail: (message) => set({ error: message }),
@@ -74,10 +83,12 @@ export const useTourStore = create<TourState>((set) => ({
   // Skipping still marks the tour as seen — "Revoir la visite guidée" (Réglages)
   // is the only way back in, so we never nag a user who said no thanks.
   skip: () => {
+    track("guided_tour_skipped", { step: get().step });
     set({ active: false });
     persistCompleted();
   },
   finish: () => {
+    track("guided_tour_finished");
     set({ active: false });
     persistCompleted();
   },

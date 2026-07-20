@@ -311,6 +311,8 @@ async fn run_ingestion_core(
         Ok(r) => r,
         Err(e) => {
             emit_status("error", "error", Some(e.to_string()));
+            let msg: String = e.to_string().chars().take(200).collect();
+            crate::metrics::send("ingestion_failed", json!({ "error": msg }));
             return Err(e);
         }
     };

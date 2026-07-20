@@ -200,6 +200,7 @@ export default function Resolve() {
         // update_note_file, spec/17 §4).
         const note = await invoke<NoteFile>("get_note_file", { path: session.contextPath });
         await invoke("update_note_file", { path: session.contextPath, metadata: note.metadata, body: text });
+        invoke("track_event", { event: "resolve_finalized", props: { mode: "context" } }).catch(() => {});
         clear();
         // Dans la visite guidée → carte de clôture « Vous êtes équipé » (spec/13).
         const tour = useTourStore.getState();
@@ -222,6 +223,7 @@ export default function Resolve() {
         summary: session.summary,
         tasks: session.tasks,
       });
+      invoke("track_event", { event: "resolve_finalized", props: { mode: "meeting", pending } }).catch(() => {});
       clear();
       navigate("/notes");
     } catch (e) {
@@ -248,7 +250,17 @@ export default function Resolve() {
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
           {!isContext && (
-            <button onClick={() => navigate("/notes")} disabled={finalizing} style={actionBtn()} title="Revenir plus tard — la vérification reste en attente">Plus tard</button>
+            <button
+              onClick={() => {
+                invoke("track_event", { event: "resolve_deferred", props: { pending } }).catch(() => {});
+                navigate("/notes");
+              }}
+              disabled={finalizing}
+              style={actionBtn()}
+              title="Revenir plus tard — la vérification reste en attente"
+            >
+              Plus tard
+            </button>
           )}
           <button onClick={finalize} disabled={finalizing} style={{ ...actionBtn(true), padding: "7px 16px", fontSize: 13.5, fontWeight: 600 }}>
             {finalizing ? "Enregistrement…" : isContext ? "Valider" : "Finaliser le compte-rendu"}

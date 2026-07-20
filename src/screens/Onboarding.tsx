@@ -241,7 +241,7 @@ function MicStep() {
 
 // ─── Wizard ─────────────────────────────────────────────────────────────────
 
-type Step = { node: React.ReactNode; skippable?: boolean };
+type Step = { name: string; node: React.ReactNode; skippable?: boolean };
 
 export default function Onboarding({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
@@ -249,6 +249,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 
   const steps: Step[] = [
     {
+      name: "welcome",
       node: (
         <Panel
           icon={<AlfredAvatar size={84} variant="full" />}
@@ -258,6 +259,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       ),
     },
     {
+      name: "record_intro",
       node: (
         <Panel
           icon={<IconCircle><MdMic /></IconCircle>}
@@ -267,6 +269,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       ),
     },
     {
+      name: "ingest_intro",
       node: (
         <Panel
           icon={<IconCircle><MdAutoAwesome /></IconCircle>}
@@ -276,6 +279,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       ),
     },
     {
+      name: "vault",
       skippable: true,
       node: (
         <Panel
@@ -288,6 +292,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       ),
     },
     {
+      name: "ai_access",
       skippable: true,
       node: (
         <Panel
@@ -300,6 +305,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       ),
     },
     {
+      name: "mic",
       skippable: true,
       node: (
         <Panel
@@ -312,6 +318,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       ),
     },
     {
+      name: "ready",
       node: (
         <Panel
           icon={<IconCircle><MdCheckCircle /></IconCircle>}
@@ -326,6 +333,14 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   const isLast = step === total - 1;
   const current = steps[step];
 
+  // Entonnoir d'onboarding (metrics, spec/15 §D) : un event par étape vue —
+  // permet de voir où les gens décrochent, en comparant au max `step` atteint
+  // par install avant `onboarding_finished` (ou son absence).
+  useEffect(() => {
+    invoke("track_event", { event: "onboarding_step_shown", props: { step, name: current.name } }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
   const finish = async () => {
     setFinishing(true);
     try { await invoke("set_config", { key: "onboarding_completed", value: "true" }); }
@@ -335,11 +350,16 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     // de la matière. Idempotent côté backend (flag `starter_content_seeded`).
     try { await invoke("seed_starter_content"); }
     catch { /* non-fatal */ }
+    invoke("track_event", { event: "onboarding_finished", props: {} }).catch(() => {});
     onDone();
   };
 
   const next = () => (isLast ? finish() : setStep((s) => Math.min(s + 1, total - 1)));
   const back = () => setStep((s) => Math.max(s - 1, 0));
+  const skipStep = () => {
+    invoke("track_event", { event: "onboarding_step_skipped", props: { step, name: current.name } }).catch(() => {});
+    next();
+  };
 
   return (
     <div style={{
@@ -388,7 +408,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             {current.skippable && !isLast && (
               <button
-                onClick={next}
+                onClick={skipStep}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 14 }}
               >
                 Passer

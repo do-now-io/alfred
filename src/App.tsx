@@ -43,6 +43,7 @@ function AlfredLogo() {
   const stopRecording = useRecordingStore((s) => s.stopRecording);
   const butler = useAlfredStatusStore((s) => s.state);
   const target = useAlfredStatusStore((s) => s.target);
+  const progress = useAlfredStatusStore((s) => s.progress);
   const selectFile = useNotesStore((s) => s.selectFile);
 
   const isRecording = recStatus === "recording" || recStatus === "paused";
@@ -140,7 +141,7 @@ function AlfredLogo() {
           background: "currentColor",
           animation: busy || isRecording ? "alfred-pulse 1.4s ease-in-out infinite" : "none",
         }} />
-        {alfredStatusLabel(butler)}
+        {alfredStatusLabel(butler, progress)}
       </div>
     </div>
   );
@@ -319,6 +320,7 @@ function AppInner() {
   const setStatus = useRecordingStore((s) => s.setStatus);
   const setAlfredState = useAlfredStatusStore((s) => s.set);
   const setAlfredTarget = useAlfredStatusStore((s) => s.setTarget);
+  const setAlfredProgress = useAlfredStatusStore((s) => s.setProgress);
   const setResolveSession = useResolveStore((s) => s.setSession);
   // Ingestion failures must be VISIBLE: a silent one is indistinguishable from
   // "the feature doesn't work" (compte-rendu + tasks just never appear).
@@ -339,6 +341,12 @@ function AppInner() {
       else if (e.payload.status === "stopping" || e.payload.status === "processing") setAlfredState("transcribing");
       // "stopped" (revue) : Alfred n'a rien lancé — il attend la décision.
       else if (e.payload.status === "stopped" || e.payload.status === "error" || e.payload.status === "idle") setAlfredState("idle");
+    }).then(fn => unsubs.push(fn));
+
+    // Progression réelle de la transcription (spec/04, feedback tests) — affichée
+    // dans le libellé majordome (« Je prends note… {n} % »).
+    listen<{ recording_id: string; percent: number }>("transcription-progress", (e) => {
+      setAlfredProgress(e.payload.percent);
     }).then(fn => unsubs.push(fn));
 
     // Transcription done → the downstream (ingestion or context build) is now
@@ -391,7 +399,7 @@ function AppInner() {
     ).then(fn => unsubs.push(fn));
 
     return () => unsubs.forEach(fn => fn());
-  }, [setStatus, setAlfredState, setAlfredTarget, setResolveSession]);
+  }, [setStatus, setAlfredState, setAlfredTarget, setAlfredProgress, setResolveSession]);
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>

@@ -62,30 +62,28 @@ Aujourd'hui `run_whisper` utilise le réglage le plus faible : `Greedy
 
 Une **passe unique** sur tout le WAV en v1 (pas de chunking — spec/17 Hors v1).
 
-## Progression — 📝 à faire (feedback tests)
+## Progression — ✅ fait (feedback tests)
 
-Aujourd'hui `transcription-progress` n'émet que **0 % puis 100 %** : pendant la
-transcription (longue, CPU), l'utilisateur n'a **aucune idée de l'avancement**. On
-veut une **progression réelle** affichée dans l'UI.
-
-**C'est faisable** — deux sources d'avancement selon le chemin :
-
-- **Fichier court (passe unique, `decode_buffer`)** : brancher le **callback de
-  progression de whisper** (`set_progress_callback`, 0–100) ; à défaut, estimer via
-  le **dernier segment horodaté** (`t1`) rapporté à la **durée totale** de l'audio
-  (`temps transcrit / durée totale`).
-- **Fichier long (transcription parallèle par tranches, spec/17 §5)** : agréger
-  l'avancement **par tranche** (tranches terminées / total, **pondérées par leur
-  durée**) — chaque worker rapporte sa progression locale, on recompose un %
-  global.
-
-**Contrat** : `transcription-progress { recording_id, percent }` émis
-**régulièrement** (débounce raisonnable, p. ex. ~500 ms / +1 %) pendant toute la
-passe, plus les bornes 0 % / 100 % existantes.
-
-**UI** (spec/03/10) : afficher l'avancement pendant la transcription — barre /
-pourcentage dans le **bandeau** et sur l'**indicateur d'état** (« Je prends
-note… {n} % »), et dans la **visite guidée** (bandeau de transcription, spec/13).
+- **Fichier court (passe unique, `decode_buffer`)** : branché sur le callback de
+  progression **whisper-rs** (`FullParams::set_progress_callback_safe`, 0–100),
+  posé au moment de construire les params de décodage.
+- **Fichier long (transcription parallèle par tranches, spec/17 §5)** : chaque
+  worker rapporte sa progression **locale** (0–100 de sa tranche) dans un
+  compteur atomique partagé ; le % **global** recomposé à chaque callback =
+  somme des progressions locales **pondérées par la durée relative** de chaque
+  tranche.
+- **Contrat** : `transcription-progress { recording_id, percent }` — débounce
+  **sur changement d'entier** (pas de minuteur, la cadence whisper.cpp suffit),
+  plus les bornes 0 % / 100 % existantes (`process_job`).
+- **UI** : `alfredStatusStore` porte un `progress` (repart à `null` à chaque
+  transition d'état) affiché sur l'**indicateur d'état** (« Je prends note…
+  {n} % ») et la page de guidage `/recording` (barre + %). **Pas** de doublon
+  dans le bandeau topbar — décision déjà actée et testée (spec/10 : un seul
+  point de lecture d'état). Repris dans le toast de la **visite guidée**
+  (spec/13 étape 3).
+- Note d'implémentation : `whisper-rs` ne libère pas la closure boxée passée au
+  callback (pas de hook côté FFI) — fuite mémoire négligeable à cette échelle
+  (v1, ~10 utilisateurs, quelques octets par transcription).
 
 Fin : `transcription-complete` ou `transcription-failed`.
 

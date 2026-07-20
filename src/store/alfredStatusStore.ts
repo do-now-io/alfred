@@ -31,17 +31,29 @@ const LABELS: Record<AlfredState, string> = {
 interface AlfredStatusStore {
   state: AlfredState;
   target: AlfredTarget | null;
+  /** % de progression pendant `transcribing` (spec/04, feedback tests) — `null`
+   *  hors transcription ou avant le premier événement `transcription-progress`. */
+  progress: number | null;
   set: (state: AlfredState) => void;
   setTarget: (target: AlfredTarget | null) => void;
+  setProgress: (percent: number | null) => void;
 }
 
 export const useAlfredStatusStore = create<AlfredStatusStore>((set) => ({
   state: "idle",
   target: null,
-  set: (state) => set(state === "idle" ? { state, target: null } : { state }),
+  progress: null,
+  // Chaque transition d'état repart d'un % vierge — `setProgress` le repeuple
+  // au fil des événements `transcription-progress` pendant la phase en cours.
+  set: (state) => set(state === "idle" ? { state, target: null, progress: null } : { state, progress: null }),
   setTarget: (target) => set({ target }),
+  setProgress: (percent) => set({ progress: percent }),
 }));
 
-export function alfredStatusLabel(state: AlfredState): string {
-  return LABELS[state];
+/** `{n} %` ajouté au libellé pendant la transcription, une fois le premier
+ *  événement de progression reçu (spec/04/10, feedback tests). */
+export function alfredStatusLabel(state: AlfredState, progress?: number | null): string {
+  const base = LABELS[state];
+  if (state === "transcribing" && progress != null) return `${base} ${progress} %`;
+  return base;
 }

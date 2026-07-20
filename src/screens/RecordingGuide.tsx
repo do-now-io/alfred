@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { MdMic, MdStop, MdAdd, MdClose, MdCheckCircle, MdWarning, MdHourglassEmpty, MdUploadFile, MdPause, MdPlayArrow } from "react-icons/md";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
+import { useAlfredStatusStore } from "../store/alfredStatusStore";
 import VolumeMeter from "../components/VolumeMeter";
 import alfredLogo from "../assets/alfred-logo.png";
 
@@ -241,6 +242,8 @@ export default function RecordingGuide() {
   const navigate = useNavigate();
   const { status, volume, errorMessage, startRecording, stopRecording, cancelRecording, pauseRecording, resumeRecording, importAudioFile } = useRecordingStore();
   const elapsed = useRecordingElapsed();
+  // Progression réelle de la transcription (spec/04, feedback tests).
+  const transcriptionPercent = useAlfredStatusStore((s) => (s.state === "transcribing" ? s.progress : null));
 
   const isIdle = status === "idle";
   const isPaused = status === "paused";
@@ -318,7 +321,17 @@ export default function RecordingGuide() {
           {isProcessing && (
             <>
               <MdHourglassEmpty size={32} style={{ color: "var(--text-muted)" }} />
-              <div style={{ fontSize: 16, color: "var(--text-secondary)" }}>Transcription en cours…</div>
+              <div style={{ fontSize: 16, color: "var(--text-secondary)" }}>
+                Transcription en cours…{transcriptionPercent != null ? ` ${transcriptionPercent} %` : ""}
+              </div>
+              {transcriptionPercent != null && (
+                <div style={{ width: "100%", maxWidth: 280, height: 6, borderRadius: 4, background: "var(--border)", overflow: "hidden" }}>
+                  <div style={{
+                    width: `${transcriptionPercent}%`, height: "100%", background: "var(--accent)",
+                    borderRadius: 4, transition: "width 0.3s ease",
+                  }} />
+                </div>
+              )}
               <button
                 onClick={() => navigate("/")}
                 style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 16px", cursor: "pointer", color: "var(--text-secondary)", fontSize: 13 }}

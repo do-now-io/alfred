@@ -127,8 +127,11 @@ function SpotlightCard({
 /** L'indicateur d'état discret pendant la visite (spec/13 étape 3). */
 function PipelineToast() {
   const butler = useAlfredStatusStore((s) => s.state);
+  const progress = useAlfredStatusStore((s) => s.progress);
   if (butler === "transcribing") {
-    return <TourToast icon="⏳" text="Pendant ce temps, Alfred écoute et met au propre ce que vous venez de dire…" />;
+    // Progression réelle (spec/04, feedback tests).
+    const pct = progress != null ? ` (${progress} %)` : "";
+    return <TourToast icon="⏳" text={`Pendant ce temps, Alfred écoute et met au propre ce que vous venez de dire…${pct}`} />;
   }
   return <TourToast icon="🗂️" text="Alfred range tout ça : votre entreprise, votre équipe, vos projets, votre vocabulaire…" />;
 }

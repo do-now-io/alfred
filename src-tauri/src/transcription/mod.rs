@@ -4,9 +4,38 @@ use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+
+/// Émet `transcription-progress { recording_id, percent }` (spec/04, feedback
+/// tests) — débounce **sur changement d'entier** (0..100), pas sur un minuteur :
+/// suffisant vu la cadence des callbacks whisper.cpp, et sans risque de rater un
+/// palier sous charge. Clonable : partagé par les workers de tranches (spec/17 §5).
+#[derive(Clone)]
+struct ProgressEmitter {
+    app_handle: tauri::AppHandle,
+    recording_id: String,
+    last: Arc<AtomicI32>,
+}
+
+impl ProgressEmitter {
+    fn new(app_handle: tauri::AppHandle, recording_id: String) -> Self {
+        Self { app_handle, recording_id, last: Arc::new(AtomicI32::new(-1)) }
+    }
+
+    fn emit(&self, percent: i32) {
+        let percent = percent.clamp(0, 100);
+        if self.last.swap(percent, Ordering::Relaxed) != percent {
+            let _ = self.app_handle.emit("transcription-progress", serde_json::json!({
+                "recording_id": self.recording_id,
+                "percent": percent
+            }));
+        }
+    }
+}
 
 pub type TranscriptionSender = mpsc::Sender<TranscriptionJob>;
 
@@ -177,7 +206,9 @@ pub async fn transcribe_wav_text(
     let language = if lang == "auto" { None } else { Some(lang) };
 
     let (text, _segments, _detected) = tokio::task::spawn_blocking(move || {
-        run_whisper(&wav, &model_path, language.as_deref(), threads, glossary.as_deref())
+        // Dictée éphémère (spec/07b) : pas de recording_id, pas d'UI à mettre à
+        // jour pendant la capture — aucune émission de progression nécessaire.
+        run_whisper(&wav, &model_path, language.as_deref(), threads, glossary.as_deref(), None)
     })
     .await??;
     Ok(text.trim().to_string())
@@ -199,6 +230,7 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
     let language = job.language.clone();
     let threads = job.threads;
     let initial_prompt = job.initial_prompt.clone();
+    let progress = ProgressEmitter::new(job.app_handle.clone(), recording_id.clone());
 
     // Run Whisper inference in a blocking thread (CPU-bound)
     let (raw_text, segments, detected_language) = tokio::task::spawn_blocking(move || {
@@ -208,6 +240,7 @@ async fn process_job(job: TranscriptionJob) -> Result<()> {
             language.as_deref(),
             threads,
             initial_prompt.as_deref(),
+            Some(progress),
         )
     })
     .await??;
@@ -392,6 +425,7 @@ fn run_whisper(
     language: Option<&str>,
     threads: Option<usize>,
     initial_prompt: Option<&str>,
+    progress: Option<ProgressEmitter>,
 ) -> Result<(String, Vec<WhisperSegment>, Option<String>)> {
     // Read WAV file
     let reader = hound::WavReader::open(file_path)?;
@@ -434,7 +468,8 @@ fn run_whisper(
                     .unwrap_or(DEFAULT_THREADS)
                     .min(DEFAULT_THREADS)
             });
-            let (segments, detected) = decode_buffer(&ctx, &samples_16k, language, n_threads, initial_prompt)?;
+            let cb = progress.map(|p| Box::new(move |pct: i32| p.emit(pct)) as Box<dyn FnMut(i32)>);
+            let (segments, detected) = decode_buffer(&ctx, &samples_16k, language, n_threads, initial_prompt, cb)?;
             let text = segments.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join(" ");
             return Ok((text, segments, detected));
         }
@@ -454,21 +489,53 @@ fn run_whisper(
             secs, ranges.len(), n_workers, threads_per
         );
 
+        // Progression agrégée pondérée par tranche (spec/04/17 §5) : chaque
+        // worker rapporte sa progression LOCALE (0..100 du `decode_buffer` de sa
+        // tranche) dans `chunk_percents[i]` ; le % global recomposé est la somme
+        // pondérée par la durée relative de chaque tranche.
+        let total_len = samples_16k.len().max(1) as f64;
+        let chunk_percents: Arc<Vec<AtomicI32>> = Arc::new((0..ranges.len()).map(|_| AtomicI32::new(0)).collect());
+        let chunk_weights: Arc<Vec<f64>> = Arc::new(
+            ranges.iter().map(|(a, b)| (*b - *a) as f64 / total_len).collect(),
+        );
+
         let results: Vec<std::sync::Mutex<Option<Result<(Vec<WhisperSegment>, Option<String>)>>>> =
             (0..ranges.len()).map(|_| std::sync::Mutex::new(None)).collect();
         let next = std::sync::atomic::AtomicUsize::new(0);
+        // Références simples (Copy) vers les données partagées entre workers —
+        // `thread::scope` garantit qu'elles survivent à tous les threads
+        // spawnés ; ne les nomme PAS pareil que la valeur possédée pour que
+        // `move` ci-dessous ne capture que ces références, pas les originaux.
+        let ctx_ref = &ctx;
+        let samples_ref = &samples_16k;
+        let ranges_ref = &ranges;
+        let next_ref = &next;
+        let results_ref = &results;
         std::thread::scope(|scope| {
             for _ in 0..n_workers {
-                scope.spawn(|| {
-                    use std::sync::atomic::Ordering;
+                let progress = progress.clone();
+                let chunk_percents = chunk_percents.clone();
+                let chunk_weights = chunk_weights.clone();
+                scope.spawn(move || {
                     loop {
-                        let i = next.fetch_add(1, Ordering::SeqCst);
-                        if i >= ranges.len() {
+                        let i = next_ref.fetch_add(1, Ordering::SeqCst);
+                        if i >= ranges_ref.len() {
                             break;
                         }
-                        let (a, b) = ranges[i];
-                        let r = decode_buffer(&ctx, &samples_16k[a..b], language, threads_per, initial_prompt);
-                        *results[i].lock().unwrap() = Some(r);
+                        let (a, b) = ranges_ref[i];
+                        let cb: Option<Box<dyn FnMut(i32)>> = progress.clone().map(|p| {
+                            let percents = chunk_percents.clone();
+                            let weights = chunk_weights.clone();
+                            Box::new(move |pct: i32| {
+                                percents[i].store(pct, Ordering::Relaxed);
+                                let global: f64 = percents.iter().zip(weights.iter())
+                                    .map(|(ap, w)| ap.load(Ordering::Relaxed) as f64 * w)
+                                    .sum();
+                                p.emit(global.round() as i32);
+                            }) as Box<dyn FnMut(i32)>
+                        });
+                        let r = decode_buffer(ctx_ref, &samples_ref[a..b], language, threads_per, initial_prompt, cb);
+                        *results_ref[i].lock().unwrap() = Some(r);
                     }
                 });
             }
@@ -506,7 +573,7 @@ fn run_whisper(
     // Stub when whisper feature is disabled
     #[allow(unreachable_code)]
     {
-        let _ = (samples_16k, model_path, language, threads, initial_prompt);
+        let _ = (samples_16k, model_path, language, threads, initial_prompt, progress);
         Err(anyhow!(
             "Whisper not compiled. Enable the 'whisper' feature or download a model."
         ))
@@ -539,6 +606,7 @@ fn decode_buffer(
     language: Option<&str>,
     threads: usize,
     initial_prompt: Option<&str>,
+    on_progress: Option<Box<dyn FnMut(i32)>>,
 ) -> Result<(Vec<WhisperSegment>, Option<String>)> {
     let mut params = whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::BeamSearch {
         beam_size: BEAM_SIZE,
@@ -562,6 +630,15 @@ fn decode_buffer(
     }
     // No forced language → "auto" so whisper.cpp detects it (else it defaults to en).
     params.set_language(Some(language.unwrap_or("auto")));
+    // Progression réelle (spec/04, feedback tests) — whisper.cpp appelle ce
+    // callback régulièrement pendant le décodage avec le % d'avancement DE CET
+    // APPEL (une tranche ou tout le fichier en passe unique). Note : whisper-rs
+    // « fuit » volontairement la closure boxée (pas de hook de libération côté
+    // FFI) — négligeable ici (quelques dizaines d'octets par transcription, v1
+    // ~10 utilisateurs).
+    if let Some(mut cb) = on_progress {
+        params.set_progress_callback_safe(move |p: i32| cb(p));
+    }
 
     let mut state = ctx.create_state().map_err(|e| anyhow!("{:?}", e))?;
     state.full(params, samples).map_err(|e| anyhow!("{:?}", e))?;

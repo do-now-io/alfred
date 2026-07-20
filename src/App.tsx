@@ -24,6 +24,7 @@ import { useTourStore, useTourTarget } from "./store/tourStore";
 import { useAlfredStatusStore, alfredStatusLabel } from "./store/alfredStatusStore";
 import RecordingBar from "./components/RecordingBar";
 import { NoteTypeIcon } from "./utils/noteType";
+import NoteContextMenu from "./components/notes/NoteContextMenu";
 import GuidedTour from "./components/tour/GuidedTour";
 import FeedbackWidget from "./components/FeedbackWidget";
 
@@ -200,9 +201,17 @@ function Recents() {
   const selectedPath = useNotesStore(s => s.selectedFile?.path ?? null);
   const fetchRecents = useNotesStore(s => s.fetchRecents);
   const selectFile = useNotesStore(s => s.selectFile);
+  const renameNote = useNotesStore(s => s.renameNote);
+  const deleteNote = useNotesStore(s => s.deleteNote);
   // Le point ambre = la note qu'Alfred TRAITE en ce moment (spec/10, feedback
   // tests) — plus « note sélectionnée » (le highlight suffit pour la sélection).
   const targetPath = useAlfredStatusStore(s => s.target?.targetPath ?? null);
+
+  // Clic droit (spec/07, feedback tests) : mêmes actions Renommer/Supprimer que
+  // l'arbre de Notes — sans ce menu, le clic droit ici tombait sur le menu
+  // natif du navigateur (Retour/Actualiser/Imprimer…), incohérent avec le reste
+  // de l'app.
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; title: string } | null>(null);
 
   useEffect(() => {
     fetchRecents();
@@ -229,6 +238,10 @@ function Recents() {
             background: active ? "var(--active-bg)" : "transparent",
           }}
             onClick={() => { selectFile(item.path); navigate("/notes"); }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY, path: item.path, title: item.title });
+            }}
             onMouseEnter={e => (e.currentTarget.style.background = "var(--active-bg)")}
             onMouseLeave={e => (e.currentTarget.style.background = active ? "var(--active-bg)" : "transparent")}
           >
@@ -254,6 +267,21 @@ function Recents() {
           </div>
         );
       })}
+
+      {contextMenu && (
+        <NoteContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onRename={() => {
+            const name = window.prompt("Renommer la note", contextMenu.title);
+            if (name && name.trim()) renameNote(contextMenu.path, name.trim());
+          }}
+          onDelete={() => {
+            if (window.confirm(`Supprimer "${contextMenu.title}" ?`)) deleteNote(contextMenu.path);
+          }}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

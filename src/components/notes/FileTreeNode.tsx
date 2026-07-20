@@ -3,6 +3,7 @@ import { MdEdit, MdDelete, MdCreateNewFolder } from "react-icons/md";
 import type { VaultNode } from "../../bindings/VaultNode";
 import { useNotesStore } from "../../store/notesStore";
 import { NoteTypeIcon } from "../../utils/noteType";
+import NoteContextMenu, { menuItemStyle } from "./NoteContextMenu";
 
 /** MIME custom du glisser-déposer interne (spec/07) — déjà utilisé pour déposer
  *  une note sur un groupe de projet ; réutilisé ici pour la déposer sur un
@@ -108,19 +109,19 @@ export default function FileTreeNode({
                 onClick={() => { onCreateFolder(node.path); setContextMenu(null); }}
                 style={menuItemStyle}
               >
-                <MdCreateNewFolder style={{ verticalAlign: "middle", marginRight: 6 }} /> Nouveau dossier
+                <MdCreateNewFolder size={15} /> Nouveau dossier
               </button>
               <button
                 onClick={() => { onRenameFolder(node.path, node.name); setContextMenu(null); }}
                 style={menuItemStyle}
               >
-                <MdEdit style={{ verticalAlign: "middle", marginRight: 6 }} /> Renommer
+                <MdEdit size={15} /> Renommer
               </button>
               <button
                 onClick={() => { onDeleteFolder(node.path, node.name); setContextMenu(null); }}
                 style={{ ...menuItemStyle, color: "var(--danger)" }}
               >
-                <MdDelete style={{ verticalAlign: "middle", marginRight: 6 }} /> Supprimer
+                <MdDelete size={15} /> Supprimer
               </button>
             </div>
           </>
@@ -158,39 +159,14 @@ export default function FileTreeNode({
       </div>
 
       {contextMenu && (
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 999 }}
-            onClick={() => setContextMenu(null)}
-          />
-          <div style={{
-            position: "fixed", left: contextMenu.x, top: contextMenu.y,
-            background: "var(--card-bg)", border: "1px solid var(--border)",
-            borderRadius: 8, padding: 4, zIndex: 1000, minWidth: 140,
-            boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-          }}>
-            <button
-              onClick={() => { onRename(node.path, node.name); setContextMenu(null); }}
-              style={menuItemStyle}
-            >
-              <MdEdit style={{ verticalAlign: "middle", marginRight: 6 }} /> Renommer
-            </button>
-            <button
-              onClick={() => { onDelete(node.path, node.name); setContextMenu(null); }}
-              style={{ ...menuItemStyle, color: "var(--danger)" }}
-            >
-              <MdDelete style={{ verticalAlign: "middle", marginRight: 6 }} /> Supprimer
-            </button>
-          </div>
-        </>
+        <NoteContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onRename={() => onRename(node.path, node.name)}
+          onDelete={() => onDelete(node.path, node.name)}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </>
   );
 }
-
-const menuItemStyle: React.CSSProperties = {
-  display: "block", width: "100%", textAlign: "left",
-  background: "none", border: "none", padding: "6px 12px",
-  cursor: "pointer", fontSize: 13, color: "var(--text-primary)",
-  borderRadius: 4,
-};

@@ -359,6 +359,11 @@ function AppInner() {
   // Ingestion failures must be VISIBLE: a silent one is indistinguishable from
   // "the feature doesn't work" (compte-rendu + tasks just never appear).
   const [ingestError, setIngestError] = useState<string | null>(null);
+  // Same rule for transcription (spec/04) — typical case: onboarding skipped
+  // without downloading a Whisper model, first recording fails.
+  const [transcriptionError, setTranscriptionError] =
+    useState<{ message: string; modelMissing: boolean } | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -391,6 +396,16 @@ function AppInner() {
       if (e.payload.note_path) {
         setAlfredTarget({ targetPath: e.payload.note_path, recordingId: e.payload.recording_id });
       }
+    }).then(fn => unsubs.push(fn));
+
+    // Échec de transcription (spec/04) : rendre la main au majordome + bannière.
+    listen<{ recording_id: string; message: string; model_missing?: boolean }>("transcription-failed", (e) => {
+      setStatus("idle", 0);
+      setAlfredState("idle");
+      setTranscriptionError({
+        message: e.payload.message,
+        modelMissing: e.payload.model_missing ?? false,
+      });
     }).then(fn => unsubs.push(fn));
 
     // Phases d'ingestion (spec/05/10) : `analyzing`/`summary` → « Je cogite… »,
@@ -469,6 +484,39 @@ function AppInner() {
           </div>
           <button
             onClick={() => setIngestError(null)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 15, padding: 0, lineHeight: 1 }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {transcriptionError && (
+        <div style={{
+          position: "fixed", bottom: 20, right: 20, zIndex: 1500,
+          maxWidth: 420, padding: "12px 16px", borderRadius: 12,
+          background: "var(--card-bg)", border: "1px solid var(--danger)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+          display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13,
+        }}>
+          <span style={{ color: "var(--danger)", flexShrink: 0, marginTop: 1 }}>⚠</span>
+          <div style={{ color: "var(--text-primary)", lineHeight: 1.5 }}>
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>La transcription a échoué</div>
+            <div style={{ color: "var(--text-secondary)" }}>{transcriptionError.message}</div>
+            {transcriptionError.modelMissing && (
+              <button
+                onClick={() => { setTranscriptionError(null); navigate("/settings"); }}
+                style={{
+                  marginTop: 8, padding: "5px 10px", borderRadius: 8,
+                  border: "1px solid var(--border)", background: "var(--bg)",
+                  color: "var(--text-primary)", cursor: "pointer", fontSize: 12,
+                }}
+              >
+                Ouvrir les Réglages
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => setTranscriptionError(null)}
             style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 15, padding: 0, lineHeight: 1 }}
           >
             ✕

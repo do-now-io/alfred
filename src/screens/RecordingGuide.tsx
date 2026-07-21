@@ -6,6 +6,7 @@ import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore"
 import { useAlfredStatusStore } from "../store/alfredStatusStore";
 import VolumeMeter from "../components/VolumeMeter";
 import AlfredAvatar from "../components/AlfredAvatar";
+import { useT } from "../i18n";
 
 // The recording guidance page (spec/03): reached by clicking the sidebar logo
 // (or the Dashboard's recording card). Shows live feedback (timer + volume) and
@@ -21,60 +22,64 @@ interface CaptureTypeTips {
   tips: string[];
 }
 
-const CAPTURE_TYPES: Array<{ id: string; label: string }> = [
-  { id: "perso", label: "Note personnelle" },
-  { id: "client", label: "Réunion client" },
-  { id: "one2one", label: "One-to-one" },
-  { id: "equipe", label: "Réunion d'équipe" },
-  { id: "libre", label: "Autre / libre" },
-];
+function getCaptureTypes(t: ReturnType<typeof useT>): Array<{ id: string; label: string }> {
+  return [
+    { id: "perso", label: t("recording.guide.captureTypes.perso") },
+    { id: "client", label: t("recording.guide.captureTypes.client") },
+    { id: "one2one", label: t("recording.guide.captureTypes.one2one") },
+    { id: "equipe", label: t("recording.guide.captureTypes.equipe") },
+    { id: "libre", label: t("recording.guide.captureTypes.libre") },
+  ];
+}
 
-const DEFAULT_TIPS_BY_TYPE: Record<string, CaptureTypeTips> = {
-  perso: {
-    opener: "« Ceci est une note personnelle sur … »",
-    tips: [
-      "Annoncez le contexte et le sujet en une phrase.",
-      "Datez les éléments importants (« à faire pour vendredi »).",
-      "Épelez les noms propres ou termes techniques peu courants.",
-    ],
-  },
-  client: {
-    opener: "« Réunion avec le client {nom}, participants : … »",
-    tips: [
-      "Nommez TOUS les participants (côté client et interne) et leur rôle.",
-      "Citez le nom du client et du projet concerné.",
-      "Quand vous donnez une tâche, nommez le responsable (prénom).",
-      "Récapitulez les décisions à la fin.",
-      "Épelez les noms propres ou termes techniques peu courants.",
-    ],
-  },
-  one2one: {
-    opener: "« One-to-one avec {prénom} »",
-    tips: [
-      "Annoncez le sujet de l'échange.",
-      "Formulez clairement les points d'action et qui s'en charge.",
-      "Récapitulez ce qui est convenu à la fin.",
-    ],
-  },
-  equipe: {
-    opener: "« Réunion d'équipe {nom}, participants : … »",
-    tips: [
-      "Présentez les participants internes : prénom + rôle.",
-      "Annoncez l'ordre du jour en une phrase.",
-      "Quand vous donnez une tâche, nommez le responsable (prénom).",
-      "Récapitulez les décisions à la fin.",
-    ],
-  },
-  libre: {
-    opener: "Annoncez le sujet / l'objectif en une phrase au début.",
-    tips: [
-      "Présentez les participants : prénom + rôle.",
-      "Quand vous donnez une tâche, nommez le responsable (prénom).",
-      "Récapitulez les décisions à la fin.",
-      "Épelez les noms propres ou termes techniques peu courants.",
-    ],
-  },
-};
+function getDefaultTipsByType(t: ReturnType<typeof useT>): Record<string, CaptureTypeTips> {
+  return {
+    perso: {
+      opener: t("recording.guide.defaultTips.perso.opener"),
+      tips: [
+        t("recording.guide.defaultTips.perso.tip1"),
+        t("recording.guide.defaultTips.perso.tip2"),
+        t("recording.guide.defaultTips.perso.tip3"),
+      ],
+    },
+    client: {
+      opener: t("recording.guide.defaultTips.client.opener"),
+      tips: [
+        t("recording.guide.defaultTips.client.tip1"),
+        t("recording.guide.defaultTips.client.tip2"),
+        t("recording.guide.defaultTips.client.tip3"),
+        t("recording.guide.defaultTips.client.tip4"),
+        t("recording.guide.defaultTips.client.tip5"),
+      ],
+    },
+    one2one: {
+      opener: t("recording.guide.defaultTips.one2one.opener"),
+      tips: [
+        t("recording.guide.defaultTips.one2one.tip1"),
+        t("recording.guide.defaultTips.one2one.tip2"),
+        t("recording.guide.defaultTips.one2one.tip3"),
+      ],
+    },
+    equipe: {
+      opener: t("recording.guide.defaultTips.equipe.opener"),
+      tips: [
+        t("recording.guide.defaultTips.equipe.tip1"),
+        t("recording.guide.defaultTips.equipe.tip2"),
+        t("recording.guide.defaultTips.equipe.tip3"),
+        t("recording.guide.defaultTips.equipe.tip4"),
+      ],
+    },
+    libre: {
+      opener: t("recording.guide.defaultTips.libre.opener"),
+      tips: [
+        t("recording.guide.defaultTips.libre.tip1"),
+        t("recording.guide.defaultTips.libre.tip2"),
+        t("recording.guide.defaultTips.libre.tip3"),
+        t("recording.guide.defaultTips.libre.tip4"),
+      ],
+    },
+  };
+}
 
 const CAPTURE_TIPS_KEY = "capture_tips";
 
@@ -87,7 +92,10 @@ function formatDuration(seconds: number): string {
 // ─── Editable capture tips, per type (spec/03) ─────────────────────────────────
 
 function useCaptureTips() {
-  const [byType, setByType] = useState<Record<string, CaptureTypeTips>>(DEFAULT_TIPS_BY_TYPE);
+  const t = useT();
+  // Overrides saved by the user (config JSON) ; les valeurs par défaut restent
+  // dérivées de `t` pour rester traduites même après un changement de langue.
+  const [customByType, setCustomByType] = useState<Record<string, CaptureTypeTips> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
@@ -98,11 +106,11 @@ function useCaptureTips() {
         if (Array.isArray(parsed)) {
           // Ancien format (liste plate) → migré vers le type « libre ».
           if (parsed.length > 0) {
-            setByType((prev) => ({ ...prev, libre: { ...prev.libre, tips: parsed } }));
+            setCustomByType((prev) => ({ ...(prev ?? {}), libre: { ...(prev?.libre ?? getDefaultTipsByType(t).libre), tips: parsed } }));
           }
         } else if (parsed && typeof parsed === "object") {
-          setByType((prev) => {
-            const next = { ...prev };
+          setCustomByType((prev) => {
+            const next = { ...(prev ?? {}) };
             for (const [k, v] of Object.entries(parsed as Record<string, CaptureTypeTips>)) {
               if (v && typeof v.opener === "string" && Array.isArray(v.tips)) next[k] = v;
             }
@@ -110,11 +118,14 @@ function useCaptureTips() {
           });
         }
       } catch { /* fall back to defaults */ }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     });
   }, []);
 
+  const byType = { ...getDefaultTipsByType(t), ...(customByType ?? {}) };
+
   const persist = (next: Record<string, CaptureTypeTips>) => {
-    setByType(next);
+    setCustomByType(next);
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       invoke("set_config", { key: CAPTURE_TIPS_KEY, value: JSON.stringify(next) }).catch(() => {});
@@ -125,15 +136,17 @@ function useCaptureTips() {
 }
 
 function TipsEditor() {
+  const t = useT();
   const { byType, persist } = useCaptureTips();
   const [editing, setEditing] = useState(false);
   const [type, setType] = useState("libre");
+  const captureTypes = getCaptureTypes(t);
 
-  const current = byType[type] ?? DEFAULT_TIPS_BY_TYPE.libre;
+  const current = byType[type] ?? getDefaultTipsByType(t).libre;
   const patch = (p: Partial<CaptureTypeTips>) =>
     persist({ ...byType, [type]: { ...current, ...p } });
 
-  const update = (i: number, text: string) => patch({ tips: current.tips.map((t, idx) => (idx === i ? text : t)) });
+  const update = (i: number, text: string) => patch({ tips: current.tips.map((tip, idx) => (idx === i ? text : tip)) });
   const remove = (i: number) => patch({ tips: current.tips.filter((_, idx) => idx !== i) });
   const add = () => patch({ tips: [...current.tips, ""] });
 
@@ -141,30 +154,30 @@ function TipsEditor() {
     <div className="card" style={{ padding: "18px 22px" }}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
         <h2 style={{ margin: 0, fontSize: 14.5, fontWeight: 600, color: "var(--text-primary)" }}>
-          Conseils de captation
+          {t("recording.guide.captureTipsTitle")}
         </h2>
         <button
           onClick={() => setEditing((e) => !e)}
           style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 12, fontWeight: 500 }}
         >
-          {editing ? "Terminer" : "Modifier"}
+          {editing ? t("recording.guide.doneEditingTips") : t("recording.guide.editTips")}
         </button>
       </div>
 
       {/* Sélecteur de type (spec/03) — le guidage s'adapte au type de captation. */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-        {CAPTURE_TYPES.map((t) => (
+        {captureTypes.map((ct) => (
           <button
-            key={t.id}
-            onClick={() => setType(t.id)}
+            key={ct.id}
+            onClick={() => setType(ct.id)}
             style={{
-              background: type === t.id ? "var(--active-bg)" : "transparent",
-              color: type === t.id ? "var(--accent)" : "var(--text-secondary)",
+              background: type === ct.id ? "var(--active-bg)" : "transparent",
+              color: type === ct.id ? "var(--accent)" : "var(--text-secondary)",
               border: "1px solid var(--border)", borderRadius: 16,
-              padding: "4px 11px", cursor: "pointer", fontSize: 12, fontWeight: type === t.id ? 600 : 400,
+              padding: "4px 11px", cursor: "pointer", fontSize: 12, fontWeight: type === ct.id ? 600 : 400,
             }}
           >
-            {t.label}
+            {ct.label}
           </button>
         ))}
       </div>
@@ -186,7 +199,7 @@ function TipsEditor() {
           />
         ) : (
           <span style={{ fontSize: 13.5, color: "var(--text-primary)", fontWeight: 500, lineHeight: 1.5 }}>
-            Commencez par : {current.opener}
+            {t("recording.guide.openerPrefix")} {current.opener}
           </span>
         )}
       </div>
@@ -205,7 +218,7 @@ function TipsEditor() {
               />
               <button
                 onClick={() => remove(i)}
-                title="Retirer"
+                title={t("recording.guide.removeTip")}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex" }}
               >
                 <MdClose size={16} />
@@ -229,7 +242,7 @@ function TipsEditor() {
             display: "inline-flex", alignItems: "center", gap: 6,
           }}
         >
-          <MdAdd size={14} /> Ajouter un conseil
+          <MdAdd size={14} /> {t("recording.guide.addTip")}
         </button>
       )}
     </div>
@@ -239,6 +252,7 @@ function TipsEditor() {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function RecordingGuide() {
+  const t = useT();
   const navigate = useNavigate();
   const { status, volume, errorMessage, startRecording, stopRecording, cancelRecording, pauseRecording, resumeRecording } = useRecordingStore();
   const elapsed = useRecordingElapsed();
@@ -252,7 +266,7 @@ export default function RecordingGuide() {
   const isError = status === "error";
 
   const cancel = () => {
-    if (window.confirm("Supprimer cet enregistrement ? L'audio sera perdu.")) {
+    if (window.confirm(t("recording.guide.confirmDeleteRecording"))) {
       cancelRecording();
     }
   };
@@ -270,19 +284,19 @@ export default function RecordingGuide() {
               </div>
               <VolumeMeter volume={volume} size="lg" />
               <div style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>
-                {isPaused ? "En pause — reprenez quand vous voulez." : "Parlez naturellement — je transcris ensuite en local."}
+                {isPaused ? t("recording.guide.pausedHint") : t("recording.guide.recordingHint")}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <button
                   onClick={cancel}
-                  title="Annuler — jette l'enregistrement"
+                  title={t("recording.guide.cancelTitle")}
                   style={{
                     background: "none", color: "var(--text-muted)", border: "1px solid var(--border)",
                     borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontSize: 13.5,
                     display: "inline-flex", alignItems: "center", gap: 6,
                   }}
                 >
-                  <MdClose size={16} /> Annuler
+                  <MdClose size={16} /> {t("recording.guide.cancel")}
                 </button>
                 <button
                   onClick={isPaused ? resumeRecording : pauseRecording}
@@ -292,7 +306,7 @@ export default function RecordingGuide() {
                     display: "inline-flex", alignItems: "center", gap: 6,
                   }}
                 >
-                  {isPaused ? <><MdPlayArrow size={17} /> Reprendre</> : <><MdPause size={16} /> Pause</>}
+                  {isPaused ? <><MdPlayArrow size={17} /> {t("recording.guide.resume")}</> : <><MdPause size={16} /> {t("recording.guide.pause")}</>}
                 </button>
                 <button
                   onClick={stopRecording}
@@ -302,7 +316,7 @@ export default function RecordingGuide() {
                     display: "inline-flex", alignItems: "center", gap: 8,
                   }}
                 >
-                  <MdStop size={18} /> Terminer
+                  <MdStop size={18} /> {t("recording.guide.finish")}
                 </button>
               </div>
             </>
@@ -312,7 +326,7 @@ export default function RecordingGuide() {
             <>
               <MdHourglassEmpty size={32} style={{ color: "var(--text-muted)" }} />
               <div style={{ fontSize: 16, color: "var(--text-secondary)" }}>
-                Transcription en cours…{transcriptionPercent != null ? ` ${transcriptionPercent} %` : ""}
+                {t("recording.guide.transcribing")}{transcriptionPercent != null ? ` ${transcriptionPercent} %` : ""}
               </div>
               {transcriptionPercent != null && (
                 <div style={{ width: "100%", maxWidth: 280, height: 6, borderRadius: 4, background: "var(--border)", overflow: "hidden" }}>
@@ -326,7 +340,7 @@ export default function RecordingGuide() {
                 onClick={() => navigate("/")}
                 style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 16px", cursor: "pointer", color: "var(--text-secondary)", fontSize: 13 }}
               >
-                Continuer sur l'accueil →
+                {t("recording.guide.continueHome")}
               </button>
             </>
           )}
@@ -334,21 +348,21 @@ export default function RecordingGuide() {
           {isError && (
             <>
               <MdWarning size={28} style={{ color: "var(--danger)" }} />
-              <div style={{ fontSize: 14, color: "var(--danger)" }}>{errorMessage ?? "Erreur inconnue"}</div>
+              <div style={{ fontSize: 14, color: "var(--danger)" }}>{errorMessage ?? t("recording.guide.unknownError")}</div>
               <button
                 onClick={() => startRecording()}
                 style={{ background: "var(--accent)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontSize: 13.5, fontWeight: 500 }}
               >
-                Réessayer
+                {t("recording.guide.retry")}
               </button>
             </>
           )}
 
           {isIdle && (
             <>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>Prêt quand vous l'êtes</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>{t("recording.guide.readyTitle")}</div>
               <div style={{ fontSize: 13.5, color: "var(--text-secondary)", maxWidth: 380 }}>
-                Un dernier coup d'œil aux conseils ci-dessous, puis lancez l'enregistrement.
+                {t("recording.guide.readyBody")}
               </div>
               <button
                 onClick={() => startRecording()}
@@ -358,10 +372,10 @@ export default function RecordingGuide() {
                   display: "inline-flex", alignItems: "center", gap: 8,
                 }}
               >
-                <MdMic size={18} /> Démarrer l'enregistrement
+                <MdMic size={18} /> {t("recording.guide.startRecording")}
               </button>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Pour importer un fichier audio existant, utilisez le bouton dédié sur le logo Alfred ou la carte d'enregistrement de l'accueil.
+                {t("recording.guide.importHint")}
               </div>
             </>
           )}
@@ -375,7 +389,7 @@ export default function RecordingGuide() {
               onClick={() => navigate("/")}
               style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}
             >
-              <MdCheckCircle size={15} /> Retour à l'accueil
+              <MdCheckCircle size={15} /> {t("recording.guide.backHome")}
             </button>
           </div>
         )}

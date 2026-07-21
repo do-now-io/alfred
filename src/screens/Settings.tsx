@@ -7,6 +7,7 @@ import { useTourStore } from "../store/tourStore";
 import { useProfileStore } from "../store/profileStore";
 import WhisperModelPicker from "../components/WhisperModelPicker";
 import type { NoteFile } from "../bindings/NoteFile";
+import { useI18nStore, useT, type Lang } from "../i18n";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -58,6 +59,7 @@ function SettingRow({
 /** Profil local (spec/10/11, feedback tests) : prénom + avatar — aucun compte
  *  serveur, remplace le menu profil ambigu retiré de la topbar (spec/10). */
 function ProfileSection() {
+  const t = useT();
   const { name, avatar, load, setName, setAvatar } = useProfileStore();
   const [draftName, setDraftName] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
@@ -82,7 +84,7 @@ function ProfileSection() {
     <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
       <button
         onClick={pickAvatar}
-        title="Changer l'avatar"
+        title={t("settings.profile.changeAvatar")}
         style={{
           width: 52, height: 52, borderRadius: "50%", flexShrink: 0,
           border: "1.5px solid var(--accent)", background: avatar ? "none" : "#1C1C1C",
@@ -102,7 +104,7 @@ function ProfileSection() {
           value={draftName}
           onChange={(e) => setDraftName(e.target.value)}
           onBlur={() => { if (draftName.trim() !== name) setName(draftName.trim()); }}
-          placeholder="Votre prénom"
+          placeholder={t("settings.profile.namePlaceholder")}
           style={{
             width: "100%", border: "1px solid var(--border)", borderRadius: 8,
             padding: "8px 11px", fontSize: 14, background: "var(--bg)", color: "var(--text-primary)",
@@ -110,7 +112,7 @@ function ProfileSection() {
           }}
         />
         <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 5 }}>
-          Je m'en sers pour « Assigner à moi » (Tâches) et pour vous reconnaître parmi les participants.
+          {t("settings.profile.nameHelp")}
         </div>
       </div>
     </div>
@@ -126,6 +128,7 @@ function SecretInput({
   label: string;
   onTest?: () => Promise<void>;
 }) {
+  const t = useT();
   const [value, setValue] = useState("••••••••••");
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
@@ -193,7 +196,7 @@ function SecretInput({
             fontSize: 13,
           }}
         >
-          Enregistrer
+          {t("settings.secret.save")}
         </button>
         <button
           onClick={() => setEditing(false)}
@@ -207,7 +210,7 @@ function SecretInput({
             fontSize: 13,
           }}
         >
-          Annuler
+          {t("settings.secret.cancel")}
         </button>
       </div>
     );
@@ -222,7 +225,7 @@ function SecretInput({
           letterSpacing: value === "••••••••••" ? "0.1em" : "normal",
         }}
       >
-        {value || "Non défini"}
+        {value || t("settings.secret.notSet")}
       </span>
       <button
         onClick={() => setEditing(true)}
@@ -236,7 +239,7 @@ function SecretInput({
           fontSize: 12,
         }}
       >
-        Modifier
+        {t("settings.secret.edit")}
       </button>
       {onTest && value === "••••••••••" && (
         <button
@@ -252,11 +255,11 @@ function SecretInput({
             fontSize: 12,
           }}
         >
-          {testing ? "..." : "Tester"}
+          {testing ? t("settings.secret.testing") : t("settings.secret.test")}
         </button>
       )}
-      {testResult === "ok" && <span style={{ color: "#34C759", fontSize: 12 }}>✓ OK</span>}
-      {testResult === "error" && <span style={{ color: "var(--danger)", fontSize: 12 }}>✗ Erreur</span>}
+      {testResult === "ok" && <span style={{ color: "#34C759", fontSize: 12 }}>✓ {t("settings.secret.ok")}</span>}
+      {testResult === "error" && <span style={{ color: "var(--danger)", fontSize: 12 }}>✗ {t("settings.secret.error")}</span>}
     </div>
   );
 }
@@ -267,6 +270,7 @@ function SecretInput({
 // token comes back via loopback (subscribe_alfredia) — zero copy-paste.
 
 function AiAccessSection() {
+  const t = useT();
   const [mode, setMode] = useState<string>("byo");
   const [subStatus, setSubStatus] = useState<"unknown" | "none" | "active" | "error">("unknown");
   const [subscribing, setSubscribing] = useState(false);
@@ -325,12 +329,12 @@ function AiAccessSection() {
   return (
     <>
       <div style={{ display: "flex", gap: 20, marginBottom: 14 }}>
-        {radio("byo", "Ma clé Claude")}
-        {radio("alfredia", "Abonnement AlfredIA")}
+        {radio("byo", t("settings.aiAccessSection.myKey"))}
+        {radio("alfredia", t("settings.aiAccessSection.subscription"))}
       </div>
 
       {mode === "byo" && (
-        <SettingRow label="Clé API Claude">
+        <SettingRow label={t("settings.aiAccessSection.claudeApiKey")}>
           <SecretInput
             account="claude_api_key"
             label="sk-ant-..."
@@ -340,13 +344,13 @@ function AiAccessSection() {
       )}
 
       {mode === "alfredia" && (
-        <SettingRow label="Abonnement">
+        <SettingRow label={t("settings.aiAccessSection.subscriptionLabel")}>
           {subStatus === "active" ? (
-            <span style={{ fontSize: 13, color: "#34C759" }}>✓ Activé</span>
+            <span style={{ fontSize: 13, color: "#34C759" }}>✓ {t("settings.aiAccessSection.active")}</span>
           ) : (
             <>
               {subStatus === "error" && (
-                <span style={{ fontSize: 12, color: "var(--danger)" }}>Abonnement inactif</span>
+                <span style={{ fontSize: 12, color: "var(--danger)" }}>{t("settings.aiAccessSection.inactive")}</span>
               )}
               <button
                 onClick={() => handleSubscribe("monthly")}
@@ -361,7 +365,7 @@ function AiAccessSection() {
                   fontSize: 13,
                 }}
               >
-                {subscribing ? "En attente du paiement…" : "Commencer l'essai gratuit — 14 jours"}
+                {subscribing ? t("settings.aiAccessSection.awaitingPayment") : t("settings.aiAccessSection.subscribeTrial")}
               </button>
               {!subscribing && (
                 <button
@@ -376,7 +380,7 @@ function AiAccessSection() {
                     fontSize: 13,
                   }}
                 >
-                  Essai gratuit puis annuel
+                  {t("settings.aiAccessSection.trialThenYearly")}
                 </button>
               )}
             </>
@@ -385,7 +389,7 @@ function AiAccessSection() {
       )}
       {mode === "alfredia" && subStatus !== "active" && !subscribing && (
         <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>
-          Puis 20 €/mois (ou en annuel), sans engagement — annulable à tout moment.
+          {t("settings.aiAccessSection.thenPrice")}
         </div>
       )}
       {error && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 4 }}>{error}</div>}
@@ -396,6 +400,9 @@ function AiAccessSection() {
 // ─── Settings screen ──────────────────────────────────────────────────────────
 
 export default function Settings() {
+  const t = useT();
+  const lang = useI18nStore((s) => s.lang);
+  const setLang = useI18nStore((s) => s.setLang);
   const navigate = useNavigate();
   const [languageHint, setLanguageHint] = useState("auto");
   const [recordingSource, setRecordingSource] = useState("mixed");
@@ -419,25 +426,36 @@ export default function Settings() {
   return (
     <div style={{ padding: 32, maxWidth: 600, overflowY: "auto", height: "100%" }}>
       <h1 style={{ margin: "0 0 28px", fontSize: 22, fontWeight: 600, color: "var(--text-primary)" }}>
-        Paramètres
+        {t("settings.title")}
       </h1>
 
-      <Section title="Profil">
+      <Section title={t("settings.sections.profile")}>
         <ProfileSection />
       </Section>
 
-      <Section title="Accès IA">
+      <Section title={t("settings.sections.aiAccess")}>
         <AiAccessSection />
       </Section>
 
-      <Section title="Transcription">
+      <Section title={t("settings.sections.transcription")}>
         {/* Gestionnaire de modèles Whisper (spec/04/11) — même composant que
             l'étape d'onboarding. « Utiliser » n'existe que sur un modèle
             téléchargé : on ne peut plus activer un modèle absent du disque. */}
         <div style={{ marginBottom: 14 }}>
           <WhisperModelPicker />
         </div>
-        <SettingRow label="Langue">
+        <SettingRow label={t("settings.transcriptionSection.appLanguage")}>
+          <select
+            className="alfred-select"
+            value={lang}
+            onChange={(e) => setLang(e.target.value as Lang)}
+          >
+            <option value="fr">Français</option>
+            <option value="en">English</option>
+          </select>
+        </SettingRow>
+        <SettingRow label={t("settings.transcriptionSection.language")}>
+
           <select
             className="alfred-select"
             value={languageHint}
@@ -446,7 +464,7 @@ export default function Settings() {
               setConfig("language_hint", e.target.value);
             }}
           >
-            <option value="auto">Auto-détection</option>
+            <option value="auto">{t("settings.transcriptionSection.autoDetect")}</option>
             <option value="fr">Français</option>
             <option value="en">English</option>
             <option value="es">Español</option>
@@ -455,8 +473,8 @@ export default function Settings() {
         </SettingRow>
       </Section>
 
-      <Section title="Enregistrement">
-        <SettingRow label="Source audio">
+      <Section title={t("settings.sections.recording")}>
+        <SettingRow label={t("settings.recordingSection.audioSource")}>
           <select
             className="alfred-select"
             value={recordingSource}
@@ -465,39 +483,38 @@ export default function Settings() {
               setConfig("recording_source", e.target.value);
             }}
           >
-            <option value="mic_only">Microphone uniquement</option>
-            <option value="system_only">Audio système uniquement</option>
-            <option value="mixed">Mixte (micro + système)</option>
+            <option value="mic_only">{t("settings.recordingSection.micOnly")}</option>
+            <option value="system_only">{t("settings.recordingSection.systemOnly")}</option>
+            <option value="mixed">{t("settings.recordingSection.mixed")}</option>
           </select>
         </SettingRow>
-        <SettingRow label="Dossier des enregistrements">
+        <SettingRow label={t("settings.recordingSection.recordingsFolder")}>
           <RecordingFolderRow />
         </SettingRow>
         <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-          Chemin relatif au vault où l'audio et la transcription sont déposés. Ex. <code>alfred-raw</code>
+          {t("settings.recordingSection.recordingsFolderHelp")} <code>alfred-raw</code>
         </div>
       </Section>
 
-      <Section title="Notes">
+      <Section title={t("settings.sections.notes")}>
         <VaultPathRow />
         <ContextNoteRow />
         <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-          Décrivez votre entreprise, votre équipe et votre vocabulaire maison : je m'en
-          sers pour corriger les noms propres dans les transcriptions et comptes-rendus.
+          {t("settings.notesSection.contextHelp")}
         </div>
       </Section>
 
-      <Section title="Tâches">
-        <SettingRow label="Fichier de la to-do list">
+      <Section title={t("settings.sections.tasks")}>
+        <SettingRow label={t("settings.tasksSection.todoFile")}>
           <TodoFileRow />
         </SettingRow>
         <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-          Chemin relatif au dossier Notes (vault). Ex. <code>alfred-intelligence/Todo.md</code>
+          {t("settings.tasksSection.todoFileHelp")} <code>alfred-intelligence/Todo.md</code>
         </div>
       </Section>
 
-      <Section title="Système">
-        <SettingRow label="Lancer au démarrage">
+      <Section title={t("settings.sections.system")}>
+        <SettingRow label={t("settings.systemSection.launchAtLogin")}>
           <input
             type="checkbox"
             checked={launchAtLogin}
@@ -505,7 +522,7 @@ export default function Settings() {
             style={{ cursor: "pointer" }}
           />
         </SettingRow>
-        <SettingRow label="Introduction">
+        <SettingRow label={t("settings.systemSection.introduction")}>
           <button
             onClick={() => {
               sessionStorage.setItem("alfred_force_onboarding", "1");
@@ -517,10 +534,10 @@ export default function Settings() {
               padding: "4px 10px", cursor: "pointer", fontSize: 12,
             }}
           >
-            Revoir l'introduction
+            {t("settings.systemSection.reviewIntroduction")}
           </button>
         </SettingRow>
-        <SettingRow label="Visite guidée">
+        <SettingRow label={t("settings.systemSection.guidedTour")}>
           <button
             onClick={() => {
               navigate("/");
@@ -532,7 +549,7 @@ export default function Settings() {
               padding: "4px 10px", cursor: "pointer", fontSize: 12,
             }}
           >
-            Revoir la visite guidée
+            {t("settings.systemSection.reviewGuidedTour")}
           </button>
         </SettingRow>
       </Section>
@@ -541,6 +558,7 @@ export default function Settings() {
 }
 
 function VaultPathRow() {
+  const t = useT();
   const { vaultPath, fetchVaultPath, setVaultPath, pickVaultFolder } = useNotesStore();
 
   useEffect(() => { fetchVaultPath(); }, [fetchVaultPath]);
@@ -552,10 +570,10 @@ function VaultPathRow() {
 
   const displayPath = vaultPath
     ? (vaultPath.length > 40 ? "…" + vaultPath.slice(-40) : vaultPath)
-    : "Non configuré";
+    : t("settings.notesSection.notConfigured");
 
   return (
-    <SettingRow label="Dossier Notes (vault)">
+    <SettingRow label={t("settings.notesSection.vaultFolder")}>
       <span style={{ fontSize: 12, color: vaultPath ? "var(--text-primary)" : "var(--text-muted)", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {displayPath}
       </span>
@@ -566,13 +584,14 @@ function VaultPathRow() {
           borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 13,
         }}
       >
-        Choisir…
+        {t("settings.notesSection.choose")}
       </button>
     </SettingRow>
   );
 }
 
 function ContextNoteRow() {
+  const t = useT();
   const navigate = useNavigate();
   const { selectFile } = useNotesStore();
   const [glossaryState, setGlossaryState] = useState<
@@ -610,28 +629,28 @@ function ContextNoteRow() {
   } as const;
 
   return (
-    <SettingRow label="Contexte interne">
+    <SettingRow label={t("settings.notesSection.context")}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
         {glossaryState.kind === "done" && (
           <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-            {glossaryState.terms > 0 ? `Glossaire : ~${glossaryState.terms} termes` : "Contexte vide"}
+            {glossaryState.terms > 0 ? t("settings.notesSection.glossaryTerms", { count: glossaryState.terms }) : t("settings.notesSection.emptyContext")}
           </span>
         )}
         {glossaryState.kind === "error" && (
           <span style={{ fontSize: 12, color: "var(--danger, #c0392b)" }} title={glossaryState.message}>
-            Échec
+            {t("settings.notesSection.failed")}
           </span>
         )}
         <button
           onClick={handleRegenGlossary}
           disabled={glossaryState.kind === "loading"}
           style={{ ...btnStyle, opacity: glossaryState.kind === "loading" ? 0.6 : 1 }}
-          title="Régénère le glossaire de transcription (noms propres) à partir de la note de contexte"
+          title={t("settings.notesSection.regenGlossaryTitle")}
         >
-          {glossaryState.kind === "loading" ? "Génération…" : "Régénérer le glossaire"}
+          {glossaryState.kind === "loading" ? t("settings.notesSection.generating") : t("settings.notesSection.regenGlossary")}
         </button>
         <button onClick={handleOpen} style={btnStyle}>
-          Ouvrir la note
+          {t("settings.notesSection.openNote")}
         </button>
       </div>
     </SettingRow>
@@ -639,6 +658,7 @@ function ContextNoteRow() {
 }
 
 function RecordingFolderRow() {
+  const t = useT();
   const [value, setValue] = useState("");
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
@@ -685,7 +705,7 @@ function RecordingFolderRow() {
             borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 13,
           }}
         >
-          OK
+          {t("common.ok")}
         </button>
         <button
           onClick={() => setEditing(false)}
@@ -695,7 +715,7 @@ function RecordingFolderRow() {
             padding: "5px 12px", cursor: "pointer", fontSize: 13,
           }}
         >
-          Annuler
+          {t("common.cancel")}
         </button>
       </div>
     );
@@ -712,13 +732,14 @@ function RecordingFolderRow() {
           padding: "4px 10px", cursor: "pointer", fontSize: 12,
         }}
       >
-        Modifier
+        {t("settings.secret.edit")}
       </button>
     </div>
   );
 }
 
 function TodoFileRow() {
+  const t = useT();
   const [value, setValue] = useState("");
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
@@ -765,7 +786,7 @@ function TodoFileRow() {
             borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 13,
           }}
         >
-          OK
+          {t("common.ok")}
         </button>
         <button
           onClick={() => setEditing(false)}
@@ -775,7 +796,7 @@ function TodoFileRow() {
             padding: "5px 12px", cursor: "pointer", fontSize: 13,
           }}
         >
-          Annuler
+          {t("common.cancel")}
         </button>
       </div>
     );
@@ -792,7 +813,7 @@ function TodoFileRow() {
           padding: "4px 10px", cursor: "pointer", fontSize: 12,
         }}
       >
-        Modifier
+        {t("settings.secret.edit")}
       </button>
     </div>
   );

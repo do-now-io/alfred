@@ -47,7 +47,7 @@ Méthode :
 - Ne réponds qu'à partir de ce que disent réellement les notes. Si l'information ne s'y trouve pas, dis-le clairement, sans inventer.
 
 Réponse finale :
-- En français, concise et structurée en Markdown.
+- Concise et structurée en Markdown, dans la même langue que la question (voir consigne de langue ci-dessous si besoin d'un repli).
 - Mets en **gras** les noms, dates et points clés.
 - Cite chaque note source en reprenant son nom EXACT entre doubles crochets, par ex. [[Nom de la note]] — recopie-le à l'identique depuis le champ « Note » des résultats, car il sert de lien cliquable."#;
 
@@ -217,6 +217,7 @@ pub async fn answer_question(
         .ok_or_else(|| anyhow!("Aucun coffre de notes configuré. Choisissez-en un dans Réglages → Notes."))?;
 
     let client = reqwest::Client::new();
+    let system_text = format!("{}\n{}", CHAT_SYSTEM, super::language_instruction(db).await);
 
     let mut messages: Vec<Value> = Vec::new();
     for m in &history {
@@ -234,7 +235,7 @@ pub async fn answer_question(
             "max_tokens": 1500,
             "system": [{
                 "type": "text",
-                "text": CHAT_SYSTEM,
+                "text": &system_text,
                 "cache_control": {"type": "ephemeral"}
             }],
             "tools": tools,
@@ -319,7 +320,7 @@ pub async fn answer_question(
     let body = json!({
         "model": super::MODEL,
         "max_tokens": 1500,
-        "system": CHAT_SYSTEM,
+        "system": &system_text,
         "messages": messages,
     });
     let resp = super::call_claude_with_retry(&client, &access, &body).await?;

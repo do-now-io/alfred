@@ -1,0 +1,121 @@
+// Assistant d'onboarding (spec/13/21) — 8 étapes (langue + 7 existantes).
+export default {
+  fr: {
+    language: {
+      title: "Français ou English ?",
+      text: "Choisissez la langue de l'application — modifiable à tout moment dans les Réglages.",
+      french: "Français",
+      english: "English",
+    },
+    welcome: {
+      title: "Bienvenue, je suis Alfred",
+      text: "Votre majordome personnel : j'écoute, je transcris, je résume et je retiens — pour que vous n'ayez plus à prendre de notes vous-même. Deux minutes d'installation, puis on essaie ensemble.",
+    },
+    recordIntro: {
+      title: "Parlez, je transcris",
+      text: "Lancez un enregistrement et parlez naturellement — réunion, note vocale, brainstorm. Je transcris en local avec Whisper — ça marche hors ligne, on installe le modèle à l'étape suivante — et je continue même si vous changez de vue.",
+    },
+    whisperModel: {
+      title: "Choisissez votre modèle de transcription",
+      text: "Whisper tourne entièrement sur votre machine : vos audios ne quittent jamais votre ordinateur. Le modèle Small est largement suffisant pour un usage quotidien — c'est celui que je vous recommande. Si votre machine est puissante, Medium ou Large v3 Turbo offrent une transcription encore plus fidèle, au prix d'un téléchargement et d'un traitement plus lourds.",
+      warning: "Sans modèle, la transcription ne fonctionnera pas. Vous pourrez changer de modèle ou en télécharger d'autres à tout moment dans Réglages → Transcription.",
+    },
+    ingestIntro: {
+      title: "J'en tire l'essentiel",
+      text: "De chaque enregistrement, je rédige un compte-rendu et j'en extrais les tâches à faire — avec le responsable, quand vous le nommez. Vos notes restent reliées entre elles, et vous pouvez me parler directement pour retrouver n'importe quoi.",
+    },
+    vault: {
+      title: "Choisissez votre dossier de notes",
+      text: "Je range tout dans un dossier markdown (le « vault »), compatible Obsidian. Choisissez-en un — un dossier existant ou un nouveau, rien d'autre n'y sera touché.",
+      chooseFolder: "Choisir un dossier",
+    },
+    aiAccess: {
+      title: "Accès à l'IA",
+      text: "Je m'appuie sur Claude pour rédiger, extraire les tâches et répondre à vos questions. Choisissez comment y accéder — modifiable à tout moment dans les Réglages.",
+      myKey: "Ma clé Claude",
+      subscription: "Abonnement AlfredIA",
+      keyPlaceholderExisting: "•••••••••• (déjà définie — remplacer)",
+      keyPlaceholderNew: "sk-ant-...",
+      validate: "Valider",
+      keySaved: "Clé enregistrée",
+      keySavedAndValidated: "Clé enregistrée et validée",
+      keyInvalid: "Clé invalide ou erreur réseau",
+      subscribed: "Abonnement AlfredIA activé",
+      subscribeTrial: "Commencer l'essai gratuit — 14 jours",
+      awaitingPayment: "En attente du paiement…",
+      thenPrice: "Puis 20 €/mois (ou en annuel ci-dessous), sans engagement — annulable à tout moment.",
+      trialThenYearly: "Essai gratuit puis annuel",
+    },
+    mic: {
+      title: "Autorisez le micro",
+      text: "Un test rapide pour vérifier l'accès au microphone (macOS vous demandera l'autorisation la première fois).",
+      testMic: "Tester le micro",
+      testing: "Test en cours…",
+      micOk: "Micro accessible",
+      micDenied: "Accès refusé — autorisez-moi dans les réglages système",
+    },
+    ready: {
+      title: "Tout est prêt !",
+      text: "Vous retrouverez tous ces réglages à tout moment dans Paramètres. Une dernière chose avant de vous lâcher dans l'app…",
+    },
+  },
+  en: {
+    language: {
+      title: "Français or English?",
+      text: "Choose the app's language — changeable at any time in Settings.",
+      french: "Français",
+      english: "English",
+    },
+    welcome: {
+      title: "Welcome, I'm Alfred",
+      text: "Your personal butler: I listen, transcribe, summarize, and remember — so you never have to take notes yourself. Two minutes to set up, then let's try it together.",
+    },
+    recordIntro: {
+      title: "Talk, I transcribe",
+      text: "Start a recording and speak naturally — meeting, voice note, brainstorm. I transcribe locally with Whisper — it works offline, we'll install the model in the next step — and keep going even if you switch screens.",
+    },
+    whisperModel: {
+      title: "Choose your transcription model",
+      text: "Whisper runs entirely on your machine: your audio never leaves your computer. The Small model is plenty for everyday use — that's the one I recommend. If your machine is powerful, Medium or Large v3 Turbo give even more accurate transcription, at the cost of a heavier download and more processing.",
+      warning: "Without a model, transcription won't work. You can change models or download others at any time in Settings → Transcription.",
+    },
+    ingestIntro: {
+      title: "I get to the point",
+      text: "From every recording, I write a summary and pull out the tasks to do — with an owner, when you name one. Your notes stay linked together, and you can talk to me directly to find anything.",
+    },
+    vault: {
+      title: "Choose your notes folder",
+      text: "I put everything in a markdown folder (the \"vault\"), Obsidian-compatible. Pick one — an existing folder or a new one, nothing else in it will be touched.",
+      chooseFolder: "Choose a folder",
+    },
+    aiAccess: {
+      title: "AI access",
+      text: "I rely on Claude to write, extract tasks, and answer your questions. Choose how to access it — changeable at any time in Settings.",
+      myKey: "My Claude key",
+      subscription: "AlfredIA subscription",
+      keyPlaceholderExisting: "•••••••••• (already set — replace)",
+      keyPlaceholderNew: "sk-ant-...",
+      validate: "Confirm",
+      keySaved: "Key saved",
+      keySavedAndValidated: "Key saved and validated",
+      keyInvalid: "Invalid key or network error",
+      subscribed: "AlfredIA subscription active",
+      subscribeTrial: "Start the free trial — 14 days",
+      awaitingPayment: "Waiting for payment…",
+      thenPrice: "Then €20/month (or yearly below), no commitment — cancel anytime.",
+      trialThenYearly: "Free trial then yearly",
+    },
+    mic: {
+      title: "Allow the microphone",
+      text: "A quick test to check microphone access (macOS will ask for permission the first time).",
+      testMic: "Test the microphone",
+      testing: "Testing…",
+      micOk: "Microphone accessible",
+      micDenied: "Access denied — allow me in your system settings",
+    },
+    ready: {
+      title: "All set!",
+      text: "You'll find all these settings again at any time in Settings. One last thing before I let you loose in the app…",
+    },
+  },
+};

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { MdArrowBack, MdHistory } from "react-icons/md";
+import { useT } from "../../i18n";
 
 interface Props {
   filePath: string;
@@ -26,6 +27,7 @@ const navButtonStyle = (enabled: boolean): React.CSSProperties => ({
 });
 
 export default function NoteBreadcrumb({ filePath, vaultPath, history, onBack, onOpenHistoryEntry }: Props) {
+  const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const canGoBack = history.length > 0;
@@ -49,7 +51,7 @@ export default function NoteBreadcrumb({ filePath, vaultPath, history, onBack, o
       <button
         onClick={canGoBack ? onBack : undefined}
         disabled={!canGoBack}
-        title={prevName ? `Revenir à « ${prevName} »` : "Aucune note précédente"}
+        title={prevName ? t("notes.breadcrumb.backTo", { name: prevName }) : t("notes.breadcrumb.backNone")}
         style={navButtonStyle(canGoBack)}
       >
         <MdArrowBack size={15} />
@@ -58,7 +60,7 @@ export default function NoteBreadcrumb({ filePath, vaultPath, history, onBack, o
       <button
         onClick={canGoBack ? () => setMenuOpen(o => !o) : undefined}
         disabled={!canGoBack}
-        title="Historique des notes visitées"
+        title={t("notes.breadcrumb.history")}
         style={navButtonStyle(canGoBack)}
       >
         <MdHistory size={15} />

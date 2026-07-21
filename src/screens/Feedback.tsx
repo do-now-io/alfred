@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useLocation } from "react-router-dom";
 import { MdBugReport, MdLightbulb, MdFavorite, MdClose, MdCheckCircle, MdWarning, MdContentPaste } from "react-icons/md";
+import { useT } from "../i18n";
 
 // Feedback (spec/14) — text + optional images (paste screenshots) + optional
 // contact email, sent via the `submit_feedback` command (Rust owns the network
@@ -9,11 +10,14 @@ import { MdBugReport, MdLightbulb, MdFavorite, MdClose, MdCheckCircle, MdWarning
 
 type Category = "bug" | "feature" | "praise";
 
-const CATEGORIES: { id: Category; label: string; icon: React.ReactNode }[] = [
-  { id: "bug", label: "Bug", icon: <MdBugReport /> },
-  { id: "feature", label: "Suggestion", icon: <MdLightbulb /> },
-  { id: "praise", label: "Compliment", icon: <MdFavorite /> },
-];
+function useCategories(): { id: Category; label: string; icon: React.ReactNode }[] {
+  const t = useT();
+  return [
+    { id: "bug", label: t("feedback.screen.categories.bug"), icon: <MdBugReport /> },
+    { id: "feature", label: t("feedback.screen.categories.feature"), icon: <MdLightbulb /> },
+    { id: "praise", label: t("feedback.screen.categories.praise"), icon: <MdFavorite /> },
+  ];
+}
 
 interface PastedImage {
   id: string;
@@ -37,6 +41,8 @@ function readImageFile(file: File): Promise<{ data: string; contentType: string 
 }
 
 export default function Feedback() {
+  const t = useT();
+  const CATEGORIES = useCategories();
   const location = useLocation();
   // Arriving via the widget's « Formulaire détaillé » link carries the view the
   // user was actually on; a direct visit reports /feedback itself.
@@ -97,9 +103,9 @@ export default function Feedback() {
     <div style={{ height: "100%", overflowY: "auto", display: "flex", justifyContent: "center", padding: "40px 24px" }}>
       <div style={{ width: "100%", maxWidth: 560, display: "flex", flexDirection: "column", gap: 20 }}>
         <div>
-          <h1 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>Feedback</h1>
+          <h1 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>{t("feedback.screen.title")}</h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--text-secondary)" }}>
-            Un bug, une idée, ou juste un mot gentil — ça m'aide à m'améliorer.
+            {t("feedback.screen.subtitle")}
           </p>
         </div>
 
@@ -131,7 +137,7 @@ export default function Feedback() {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onPaste={handlePaste}
-              placeholder="Décrivez votre retour — collez une capture d'écran directement ici si besoin (Ctrl/Cmd+V)…"
+              placeholder={t("feedback.screen.textPlaceholder")}
               rows={6}
               style={{
                 width: "100%", resize: "vertical", boxSizing: "border-box",
@@ -142,7 +148,7 @@ export default function Feedback() {
               }}
             />
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 11.5, color: "var(--text-muted)" }}>
-              <MdContentPaste size={13} /> Coller une image l'ajoute à votre retour (jusqu'à 5)
+              <MdContentPaste size={13} /> {t("feedback.screen.pasteHint")}
             </div>
           </div>
 
@@ -158,7 +164,7 @@ export default function Feedback() {
                   />
                   <button
                     onClick={() => removeImage(img.id)}
-                    title="Retirer"
+                    title={t("feedback.screen.removeImage")}
                     style={{
                       position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%",
                       background: "var(--danger)", color: "#fff", border: "2px solid var(--card-bg)",
@@ -177,7 +183,7 @@ export default function Feedback() {
             type="email"
             value={contactEmail}
             onChange={(e) => setContactEmail(e.target.value)}
-            placeholder="Email de contact (facultatif — pour qu'on puisse vous répondre)"
+            placeholder={t("feedback.screen.emailPlaceholder")}
             style={{
               border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px",
               fontSize: 13, background: "var(--bg)", color: "var(--text-primary)",
@@ -186,7 +192,7 @@ export default function Feedback() {
 
           {state === "error" && error && (
             <div style={{ fontSize: 12.5, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6 }}>
-              <MdWarning size={15} /> {error} — votre texte est conservé, réessayez.
+              <MdWarning size={15} /> {error}{t("feedback.screen.errorSuffix")}
             </div>
           )}
 
@@ -200,11 +206,11 @@ export default function Feedback() {
                 fontSize: 13.5, fontWeight: 500,
               }}
             >
-              {state === "sending" ? "Envoi…" : "Envoyer"}
+              {state === "sending" ? t("feedback.screen.sending") : t("feedback.screen.send")}
             </button>
             {state === "sent" && (
               <span style={{ fontSize: 13, color: "#34C759", display: "flex", alignItems: "center", gap: 6 }}>
-                <MdCheckCircle size={16} /> Merci, c'est envoyé !
+                <MdCheckCircle size={16} /> {t("feedback.screen.sent")}
               </span>
             )}
           </div>

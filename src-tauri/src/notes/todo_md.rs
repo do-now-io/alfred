@@ -71,8 +71,26 @@ pub struct TaskBlock {
 }
 
 /// Section order mandated by spec/06. New tasks always land in "À faire".
+/// Ces 4 libellés restent la représentation **interne** (FR) — inchangée pour
+/// ne rien casser côté tests/logique existants. `SECTIONS_EN` n'est là que
+/// pour la RECONNAISSANCE (spec/21) : un en-tête déjà écrit en anglais (ou
+/// dans un vault dont l'UI est passée en anglais) doit toujours retomber dans
+/// le même compartiment plutôt que de créer une section "inconnue" en double.
+/// L'écriture de nouvelles sections reste en français pour l'instant (📝 —
+/// voir spec/21 §Contenu généré, non traité dans ce lot).
 const SECTIONS: [&str; 4] = ["Prioritaire", "En cours", "À faire", "Archivé"];
+const SECTIONS_EN: [&str; 4] = ["Priority", "In Progress", "To Do", "Archived"];
 const TARGET_SECTION: &str = "À faire";
+
+/// Reconnaît un en-tête `## ...` en FR **ou** EN et renvoie son équivalent FR
+/// canonique (la représentation interne) — `None` si ce n'est pas l'une des 4
+/// sections stables (section perso de l'utilisateur, préservée telle quelle).
+fn canonical_section(name: &str) -> Option<&'static str> {
+    let name = name.trim();
+    SECTIONS.iter().position(|s| s.eq_ignore_ascii_case(name))
+        .or_else(|| SECTIONS_EN.iter().position(|s| s.eq_ignore_ascii_case(name)))
+        .map(|i| SECTIONS[i])
+}
 
 const VALID_PRIORITIES: [&str; 3] = ["haute", "moyenne", "basse"];
 
@@ -293,11 +311,15 @@ pub fn merge_tasks(existing: Option<&str>, tasks: &[IngestTask], provenance: Opt
             let trimmed = raw_line.trim_end();
             if let Some(name) = trimmed.trim().strip_prefix("## ") {
                 let name = name.trim();
-                current = match sections.iter().position(|(s, _)| s == name) {
+                // Reconnaît les 4 sections stables même écrites en anglais
+                // (spec/21) — replie dans le même compartiment FR interne au
+                // lieu de dupliquer une section "inconnue".
+                let canonical = canonical_section(name).unwrap_or(name);
+                current = match sections.iter().position(|(s, _)| s == canonical) {
                     Some(idx) => Some(idx),
                     None => {
                         // Unknown section — preserve it verbatim, appended at the end.
-                        sections.push((name.to_string(), Vec::new()));
+                        sections.push((canonical.to_string(), Vec::new()));
                         Some(sections.len() - 1)
                     }
                 };
@@ -400,7 +422,9 @@ pub fn parse_all(content: &str) -> Vec<ParsedTask> {
     while i < lines.len() {
         let line = lines[i];
         if let Some(name) = line.trim().strip_prefix("## ") {
-            section = name.trim().to_string();
+            // Reconnaît les 4 sections stables même écrites en anglais (spec/21).
+            let name = name.trim();
+            section = canonical_section(name).unwrap_or(name).to_string();
             i += 1;
             continue;
         }

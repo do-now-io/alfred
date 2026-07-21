@@ -8,6 +8,7 @@ import {
 import { useNotesStore } from "../store/notesStore";
 import AlfredAvatar from "../components/AlfredAvatar";
 import WhisperModelPicker from "../components/WhisperModelPicker";
+import { detectSystemLang, useI18nStore, useT } from "../i18n";
 
 // ─── Shared bits ────────────────────────────────────────────────────────────
 
@@ -61,6 +62,7 @@ const errorRow: React.CSSProperties = {
 // ─── Setup steps ──────────────────────────────────────────────────────────────
 
 function VaultStep() {
+  const t = useT();
   const { vaultPath, fetchVaultPath, setVaultPath, pickVaultFolder } = useNotesStore();
 
   useEffect(() => { fetchVaultPath(); }, [fetchVaultPath]);
@@ -73,7 +75,7 @@ function VaultStep() {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
       <button onClick={pick} style={primaryBtn()}>
-        <MdFolderOpen size={18} /> Choisir un dossier
+        <MdFolderOpen size={18} /> {t("onboarding.vault.chooseFolder")}
       </button>
       {vaultPath && (
         <div style={okRow}>
@@ -88,6 +90,7 @@ function VaultStep() {
 }
 
 function ClaudeKeyStep() {
+  const t = useT();
   const [value, setValue] = useState("");
   const [hasKey, setHasKey] = useState(false);
   const [state, setState] = useState<"idle" | "saving" | "ok" | "error">("idle");
@@ -117,21 +120,21 @@ function ClaudeKeyStep() {
           type="password"
           value={value}
           onChange={(e) => { setValue(e.target.value); setState("idle"); }}
-          placeholder={hasKey ? "•••••••••• (déjà définie — remplacer)" : "sk-ant-..."}
+          placeholder={hasKey ? t("onboarding.aiAccess.keyPlaceholderExisting") : t("onboarding.aiAccess.keyPlaceholderNew")}
           style={{
             flex: 1, border: "1px solid var(--border)", borderRadius: 8,
             padding: "9px 12px", fontSize: 14, background: "var(--card-bg)", color: "var(--text-primary)",
           }}
         />
         <button onClick={save} disabled={!value.trim() || state === "saving"} style={primaryBtn(!value.trim() || state === "saving")}>
-          {state === "saving" ? <MdHourglassEmpty size={18} /> : <MdVpnKey size={18} />} Valider
+          {state === "saving" ? <MdHourglassEmpty size={18} /> : <MdVpnKey size={18} />} {t("onboarding.aiAccess.validate")}
         </button>
       </div>
       {(state === "ok" || (hasKey && state === "idle")) && (
-        <div style={okRow}><MdCheckCircle size={16} /> Clé enregistrée{state === "ok" ? " et validée" : ""}</div>
+        <div style={okRow}><MdCheckCircle size={16} /> {state === "ok" ? t("onboarding.aiAccess.keySavedAndValidated") : t("onboarding.aiAccess.keySaved")}</div>
       )}
       {state === "error" && (
-        <div style={errorRow}><MdWarning size={15} /> Clé invalide ou erreur réseau</div>
+        <div style={errorRow}><MdWarning size={15} /> {t("onboarding.aiAccess.keyInvalid")}</div>
       )}
     </div>
   );
@@ -145,13 +148,14 @@ const modeBtn = (active: boolean): React.CSSProperties => ({
 });
 
 function AiAccessStep() {
+  const t = useT();
   const [mode, setMode] = useState<"byo" | "alfredia">("byo");
   const [subState, setSubState] = useState<"idle" | "subscribing" | "active" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
   const refreshSub = () => {
-    invoke<string | null>("get_secret", { account: "alfredia_token" }).then((t) => {
-      if (!t) return;
+    invoke<string | null>("get_secret", { account: "alfredia_token" }).then((token) => {
+      if (!token) return;
       invoke("test_api_key", { service: "alfredia" }).then(() => setSubState("active")).catch(() => {});
     });
   };
@@ -184,26 +188,26 @@ function AiAccessStep() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={() => changeMode("byo")} style={modeBtn(mode === "byo")}>Ma clé Claude</button>
-        <button onClick={() => changeMode("alfredia")} style={modeBtn(mode === "alfredia")}>Abonnement AlfredIA</button>
+        <button onClick={() => changeMode("byo")} style={modeBtn(mode === "byo")}>{t("onboarding.aiAccess.myKey")}</button>
+        <button onClick={() => changeMode("alfredia")} style={modeBtn(mode === "alfredia")}>{t("onboarding.aiAccess.subscription")}</button>
       </div>
 
       {mode === "byo" ? (
         <ClaudeKeyStep />
       ) : subState === "active" ? (
-        <div style={{ ...okRow, justifyContent: "center" }}><MdCheckCircle size={16} /> Abonnement AlfredIA activé</div>
+        <div style={{ ...okRow, justifyContent: "center" }}><MdCheckCircle size={16} /> {t("onboarding.aiAccess.subscribed")}</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
           <button onClick={() => subscribe("monthly")} disabled={subState === "subscribing"} style={primaryBtn(subState === "subscribing")}>
-            {subState === "subscribing" ? <><MdHourglassEmpty size={18} /> En attente du paiement…</> : "Commencer l'essai gratuit — 14 jours"}
+            {subState === "subscribing" ? <><MdHourglassEmpty size={18} /> {t("onboarding.aiAccess.awaitingPayment")}</> : t("onboarding.aiAccess.subscribeTrial")}
           </button>
           {subState !== "subscribing" && (
             <>
               <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
-                Puis 20 €/mois (ou en annuel ci-dessous), sans engagement — annulable à tout moment.
+                {t("onboarding.aiAccess.thenPrice")}
               </div>
               <button onClick={() => subscribe("yearly")} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 16px", cursor: "pointer", fontSize: 13, color: ACCENT }}>
-                Essai gratuit puis annuel
+                {t("onboarding.aiAccess.trialThenYearly")}
               </button>
             </>
           )}
@@ -215,6 +219,7 @@ function AiAccessStep() {
 }
 
 function MicStep() {
+  const t = useT();
   const [state, setState] = useState<"idle" | "testing" | "ok" | "error">("idle");
 
   const test = async () => {
@@ -230,12 +235,31 @@ function MicStep() {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
       <button onClick={test} disabled={state === "testing"} style={primaryBtn(state === "testing")}>
-        {state === "testing" ? <><MdHourglassEmpty size={18} /> Test en cours…</> : <><MdMic size={18} /> Tester le micro</>}
+        {state === "testing" ? <><MdHourglassEmpty size={18} /> {t("onboarding.mic.testing")}</> : <><MdMic size={18} /> {t("onboarding.mic.testMic")}</>}
       </button>
-      {state === "ok" && <div style={okRow}><MdCheckCircle size={16} /> Micro accessible</div>}
+      {state === "ok" && <div style={okRow}><MdCheckCircle size={16} /> {t("onboarding.mic.micOk")}</div>}
       {state === "error" && (
-        <div style={errorRow}><MdWarning size={15} /> Accès refusé — autorisez-moi dans les réglages système</div>
+        <div style={errorRow}><MdWarning size={15} /> {t("onboarding.mic.micDenied")}</div>
       )}
+    </div>
+  );
+}
+
+function LanguageStep() {
+  const lang = useI18nStore((s) => s.lang);
+  const setLang = useI18nStore((s) => s.setLang);
+
+  const btn = (active: boolean): React.CSSProperties => ({
+    flex: 1, padding: "10px 14px", borderRadius: 8, fontSize: 14, fontWeight: 500,
+    cursor: "pointer", border: active ? `1.5px solid ${ACCENT}` : "1px solid var(--border)",
+    background: active ? "var(--active-bg)" : "transparent",
+    color: active ? ACCENT : "var(--text-secondary)",
+  });
+
+  return (
+    <div style={{ display: "flex", gap: 8, width: "100%" }}>
+      <button onClick={() => setLang("fr")} style={btn(lang === "fr")}>Français</button>
+      <button onClick={() => setLang("en")} style={btn(lang === "en")}>English</button>
     </div>
   );
 }
@@ -245,6 +269,8 @@ function MicStep() {
 type Step = { name: string; node: React.ReactNode; skippable?: boolean };
 
 export default function Onboarding({ onDone }: { onDone: () => void }) {
+  const t = useT();
+  const setLang = useI18nStore((s) => s.setLang);
   const [step, setStep] = useState(0);
   const [finishing, setFinishing] = useState(false);
   // Téléchargement de modèle en cours (étape whisper_model, spec/13) : bloque
@@ -252,14 +278,37 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   // téléchargement continue en arrière-plan (événements par nom de modèle).
   const [downloadBusy, setDownloadBusy] = useState(false);
 
+  // Pré-sélection de l'étape Langue (spec/21) : langue système si fr/en,
+  // sinon en — mais seulement si `app_language` n'a JAMAIS été choisie
+  // explicitement (install neuve). Un replay (« Revoir l'introduction ») sur
+  // une install déjà configurée garde la langue déjà choisie.
+  useEffect(() => {
+    invoke<string | null>("get_config", { key: "app_language" }).then((v) => {
+      if (v !== "fr" && v !== "en") setLang(detectSystemLang());
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const steps: Step[] = [
+    {
+      name: "language",
+      node: (
+        <Panel
+          icon={<AlfredAvatar size={72} variant="minimal" />}
+          title={t("onboarding.language.title")}
+          text={t("onboarding.language.text")}
+        >
+          <LanguageStep />
+        </Panel>
+      ),
+    },
     {
       name: "welcome",
       node: (
         <Panel
           icon={<AlfredAvatar size={84} variant="full" />}
-          title="Bienvenue, je suis Alfred"
-          text="Votre majordome personnel : j'écoute, je transcris, je résume et je retiens — pour que vous n'ayez plus à prendre de notes vous-même. Deux minutes d'installation, puis on essaie ensemble."
+          title={t("onboarding.welcome.title")}
+          text={t("onboarding.welcome.text")}
         />
       ),
     },
@@ -268,8 +317,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle><MdMic /></IconCircle>}
-          title="Parlez, je transcris"
-          text="Lancez un enregistrement et parlez naturellement — réunion, note vocale, brainstorm. Je transcris en local avec Whisper — ça marche hors ligne, on installe le modèle à l'étape suivante — et je continue même si vous changez de vue."
+          title={t("onboarding.recordIntro.title")}
+          text={t("onboarding.recordIntro.text")}
         />
       ),
     },
@@ -279,16 +328,15 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle><MdDownload /></IconCircle>}
-          title="Choisissez votre modèle de transcription"
-          text="Whisper tourne entièrement sur votre machine : vos audios ne quittent jamais votre ordinateur. Le modèle Small est largement suffisant pour un usage quotidien — c'est celui que je vous recommande. Si votre machine est puissante, Medium ou Large v3 Turbo offrent une transcription encore plus fidèle, au prix d'un téléchargement et d'un traitement plus lourds."
+          title={t("onboarding.whisperModel.title")}
+          text={t("onboarding.whisperModel.text")}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ maxHeight: "min(300px, 38vh)", overflowY: "auto" }}>
               <WhisperModelPicker onBusyChange={setDownloadBusy} />
             </div>
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Sans modèle, la transcription ne fonctionnera pas. Vous pourrez changer de
-              modèle ou en télécharger d'autres à tout moment dans Réglages → Transcription.
+              {t("onboarding.whisperModel.warning")}
             </div>
           </div>
         </Panel>
@@ -299,8 +347,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle><MdAutoAwesome /></IconCircle>}
-          title="J'en tire l'essentiel"
-          text="De chaque enregistrement, je rédige un compte-rendu et j'en extrais les tâches à faire — avec le responsable, quand vous le nommez. Vos notes restent reliées entre elles, et vous pouvez me parler directement pour retrouver n'importe quoi."
+          title={t("onboarding.ingestIntro.title")}
+          text={t("onboarding.ingestIntro.text")}
         />
       ),
     },
@@ -310,8 +358,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle><MdFolderOpen /></IconCircle>}
-          title="Choisissez votre dossier de notes"
-          text="Je range tout dans un dossier markdown (le « vault »), compatible Obsidian. Choisissez-en un — un dossier existant ou un nouveau, rien d'autre n'y sera touché."
+          title={t("onboarding.vault.title")}
+          text={t("onboarding.vault.text")}
         >
           <VaultStep />
         </Panel>
@@ -323,8 +371,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle><MdVpnKey /></IconCircle>}
-          title="Accès à l'IA"
-          text="Je m'appuie sur Claude pour rédiger, extraire les tâches et répondre à vos questions. Choisissez comment y accéder — modifiable à tout moment dans les Réglages."
+          title={t("onboarding.aiAccess.title")}
+          text={t("onboarding.aiAccess.text")}
         >
           <AiAccessStep />
         </Panel>
@@ -336,8 +384,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle tone="dark"><MdMic /></IconCircle>}
-          title="Autorisez le micro"
-          text="Un test rapide pour vérifier l'accès au microphone (macOS vous demandera l'autorisation la première fois)."
+          title={t("onboarding.mic.title")}
+          text={t("onboarding.mic.text")}
         >
           <MicStep />
         </Panel>
@@ -348,8 +396,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       node: (
         <Panel
           icon={<IconCircle><MdCheckCircle /></IconCircle>}
-          title="Tout est prêt !"
-          text="Vous retrouverez tous ces réglages à tout moment dans Paramètres. Une dernière chose avant de vous lâcher dans l'app…"
+          title={t("onboarding.ready.title")}
+          text={t("onboarding.ready.text")}
         />
       ),
     },
@@ -431,7 +479,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
               fontSize: 14, display: "inline-flex", alignItems: "center", gap: 4,
             }}
           >
-            <MdArrowBack size={16} /> Précédent
+            <MdArrowBack size={16} /> {t("common.previous")}
           </button>
 
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -440,11 +488,11 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                 onClick={skipStep}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 14 }}
               >
-                Passer
+                {t("common.skip")}
               </button>
             )}
             <button onClick={next} disabled={nextDisabled} style={primaryBtn(nextDisabled)}>
-              {isLast ? "Commencer" : <>Suivant <MdArrowForward size={16} /></>}
+              {isLast ? t("common.start") : <>{t("common.next")} <MdArrowForward size={16} /></>}
             </button>
           </div>
         </div>

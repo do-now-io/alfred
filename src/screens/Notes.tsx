@@ -13,6 +13,7 @@ import PropertiesPanel from "../components/notes/PropertiesPanel";
 import NoteEditor, { type NoteEditorHandle } from "../components/notes/NoteEditor";
 import NoteFooter from "../components/notes/NoteFooter";
 import NoteBreadcrumb from "../components/notes/NoteBreadcrumb";
+import { useT } from "../i18n";
 
 function useDebounce<T extends (...args: Parameters<T>) => void>(fn: T, ms: number): T {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -26,6 +27,7 @@ function useDebounce<T extends (...args: Parameters<T>) => void>(fn: T, ms: numb
 }
 
 export default function Notes() {
+  const t = useT();
   const {
     tree, selectedFile, vaultPath, history,
     fetchTree, selectFile, goBack, updateNote,
@@ -122,7 +124,7 @@ export default function Notes() {
       navigate("/resolve");
     } catch (e) {
       console.error("[notes] analyze_transcription failed:", e);
-      window.alert(`Analyse impossible : ${e}`);
+      window.alert(t("notes.analyzeError", { error: String(e) }));
     } finally {
       setAnalyzing(false);
     }
@@ -161,10 +163,10 @@ export default function Notes() {
           }}>
             <MdFolder size={36} color="var(--text-muted)" />
             <div style={{ fontSize: 16, fontWeight: 500, color: "var(--text-primary)" }}>
-              Aucun dossier Notes configuré
+              {t("notes.emptyVault.title")}
             </div>
             <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-              Choisissez un dossier pour stocker vos notes en Markdown
+              {t("notes.emptyVault.text")}
             </div>
             <button
               onClick={handlePickVault}
@@ -174,7 +176,7 @@ export default function Notes() {
                 fontSize: 14, fontWeight: 500,
               }}
             >
-              Choisir un dossier…
+              {t("notes.emptyVault.chooseFolder")}
             </button>
           </div>
         )}
@@ -187,7 +189,7 @@ export default function Notes() {
             color: "var(--text-muted)",
           }}>
             <MdStickyNote2 size={28} color="var(--text-muted)" />
-            <div style={{ fontSize: 14 }}>Sélectionnez une note ou créez-en une avec +</div>
+            <div style={{ fontSize: 14 }}>{t("notes.noNoteSelected")}</div>
           </div>
         )}
 
@@ -205,7 +207,7 @@ export default function Notes() {
             <div style={{ padding: "6px 16px", display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center", borderBottom: "1px solid var(--border)" }}>
               <button
                 onClick={() => editorRef.current?.openSearch()}
-                title="Rechercher dans la note (Ctrl/Cmd+F)"
+                title={t("notes.actions.search")}
                 style={{
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
                   background: "transparent", color: "var(--text-secondary)",
@@ -219,7 +221,7 @@ export default function Notes() {
                 <button
                   onClick={handleReview}
                   disabled={analyzing}
-                  title="Relancer l'analyse et rouvrir l'écran de correction"
+                  title={t("notes.actions.reviewTitle")}
                   style={{
                     display: "inline-flex", alignItems: "center", gap: 6,
                     background: "transparent", color: "var(--accent)",
@@ -228,7 +230,7 @@ export default function Notes() {
                     fontSize: 12.5, opacity: analyzing ? 0.6 : 1,
                   }}
                 >
-                  <MdFactCheck size={15} /> {analyzing ? "Analyse…" : "Vérifier / corriger"}
+                  <MdFactCheck size={15} /> {analyzing ? t("notes.actions.analyzing") : t("notes.actions.review")}
                 </button>
               )}
               <ShareButton

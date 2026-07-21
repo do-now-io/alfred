@@ -11,6 +11,7 @@ import type { NoteFile } from "../../bindings/NoteFile";
 import { Spotlight } from "./Spotlight";
 import Teleprompter from "./Teleprompter";
 import AlfredAvatar from "../AlfredAvatar";
+import { useT } from "../../i18n";
 
 // The guided tour (spec/13): a real, event-driven walkthrough right after
 // onboarding. The first recording IS the creation of `Contexte Alfred.md` — the
@@ -34,6 +35,7 @@ function ghostBtn(): React.CSSProperties {
 }
 
 function SkipLink({ onClick }: { onClick: () => void }) {
+  const t = useT();
   return (
     <button
       onClick={onClick}
@@ -45,7 +47,7 @@ function SkipLink({ onClick }: { onClick: () => void }) {
         display: "flex", alignItems: "center", gap: 6,
       }}
     >
-      <MdClose size={14} /> Passer la visite
+      <MdClose size={14} /> {t("tour.skipVisit")}
     </button>
   );
 }
@@ -105,8 +107,9 @@ function TourToast({ icon, text }: { icon: string; text: string }) {
 }
 
 function SpotlightCard({
-  title, text, onNext, nextLabel = "Suivant",
+  title, text, onNext, nextLabel,
 }: { title?: string; text: string; onNext?: () => void; nextLabel?: string }) {
+  const t = useT();
   return (
     <div className="card" style={{
       padding: "16px 18px", boxShadow: "0 12px 32px rgba(0,0,0,0.35)",
@@ -116,7 +119,7 @@ function SpotlightCard({
       <div style={{ fontSize: 13, lineHeight: 1.55, color: "var(--text-secondary)" }}>{text}</div>
       {onNext && (
         <button onClick={onNext} style={{ ...primaryBtn(), alignSelf: "flex-end", padding: "6px 14px" }}>
-          {nextLabel}
+          {nextLabel ?? t("tour.visit.next")}
         </button>
       )}
     </div>
@@ -125,50 +128,59 @@ function SpotlightCard({
 
 /** L'indicateur d'état discret pendant la visite (spec/13 étape 3). */
 function PipelineToast() {
+  const t = useT();
   const butler = useAlfredStatusStore((s) => s.state);
   const progress = useAlfredStatusStore((s) => s.progress);
   if (butler === "transcribing") {
     // Progression réelle (spec/04, feedback tests).
     const pct = progress != null ? ` (${progress} %)` : "";
-    return <TourToast icon="⏳" text={`Pendant ce temps, j'écoute et je mets au propre ce que vous venez de dire…${pct}`} />;
+    return <TourToast icon="⏳" text={t("tour.toast.transcribing", { pct })} />;
   }
-  return <TourToast icon="🗂️" text="Je range tout ça : votre entreprise, votre équipe, vos projets, votre vocabulaire…" />;
+  return <TourToast icon="🗂️" text={t("tour.toast.sorting")} />;
 }
 
-// The app-visit steps (spec/13 étape 3) — spotlight target id + copy + where to be.
-const VISIT_STEPS: Array<{
+interface VisitStepDef {
   step: TourStep; next: TourStep; target: string; route: string;
   title: string; text: string;
-}> = [
-  {
-    step: "visit-notes", next: "visit-tasks", target: "nav-notes", route: "/notes",
-    title: "Vos notes",
-    text: "De chaque enregistrement, je produis la transcription et le compte-rendu, rangés ici — regroupés par projet.",
-  },
-  {
-    step: "visit-tasks", next: "visit-graph", target: "nav-tasks", route: "/tasks",
-    title: "Vos tâches",
-    text: "Les actions décidées en réunion arrivent toutes seules ici (avec le responsable quand il est nommé). Prioritaire / En cours / À faire — cochez, assignez, archivez.",
-  },
-  {
-    step: "visit-graph", next: "visit-chat", target: "nav-graph", route: "/graph",
-    title: "Le graphe",
-    text: "Je relie vos notes entre elles par projets et participants — pratique pour retrouver le fil d'un sujet.",
-  },
-  {
-    step: "visit-chat", next: "waiting", target: "nav-chat", route: "/",
-    title: "Questions à Alfred — et comment enregistrer",
-    text: "Posez vos questions ici, je réponds en citant vos notes. Et pour enregistrer : cliquez mon logo (en haut à gauche), la carte d'accueil, ou importez un audio.",
-  },
-];
+}
+
+// The app-visit steps (spec/13 étape 3) — spotlight target id + copy + where to
+// be. Built from `t()` inside the component (not a module-level constant) so
+// the copy re-renders on language change (spec/21).
+function buildVisitSteps(t: ReturnType<typeof useT>): VisitStepDef[] {
+  return [
+    {
+      step: "visit-notes", next: "visit-tasks", target: "nav-notes", route: "/notes",
+      title: t("tour.visit.notes.title"),
+      text: t("tour.visit.notes.text"),
+    },
+    {
+      step: "visit-tasks", next: "visit-graph", target: "nav-tasks", route: "/tasks",
+      title: t("tour.visit.tasks.title"),
+      text: t("tour.visit.tasks.text"),
+    },
+    {
+      step: "visit-graph", next: "visit-chat", target: "nav-graph", route: "/graph",
+      title: t("tour.visit.graph.title"),
+      text: t("tour.visit.graph.text"),
+    },
+    {
+      step: "visit-chat", next: "waiting", target: "nav-chat", route: "/",
+      title: t("tour.visit.chat.title"),
+      text: t("tour.visit.chat.text"),
+    },
+  ];
+}
 
 export default function GuidedTour() {
+  const t = useT();
   const { active, step, error, targets, recap, contextReady, goto, setRecap, fail, skip, finish } = useTourStore();
   const navigate = useNavigate();
   const startRecording = useRecordingStore((s) => s.startRecording);
   const stopRecording = useRecordingStore((s) => s.stopRecording);
   const setResolveSession = useResolveStore((s) => s.setSession);
   const elapsed = useRecordingElapsed();
+  const VISIT_STEPS = buildVisitSteps(t);
 
   useEffect(() => {
     if (!active) return;
@@ -176,7 +188,7 @@ export default function GuidedTour() {
 
     listen<{ status: string }>("recording-status-changed", (e) => {
       if (e.payload.status === "error" && step === "record") {
-        fail("J'ai rencontré un problème pendant l'enregistrement — pas de souci, vous pourrez réessayer plus tard.");
+        fail(t("tour.error.recordingFailed"));
       }
     }).then((fn) => unsubs.push(fn));
 
@@ -200,18 +212,19 @@ export default function GuidedTour() {
           // attendait sur l'indicateur d'état.
           if (step === "waiting") goto("ready");
         } else {
-          fail("Je n'ai pas réussi à construire votre contexte, mais votre transcription est bien enregistrée. Vous pourrez remplir la note de contexte à la main.");
+          fail(t("tour.error.contextFailed"));
         }
       }
     ).then((fn) => unsubs.push(fn));
 
     return () => unsubs.forEach((fn) => fn());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, step, goto, setRecap, fail]);
 
   if (!active) return null;
 
   if (error) {
-    return <TourModal title="Petit accroc" text={error} primary="Continuer" onPrimary={() => goto("closing")} />;
+    return <TourModal title={t("tour.error.title")} text={error} primary={t("tour.error.continueBtn")} onPrimary={() => goto("closing")} />;
   }
 
   // « Revoir / corriger » (spec/13 étape 5) : ouvre /resolve — MÊME écran que la
@@ -236,7 +249,7 @@ export default function GuidedTour() {
       navigate("/resolve");
     } catch (e) {
       console.error("[tour] open_context_note failed:", e);
-      fail("Je n'arrive pas à ouvrir votre note de contexte — vous pourrez la corriger plus tard depuis les Réglages.");
+      fail(t("tour.error.openContextFailed"));
     }
   };
 
@@ -244,11 +257,11 @@ export default function GuidedTour() {
     case "intro":
       return (
         <TourModal
-          title="Laissez-moi apprendre à vous connaître"
-          text="Vous allez vous présenter à voix haute pendant que je vous transcris — je m'en servirai pour bien orthographier vos collègues, vos clients et votre jargon. Deux minutes."
-          primary="Allons-y"
+          title={t("tour.intro.title")}
+          text={t("tour.intro.text")}
+          primary={t("tour.intro.primary")}
           onPrimary={() => goto("record")}
-          secondary="Plus tard"
+          secondary={t("tour.intro.secondary")}
           onSecondary={skip}
         />
       );
@@ -282,13 +295,18 @@ export default function GuidedTour() {
       return (
         <TourModal
           glow
-          title="Je vous connais — mais vérifiez ce que j'ai compris"
+          title={t("tour.ready.title")}
           text={
             recap && recap.terms > 0
-              ? `J'ai rempli votre contexte (${recap.sections} section${recap.sections > 1 ? "s" : ""}) et ajouté ${recap.terms} noms propres au glossaire de transcription. Un coup d'œil pour corriger ce qu'il faut ?`
-              : "Votre contexte est prêt. Un coup d'œil pour corriger ce qu'il faut ?"
+              ? t("tour.ready.recap", {
+                  sections: recap.sections,
+                  sectionWord: recap.sections > 1 ? t("tour.ready.sections") : t("tour.ready.section"),
+                  terms: recap.terms,
+                  termsSuffix: recap.terms > 1 ? "s" : "",
+                })
+              : t("tour.ready.noRecap")
           }
-          primary="Revoir / corriger"
+          primary={t("tour.ready.primary")}
           onPrimary={openCorrection}
         />
       );
@@ -302,9 +320,9 @@ export default function GuidedTour() {
       return (
         <TourModal
           glow
-          title="Vous êtes équipé"
-          text="Désormais : parlez, je vous écoute, je résume et je retiens — et je connais votre univers. Le reste, vous le découvrirez en m'utilisant."
-          primary="Terminer"
+          title={t("tour.closing.title")}
+          text={t("tour.closing.text")}
+          primary={t("tour.closing.primary")}
           onPrimary={finish}
         />
       );
@@ -334,7 +352,7 @@ export default function GuidedTour() {
                 if (nextDef) navigate(nextDef.route);
                 goto(visit.next);
               }}
-              nextLabel={visit.next === "waiting" ? "Terminer la visite" : "Suivant"}
+              nextLabel={visit.next === "waiting" ? t("tour.visit.finishVisit") : t("tour.visit.next")}
             />
           </Spotlight>
         </>

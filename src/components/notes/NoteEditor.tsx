@@ -5,27 +5,34 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from "@codemirror/search";
 import { markdownLivePreview, toggleAllHeadingFolds } from "./markdownLivePreview";
+import { useT, useI18nStore } from "../../i18n";
 
-// French labels for the CodeMirror search panel (spec/07 — recherche in-file).
-const frenchPhrases = EditorState.phrases.of({
-  "Find": "Rechercher",
-  "Replace": "Remplacer",
-  "next": "suivant",
-  "previous": "précédent",
-  "all": "tout",
-  "match case": "casse",
-  "by word": "mots entiers",
-  "regexp": "regex",
-  "replace": "remplacer",
-  "replace all": "tout remplacer",
-  "close": "fermer",
-  "current match": "correspondance courante",
-  "replaced $ matches": "$ correspondances remplacées",
-  "replaced match on line $": "correspondance remplacée ligne $",
-  "on line": "à la ligne",
-  "Go to line": "Aller à la ligne",
-  "go": "aller",
-});
+// Labels for the CodeMirror search panel (spec/07/21 — recherche in-file).
+// `@codemirror/search`'s phrase-override API (`EditorState.phrases.of`) takes a
+// `Record<originalEnglishPhrase, replacement>`: passing a French map replaces
+// the panel's English defaults, and passing nothing leaves them as-is — so in
+// English we simply don't add the extension (no need for an identity map).
+function buildFrenchPhrases(t: (key: string) => string): Record<string, string> {
+  return {
+    "Find": t("notes.editor.search.find"),
+    "Replace": t("notes.editor.search.replace"),
+    "next": t("notes.editor.search.next"),
+    "previous": t("notes.editor.search.previous"),
+    "all": t("notes.editor.search.all"),
+    "match case": t("notes.editor.search.matchCase"),
+    "by word": t("notes.editor.search.byWord"),
+    "regexp": t("notes.editor.search.regexp"),
+    "replace": t("notes.editor.search.replaceOne"),
+    "replace all": t("notes.editor.search.replaceAll"),
+    "close": t("notes.editor.search.close"),
+    "current match": t("notes.editor.search.currentMatch"),
+    "replaced $ matches": t("notes.editor.search.replacedMatches"),
+    "replaced match on line $": t("notes.editor.search.replacedMatchOnLine"),
+    "on line": t("notes.editor.search.onLine"),
+    "Go to line": t("notes.editor.search.goToLine"),
+    "go": t("notes.editor.search.go"),
+  };
+}
 
 interface Props {
   body: string;
@@ -47,6 +54,8 @@ export interface NoteEditorHandle {
 const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEditor(
   { body, noteKey, onChange, onWikilink, importantToggles }, ref
 ) {
+  const t = useT();
+  const lang = useI18nStore((s) => s.lang);
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -76,10 +85,12 @@ const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEditor(
         // GFM-enabled parsing (task lists, strikethrough, tables) for the live preview.
         markdown({ base: markdownLanguage }),
         markdownLivePreview({ onWikilink: r => onWikilinkRef.current?.(r), importantToggles }),
-        placeholder("Commencez à écrire…"),
+        placeholder(t("notes.editor.placeholder")),
         search({ top: true }),
         highlightSelectionMatches(),
-        frenchPhrases,
+        // English is the search panel's own default — only override the
+        // phrases when the app is in French (spec/21).
+        ...(lang === "fr" ? [EditorState.phrases.of(buildFrenchPhrases(t))] : []),
         EditorView.lineWrapping,
         EditorView.updateListener.of(update => {
           if (update.docChanged) {
@@ -118,7 +129,7 @@ const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEditor(
     view.focus();
 
     return () => { view.destroy(); viewRef.current = null; };
-  }, [noteKey]); // remount when note changes
+  }, [noteKey, lang]); // remount when note changes, or when the language changes (spec/21)
 
   // The editor owns the document; edits flow out through onChange, so `body`
   // normally mirrors it. When it doesn't (note rewritten externally — AI

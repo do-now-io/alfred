@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { MdCheckCircle, MdDeleteOutline, MdDownload } from "react-icons/md";
 import type { WhisperModelInfo } from "../bindings/WhisperModelInfo";
+import { t as translate, useT } from "../i18n";
 
 // Gestionnaire de modèles Whisper (spec/04) — partagé entre l'étape
 // d'onboarding (spec/13) et Réglages → Transcription (spec/11). Autonome :
@@ -11,17 +12,13 @@ import type { WhisperModelInfo } from "../bindings/WhisperModelInfo";
 // (filtrés par nom de modèle), ce qui lui permet de ré-afficher une
 // progression déjà en cours (onboarding passé pendant un téléchargement).
 
-const MODEL_COPY: Record<string, { label: string; desc: string }> = {
-  tiny: { label: "Tiny", desc: "Ultra-rapide, qualité basique" },
-  base: { label: "Base", desc: "Rapide, qualité correcte" },
-  small: { label: "Small", desc: "Le meilleur équilibre au quotidien" },
-  medium: { label: "Medium", desc: "Plus précis, plus lent" },
-  "large-v3-turbo": { label: "Large v3 Turbo", desc: "Qualité maximale, machines puissantes" },
+const MODEL_KEYS: Record<string, string> = {
+  tiny: "tiny",
+  base: "base",
+  small: "small",
+  medium: "medium",
+  "large-v3-turbo": "largeV3Turbo",
 };
-
-function formatSize(mb: number): string {
-  return mb >= 1000 ? `${(mb / 1024).toFixed(1).replace(".", ",")} Go` : `${mb} Mo`;
-}
 
 const smallBtn = (danger = false): React.CSSProperties => ({
   background: "none",
@@ -35,6 +32,12 @@ export default function WhisperModelPicker({ onBusyChange }: {
   /** Prévient le parent quand un téléchargement tourne (gating « Suivant » de l'onboarding). */
   onBusyChange?: (busy: boolean) => void;
 }) {
+  const t = useT();
+  const formatSize = useCallback((mb: number): string => {
+    return mb >= 1000
+      ? `${(mb / 1024).toFixed(1)} ${t("settings.whisperModelPicker.gigabytes")}`
+      : `${mb} ${t("settings.whisperModelPicker.megabytes")}`;
+  }, [t]);
   const [models, setModels] = useState<WhisperModelInfo[] | null>(null);
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -78,7 +81,7 @@ export default function WhisperModelPicker({ onBusyChange }: {
     listen<{ model: string; message: string; cancelled?: boolean }>("download-error", (e) => {
       setProgress((p) => { const n = { ...p }; delete n[e.payload.model]; return n; });
       if (!e.payload.cancelled) {
-        setErrors((p) => ({ ...p, [e.payload.model]: "Échec du téléchargement — vérifiez votre connexion" }));
+        setErrors((p) => ({ ...p, [e.payload.model]: translate("settings.whisperModelPicker.downloadFailed") }));
       }
       refresh();
     }).then((fn) => unsubs.push(fn));
@@ -118,13 +121,19 @@ export default function WhisperModelPicker({ onBusyChange }: {
   };
 
   if (models === null) {
-    return <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Chargement des modèles…</div>;
+    return <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("settings.whisperModelPicker.loading")}</div>;
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
       {models.map((m) => {
-        const copy = MODEL_COPY[m.name] ?? { label: m.name, desc: "" };
+        const modelKey = MODEL_KEYS[m.name];
+        const copy = modelKey
+          ? {
+              label: t(`settings.whisperModelPicker.models.${modelKey}.label`),
+              desc: t(`settings.whisperModelPicker.models.${modelKey}.desc`),
+            }
+          : { label: m.name, desc: "" };
         const percent = progress[m.name];
         const downloading = m.status === "downloading" || percent !== undefined;
         const downloaded = m.status === "downloaded";
@@ -145,7 +154,7 @@ export default function WhisperModelPicker({ onBusyChange }: {
                     fontSize: 11, fontWeight: 600, color: "var(--accent)",
                     border: "1px solid var(--accent)", borderRadius: 20, padding: "1px 8px",
                   }}>
-                    Recommandé
+                    {t("settings.whisperModelPicker.recommended")}
                   </span>
                 )}
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{formatSize(m.size_mb)}</span>
@@ -171,20 +180,20 @@ export default function WhisperModelPicker({ onBusyChange }: {
 
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
               {downloading ? (
-                <button onClick={() => cancel(m.name)} style={smallBtn(true)}>Annuler</button>
+                <button onClick={() => cancel(m.name)} style={smallBtn(true)}>{t("settings.whisperModelPicker.cancel")}</button>
               ) : downloaded && m.active ? (
                 <span style={{
                   fontSize: 12, fontWeight: 600, color: "#34C759",
                   display: "inline-flex", alignItems: "center", gap: 5,
                 }}>
-                  <MdCheckCircle size={15} /> Actif
+                  <MdCheckCircle size={15} /> {t("settings.whisperModelPicker.active")}
                 </span>
               ) : downloaded ? (
                 <>
-                  <button onClick={() => use(m.name)} style={smallBtn()}>Utiliser</button>
+                  <button onClick={() => use(m.name)} style={smallBtn()}>{t("settings.whisperModelPicker.use")}</button>
                   <button
                     onClick={() => remove(m.name)}
-                    title="Supprimer ce modèle du disque"
+                    title={t("settings.whisperModelPicker.removeTitle")}
                     style={{ ...smallBtn(), padding: "5px 7px", color: "var(--text-muted)" }}
                   >
                     <MdDeleteOutline size={15} />
@@ -192,7 +201,7 @@ export default function WhisperModelPicker({ onBusyChange }: {
                 </>
               ) : (
                 <button onClick={() => download(m.name)} style={smallBtn()}>
-                  <MdDownload size={14} /> {errors[m.name] ? "Réessayer" : "Télécharger"}
+                  <MdDownload size={14} /> {errors[m.name] ? t("settings.whisperModelPicker.retry") : t("settings.whisperModelPicker.download")}
                 </button>
               )}
             </div>

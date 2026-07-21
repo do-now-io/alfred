@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useLocation, useNavigate } from "react-router-dom";
 import { MdOutlineFeedback, MdCheckCircle, MdWarning } from "react-icons/md";
+import { useT } from "../i18n";
 
 // Quick feedback (spec/14) — always-available topbar icon opening a small
 // popover (textarea + « Envoyer »). Sends category "quick" plus the current
@@ -10,6 +11,7 @@ import { MdOutlineFeedback, MdCheckCircle, MdWarning } from "react-icons/md";
 // longer has a sidebar entry.
 
 export default function FeedbackWidget() {
+  const t = useT();
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -68,7 +70,7 @@ export default function FeedbackWidget() {
         onClick={() => setOpen((o) => !o)}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
-        title="Envoyer un retour"
+        title={t("feedback.widget.openTitle")}
         style={{
           display: "flex", alignItems: "center", justifyContent: "center",
           width: 30, height: 30, padding: 0, borderRadius: 8,
@@ -89,7 +91,7 @@ export default function FeedbackWidget() {
           boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
           display: "flex", flexDirection: "column", gap: 10, fontSize: 13,
         }}>
-          <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>Un retour ?</div>
+          <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>{t("feedback.widget.title")}</div>
 
           <textarea
             value={text}
@@ -97,7 +99,7 @@ export default function FeedbackWidget() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
             }}
-            placeholder="Un bug, une idée, une remarque…"
+            placeholder={t("feedback.widget.textPlaceholder")}
             rows={3}
             autoFocus
             style={{
@@ -112,7 +114,7 @@ export default function FeedbackWidget() {
           {state === "error" && error && (
             <div style={{ fontSize: 12, color: "var(--danger)", display: "flex", alignItems: "flex-start", gap: 6 }}>
               <MdWarning size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-              <span>{error} — votre texte est conservé, réessayez.</span>
+              <span>{error}{t("feedback.widget.errorSuffix")}</span>
             </div>
           )}
 
@@ -122,17 +124,17 @@ export default function FeedbackWidget() {
                 navigate("/feedback", { state: { from: location.pathname } });
                 setOpen(false);
               }}
-              title="Catégorie, captures d'écran, email de contact"
+              title={t("feedback.widget.detailedFormTitle")}
               style={{
                 background: "none", border: "none", cursor: "pointer", padding: 0,
                 fontSize: 11.5, color: "var(--text-muted)", textDecoration: "underline",
               }}
             >
-              Formulaire détaillé
+              {t("feedback.widget.detailedForm")}
             </button>
             {state === "sent" ? (
               <span style={{ fontSize: 12.5, color: "#34C759", display: "flex", alignItems: "center", gap: 5 }}>
-                <MdCheckCircle size={15} /> Merci !
+                <MdCheckCircle size={15} /> {t("feedback.widget.sent")}
               </span>
             ) : (
               <button
@@ -144,7 +146,7 @@ export default function FeedbackWidget() {
                   fontSize: 12.5, fontWeight: 500,
                 }}
               >
-                {state === "sending" ? "Envoi…" : "Envoyer"}
+                {state === "sending" ? t("feedback.widget.sending") : t("feedback.widget.send")}
               </button>
             )}
           </div>

@@ -1,4 +1,5 @@
 import { MdEdit, MdDelete } from "react-icons/md";
+import { useT } from "../../i18n";
 
 /** Menu contextuel « Renommer / Supprimer » d'une note (spec/07) — partagé
  *  entre l'arbre de fichiers (`FileTreeNode`) et les « Récents » (sidebar,
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function NoteContextMenu({ x, y, onRename, onDelete, onClose }: Props) {
+  const t = useT();
   return (
     <>
       <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={onClose} />
@@ -23,10 +25,10 @@ export default function NoteContextMenu({ x, y, onRename, onDelete, onClose }: P
         boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
       }}>
         <button onClick={() => { onRename(); onClose(); }} style={menuItemStyle}>
-          <MdEdit size={15} /> Renommer
+          <MdEdit size={15} /> {t("notes.contextMenu.rename")}
         </button>
         <button onClick={() => { onDelete(); onClose(); }} style={{ ...menuItemStyle, color: "var(--danger)" }}>
-          <MdDelete size={15} /> Supprimer
+          <MdDelete size={15} /> {t("notes.contextMenu.delete")}
         </button>
       </div>
     </>

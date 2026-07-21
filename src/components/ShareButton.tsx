@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { MdShare, MdContentCopy, MdLinkOff, MdCheck } from "react-icons/md";
+import { useT } from "../i18n";
 
 // Note sharing (spec/18): publish a Markdown note to a public-by-link URL. Generic
 // over the three backend calls so both a vault note and Todo.md can reuse it.
@@ -19,6 +20,7 @@ interface Props {
 const CONSENT_KEY = "alfred_share_consent";
 
 export default function ShareButton({ getLink, share, unshare, resetKey }: Props) {
+  const t = useT();
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -45,9 +47,7 @@ export default function ShareButton({ getLink, share, unshare, resetKey }: Props
   const doShare = async () => {
     if (busy) return;
     if (!localStorage.getItem(CONSENT_KEY)) {
-      const ok = window.confirm(
-        "Partager ?\n\nLe contenu sera envoyé sur mes serveurs et accessible par toute personne disposant du lien. Vous pourrez arrêter le partage à tout moment.",
-      );
+      const ok = window.confirm(t("common.share.consent"));
       if (!ok) return;
       localStorage.setItem(CONSENT_KEY, "1");
     }
@@ -57,7 +57,7 @@ export default function ShareButton({ getLink, share, unshare, resetKey }: Props
       setUrl(u);
       await copy(u);
     } catch (e) {
-      window.alert(`Partage impossible : ${e}`);
+      window.alert(t("common.share.failed", { error: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -70,7 +70,7 @@ export default function ShareButton({ getLink, share, unshare, resetKey }: Props
       await unshare();
       setUrl(null);
     } catch (e) {
-      window.alert(`Impossible d'arrêter le partage : ${e}`);
+      window.alert(t("common.share.unshareFailed", { error: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -88,17 +88,17 @@ export default function ShareButton({ getLink, share, unshare, resetKey }: Props
     return (
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
         <button onClick={() => copy(url)} style={btn} title={url}>
-          {copied ? <><MdCheck size={15} /> Copié</> : <><MdContentCopy size={15} /> Copier le lien</>}
+          {copied ? <><MdCheck size={15} /> {t("common.share.copied")}</> : <><MdContentCopy size={15} /> {t("common.share.copyLink")}</>}
         </button>
-        <button onClick={doUnshare} disabled={busy} style={btn} title="Arrêter le partage">
-          <MdLinkOff size={15} /> Ne plus partager
+        <button onClick={doUnshare} disabled={busy} style={btn} title={t("common.share.stopSharing")}>
+          <MdLinkOff size={15} /> {t("common.share.unshare")}
         </button>
       </div>
     );
   }
   return (
-    <button onClick={doShare} disabled={busy} style={btn} title="Publier un lien de partage">
-      <MdShare size={15} /> {busy ? "Partage…" : "Partager"}
+    <button onClick={doShare} disabled={busy} style={btn} title={t("common.share.publishLink")}>
+      <MdShare size={15} /> {busy ? t("common.share.sharing") : t("common.share.share")}
     </button>
   );
 }

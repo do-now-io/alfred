@@ -7,20 +7,25 @@ import { useTourTarget } from "../../store/tourStore";
 import BriefingContent from "../BriefingContent";
 import DictationButton from "../DictationButton";
 import type { ChatSource } from "../../bindings/ChatSource";
+import { useT } from "../../i18n";
 
 // The "my-context" suggestion doubles as the guided tour's final spotlight
 // target (spec/13) — id kept stable so GuidedTour can find it (it asks Alfred
 // about the context the tour just recorded).
-const SUGGESTIONS = [
-  { id: "my-context", label: "Que savez-vous de mon équipe et de mes projets ?" },
-  { id: "recent-notes", label: "Résume mes notes récentes" },
-  { id: "week-work", label: "Sur quoi ai-je travaillé cette semaine ?" },
-];
+function useSuggestions() {
+  const t = useT();
+  return [
+    { id: "my-context", label: t("chat.suggestions.myContext") },
+    { id: "recent-notes", label: t("chat.suggestions.recentNotes") },
+    { id: "week-work", label: t("chat.suggestions.weekWork") },
+  ];
+}
 
 const COLUMN_MAX = 760;
 
 // Second-level nav (spec/10): past conversations, newest activity first.
 function ConversationList() {
+  const t = useT();
   const conversations = useChatStore(s => s.conversations);
   const conversationId = useChatStore(s => s.conversationId);
   const loading = useChatStore(s => s.loading);
@@ -55,14 +60,14 @@ function ConversationList() {
             padding: "7px 0", cursor: loading ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 500,
           }}
         >
-          <MdAdd size={16} /> Nouvelle conversation
+          <MdAdd size={16} /> {t("chat.conversationList.newConversation")}
         </button>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "0 6px 8px" }}>
         {conversations.length === 0 && (
           <div style={{ padding: "18px 12px", fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.6 }}>
-            Vos conversations passées apparaîtront ici.
+            {t("chat.conversationList.empty")}
           </div>
         )}
         {conversations.map(c => {
@@ -92,9 +97,9 @@ function ConversationList() {
               <button
                 onClick={e => {
                   e.stopPropagation();
-                  if (window.confirm(`Supprimer « ${c.title} » ?`)) deleteConversation(c.id);
+                  if (window.confirm(t("chat.conversationList.deleteConfirm", { name: c.title }))) deleteConversation(c.id);
                 }}
-                title="Supprimer"
+                title={t("chat.conversationList.delete")}
                 style={{
                   background: "none", border: "none", cursor: "pointer", padding: 2,
                   color: "var(--text-muted)", display: "flex", alignItems: "center", flexShrink: 0,
@@ -111,6 +116,7 @@ function ConversationList() {
 }
 
 export default function ChatPanel() {
+  const t = useT();
   const { messages, loading, progress, error, send, clear } = useChatStore();
   const [input, setInput] = useState("");
   const navigate = useNavigate();
@@ -156,7 +162,7 @@ export default function ChatPanel() {
       }}>
         <span style={{ color: "var(--accent)", fontSize: 18 }}>✦</span>
         <h1 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--text-primary)" }}>
-          Demander à Alfred
+          {t("chat.header.title")}
         </h1>
         {messages.length > 0 && (
           <button
@@ -168,7 +174,7 @@ export default function ChatPanel() {
               fontSize: 12, color: "var(--text-secondary)",
             }}
           >
-            ↻ Nouvelle conversation
+            {t("chat.header.newConversation")}
           </button>
         )}
       </div>
@@ -201,7 +207,7 @@ export default function ChatPanel() {
             onKeyDown={e => {
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
             }}
-            placeholder="Poser une question…"
+            placeholder={t("chat.input.placeholder")}
             rows={2}
             disabled={loading}
             style={{
@@ -224,7 +230,7 @@ export default function ChatPanel() {
               fontSize: 13, fontWeight: 500, whiteSpace: "nowrap",
             }}
           >
-            {loading ? "⏳" : "Envoyer"}
+            {loading ? t("chat.input.sending") : t("chat.input.send")}
           </button>
         </div>
       </div>
@@ -236,7 +242,9 @@ export default function ChatPanel() {
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 function EmptyState({ onPick }: { onPick: (q: string) => void }) {
+  const t = useT();
   const tourRef = useTourTarget("chat-suggestion-my-context");
+  const suggestions = useSuggestions();
   return (
     <div style={{
       paddingTop: 56, display: "flex", flexDirection: "column",
@@ -251,13 +259,13 @@ function EmptyState({ onPick }: { onPick: (q: string) => void }) {
         ✦
       </div>
       <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>
-        Demander à Alfred
+        {t("chat.empty.title")}
       </div>
       <div style={{ fontSize: 13.5, color: "var(--text-muted)", maxWidth: 460, lineHeight: 1.6 }}>
-        Posez une question sur vos notes — je cherche dans votre coffre et je réponds en citant mes sources.
+        {t("chat.empty.text")}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginTop: 4 }}>
-        {SUGGESTIONS.map(s => (
+        {suggestions.map(s => (
           <button
             key={s.id}
             ref={s.id === "my-context" ? tourRef : undefined}
@@ -311,10 +319,11 @@ function AssistantBubble({
 }
 
 function SourceChips({ sources, onOpen }: { sources: ChatSource[]; onOpen: (path: string) => void }) {
+  const t = useT();
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 }}>
-        Sources
+        {t("chat.sources.title")}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {sources.map(s => (
@@ -341,10 +350,11 @@ function SourceChips({ sources, onOpen }: { sources: ChatSource[]; onOpen: (path
 }
 
 function ProgressView({ progress }: { progress: string[] }) {
+  const t = useT();
   return (
     <div style={{ alignSelf: "flex-start", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.8 }}>
       {progress.length === 0 ? (
-        <div>⏳ Je réfléchis…</div>
+        <div>{t("chat.progress.thinking")}</div>
       ) : (
         progress.map((line, i) => <div key={i}>{line}</div>)
       )}

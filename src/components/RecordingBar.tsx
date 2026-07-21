@@ -1,6 +1,7 @@
 import { MdMic, MdStop, MdWarning, MdClose, MdPause, MdPlayArrow } from "react-icons/md";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
 import VolumeMeter from "./VolumeMeter";
+import { useT } from "../i18n";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -29,6 +30,7 @@ const btn = (bg: string): React.CSSProperties => ({
  * and keeps going across view changes — this only surfaces and controls it.
  */
 export default function RecordingBar() {
+  const t = useT();
   const status = useRecordingStore((s) => s.status);
   const volume = useRecordingStore((s) => s.volume);
   const errorMessage = useRecordingStore((s) => s.errorMessage);
@@ -41,7 +43,7 @@ export default function RecordingBar() {
 
   const cancel = () => {
     // L'audio est perdu (spec/03) — une confirmation s'impose.
-    if (window.confirm("Supprimer cet enregistrement ? L'audio sera perdu.")) {
+    if (window.confirm(t("recording.bar.confirmDeleteRecording"))) {
       cancelRecording();
     }
   };
@@ -68,7 +70,7 @@ export default function RecordingBar() {
         <>
           <span style={{ color: "var(--danger)", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--danger)", display: "inline-block", opacity: status === "paused" ? 0.4 : 1 }} />
-            {status === "paused" ? "PAUSE" : "REC"}
+            {status === "paused" ? t("recording.bar.pauseLabel") : t("recording.bar.recLabel")}
           </span>
           <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 14, color: "var(--text-secondary)" }}>
             {formatDuration(elapsed)}
@@ -76,20 +78,20 @@ export default function RecordingBar() {
           <VolumeMeter volume={volume} />
           <button
             onClick={cancel}
-            title="Annuler — jette l'enregistrement"
+            title={t("recording.bar.cancelTitle")}
             style={{ ...btn("transparent"), color: "var(--text-muted)", border: "1px solid var(--border)", padding: "4px 8px" }}
           >
             <MdClose size={15} />
           </button>
           <button
             onClick={status === "paused" ? resumeRecording : pauseRecording}
-            title={status === "paused" ? "Reprendre" : "Mettre en pause"}
+            title={status === "paused" ? t("recording.bar.resumeTitle") : t("recording.bar.pauseTitle")}
             style={{ ...btn("transparent"), color: "var(--text-secondary)", border: "1px solid var(--border)", padding: "4px 8px" }}
           >
             {status === "paused" ? <MdPlayArrow size={16} /> : <MdPause size={15} />}
           </button>
           <button onClick={stopRecording} style={btn("var(--danger)")}>
-            <MdStop size={16} /> Terminer
+            <MdStop size={16} /> {t("recording.bar.finish")}
           </button>
         </>
       )}
@@ -100,10 +102,10 @@ export default function RecordingBar() {
       {status === "error" && (
         <>
           <span style={{ color: "var(--danger)", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
-            <MdWarning size={15} /> {errorMessage ?? "Erreur inconnue"}
+            <MdWarning size={15} /> {errorMessage ?? t("recording.bar.unknownError")}
           </span>
           <button onClick={() => startRecording("mic_only")} style={btn("var(--accent)")}>
-            <MdMic size={16} /> Réessayer
+            <MdMic size={16} /> {t("recording.bar.retry")}
           </button>
         </>
       )}

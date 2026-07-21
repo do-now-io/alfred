@@ -6,6 +6,7 @@ import { useResolveStore } from "../store/resolveStore";
 import { useTourStore } from "../store/tourStore";
 import type { NoteFile } from "../bindings/NoteFile";
 import NoteEditor from "../components/notes/NoteEditor";
+import { useT } from "../i18n";
 
 // Écran de vérification (spec/17 §3, feedback tests) : **toujours** présenté
 // après une transcription — réunion (spec/05) ou contexte à la voix (spec/13
@@ -102,29 +103,32 @@ function GroupLabel({ icon, label, count }: { icon: React.ReactNode; label: stri
 }
 
 function ReplayButton({ start, end, play, ready }: { start: number | null; end: number | null; play: (s: number, e: number | null) => void; ready: boolean }) {
+  const t = useT();
   if (start == null) return null;
   return (
     <button
       onClick={() => play(start, end)}
       disabled={!ready}
-      title="Réécouter ce passage"
+      title={t("resolve.replay.title")}
       style={{ ...actionBtn(), opacity: ready ? 1 : 0.5, padding: "5px 8px" }}
     >
-      <MdVolumeUp /> Réécouter
+      <MdVolumeUp /> {t("resolve.replay.button")}
     </button>
   );
 }
 
 function ResolvedRow({ label, onUndo }: { label: string; onUndo: () => void }) {
+  const t = useT();
   return (
     <div style={{ ...card, flexDirection: "row", alignItems: "center", justifyContent: "space-between", background: "var(--bg)", opacity: 0.85 }}>
       <span style={{ fontSize: 12.5, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-      <button onClick={onUndo} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12, flexShrink: 0 }}>Revenir</button>
+      <button onClick={onUndo} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12, flexShrink: 0 }}>{t("resolve.resolvedRow.undo")}</button>
     </div>
   );
 }
 
 export default function Resolve() {
+  const t = useT();
   const session = useResolveStore((s) => s.session);
   const navigate = useNavigate();
   const clear = useResolveStore((s) => s.clear);
@@ -166,8 +170,8 @@ export default function Resolve() {
   if (!session) {
     return (
       <div style={{ padding: 48, textAlign: "center", color: "var(--text-secondary)" }}>
-        <p style={{ fontSize: 15 }}>Rien à vérifier pour le moment.</p>
-        <button onClick={() => navigate("/")} style={{ ...actionBtn(true), marginTop: 12 }}>Retour à l'accueil</button>
+        <p style={{ fontSize: 15 }}>{t("resolve.empty.text")}</p>
+        <button onClick={() => navigate("/")} style={{ ...actionBtn(true), marginTop: 12 }}>{t("resolve.empty.back")}</button>
       </div>
     );
   }
@@ -184,9 +188,9 @@ export default function Resolve() {
     setText(next);
     setUnclearStatus((s) => ({ ...s, [i]: "applied" }));
   };
-  const assignTask = (i: number, t: (typeof tasks)[number]) => {
+  const assignTask = (i: number, taskItem: (typeof tasks)[number]) => {
     const owner = (taskOwner[i] ?? "").trim();
-    if (owner) setText((prev) => `${prev.trimEnd()}\n\nResponsable de « ${t.task} » : ${owner}.`);
+    if (owner) setText((prev) => `${prev.trimEnd()}\n\n${t("resolve.tasks.ownerLine", { task: taskItem.task, owner })}`);
     setTaskStatus((s) => ({ ...s, [i]: "applied" }));
   };
 
@@ -238,14 +242,14 @@ export default function Resolve() {
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
         <div style={{ flex: 1 }}>
           <h1 style={{ margin: 0, fontSize: 20, color: "var(--text-primary)" }}>
-            {isContext ? "Vérifiez ce que j'ai compris" : "Vérification avant compte-rendu"}
+            {isContext ? t("resolve.header.titleContext") : t("resolve.header.titleMeeting")}
           </h1>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)" }}>
             {isContext
-              ? "Voici ce que j'ai structuré à partir de votre présentation. Corrigez librement — surtout l'orthographe des noms propres — puis validez."
+              ? t("resolve.header.subtitleContext")
               : pending > 0
-                ? `J'ai repéré ${pending} point${pending > 1 ? "s" : ""} à vérifier. Appliquez ce qui vous convient, corrigez le texte librement, puis finalisez.`
-                : "Relisez la transcription, corrigez si besoin, puis finalisez — je n'écris le compte-rendu et les tâches qu'à la finalisation."}
+                ? t(pending > 1 ? "resolve.header.subtitlePendingPlural" : "resolve.header.subtitlePending", { count: pending })
+                : t("resolve.header.subtitleClear")}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
@@ -257,13 +261,13 @@ export default function Resolve() {
               }}
               disabled={finalizing}
               style={actionBtn()}
-              title="Revenir plus tard — la vérification reste en attente"
+              title={t("resolve.actions.laterTitle")}
             >
-              Plus tard
+              {t("resolve.actions.later")}
             </button>
           )}
           <button onClick={finalize} disabled={finalizing} style={{ ...actionBtn(true), padding: "7px 16px", fontSize: 13.5, fontWeight: 600 }}>
-            {finalizing ? "Enregistrement…" : isContext ? "Valider" : "Finaliser le compte-rendu"}
+            {finalizing ? t("resolve.actions.finalizing") : isContext ? t("resolve.actions.validate") : t("resolve.actions.finalize")}
           </button>
         </div>
       </div>
@@ -276,7 +280,7 @@ export default function Resolve() {
       <div style={{ flex: 1, display: "flex", gap: 20, minHeight: 0 }}>
         <div style={{ flex: 1.5, display: "flex", flexDirection: "column", minWidth: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>
-            {isContext ? "Contexte structuré" : "Transcription corrigée"}
+            {isContext ? t("resolve.editor.labelContext") : t("resolve.editor.labelMeeting")}
           </div>
           <div style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 12, background: "var(--card-bg)", overflow: "hidden", padding: "8px 12px" }}>
             <NoteEditor body={text} noteKey={session.recordingId} onChange={setText} />
@@ -287,76 +291,76 @@ export default function Resolve() {
           {session.noteTitle && (
             <div style={{ ...card, gap: 6 }}>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
-                <MdVolumeUp /> Réécouter {isContext ? "votre présentation" : "l'enregistrement"}
+                <MdVolumeUp /> {isContext ? t("resolve.replay.sectionContext") : t("resolve.replay.sectionMeeting")}
               </div>
               <button onClick={() => play(0, null)} disabled={!ready} style={{ ...actionBtn(), opacity: ready ? 1 : 0.5, alignSelf: "flex-start" }}>
-                <MdVolumeUp /> Lecture depuis le début
+                <MdVolumeUp /> {t("resolve.replay.fromStart")}
               </button>
             </div>
           )}
 
           {pending === 0 && adds.length === 0 && (
             <div style={{ ...card, alignItems: "center", color: "var(--text-secondary)", fontSize: 13 }}>
-              {isContext ? "Relisez, corrigez si besoin, puis validez." : "Tout est traité. Vous pouvez finaliser."}
+              {isContext ? t("resolve.emptyPropositionsContext") : t("resolve.emptyPropositionsMeeting")}
             </div>
           )}
 
-          <GroupLabel icon={<MdAutoFixHigh />} label="Corrections proposées" count={fixes.length} />
+          <GroupLabel icon={<MdAutoFixHigh />} label={t("resolve.fixes.group")} count={fixes.length} />
           {fixes.map((f, i) => {
             const status = fixStatus[i] ?? "pending";
-            if (status === "applied") return <ResolvedRow key={`f${i}`} label={`✓ Appliqué : ${(fixEdit[i] ?? f.correction)}`} onUndo={() => setFixStatus((s) => ({ ...s, [i]: "pending" }))} />;
-            if (status === "skipped") return <ResolvedRow key={`f${i}`} label="Correction ignorée" onUndo={() => setFixStatus((s) => ({ ...s, [i]: "pending" }))} />;
+            if (status === "applied") return <ResolvedRow key={`f${i}`} label={t("resolve.fixes.applied", { value: fixEdit[i] ?? f.correction })} onUndo={() => setFixStatus((s) => ({ ...s, [i]: "pending" }))} />;
+            if (status === "skipped") return <ResolvedRow key={`f${i}`} label={t("resolve.fixes.skipped")} onUndo={() => setFixStatus((s) => ({ ...s, [i]: "pending" }))} />;
             return (
               <div key={`f${i}`} style={card}>
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", textDecoration: "line-through" }}>{f.quote}</div>
                 <input value={fixEdit[i] ?? f.correction} onChange={(e) => setFixEdit((s) => ({ ...s, [i]: e.target.value }))} style={smallInput} />
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <button onClick={() => applyFix(i, f)} style={actionBtn(true)}><MdCheck /> Appliquer</button>
-                  <button onClick={() => setFixStatus((s) => ({ ...s, [i]: "skipped" }))} style={actionBtn()}><MdClose /> Ignorer</button>
+                  <button onClick={() => applyFix(i, f)} style={actionBtn(true)}><MdCheck /> {t("resolve.fixes.apply")}</button>
+                  <button onClick={() => setFixStatus((s) => ({ ...s, [i]: "skipped" }))} style={actionBtn()}><MdClose /> {t("resolve.fixes.ignore")}</button>
                   <ReplayButton start={f.start} end={f.end} play={play} ready={ready} />
                   {f.confidence != null && (
-                    <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>confiance {Math.round(f.confidence * 100)}%</span>
+                    <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>{t("resolve.fixes.confidence", { value: Math.round(f.confidence * 100) })}</span>
                   )}
                 </div>
               </div>
             );
           })}
 
-          <GroupLabel icon={<MdHelpOutline />} label="Phrases à clarifier" count={unclear.length} />
+          <GroupLabel icon={<MdHelpOutline />} label={t("resolve.unclear.group")} count={unclear.length} />
           {unclear.map((u, i) => {
             const status = unclearStatus[i] ?? "pending";
-            if (status !== "pending") return <ResolvedRow key={`u${i}`} label={status === "applied" ? "✓ Reformulé dans le texte" : "Laissé tel quel"} onUndo={() => setUnclearStatus((s) => ({ ...s, [i]: "pending" }))} />;
+            if (status !== "pending") return <ResolvedRow key={`u${i}`} label={status === "applied" ? t("resolve.unclear.applied") : t("resolve.unclear.skipped")} onUndo={() => setUnclearStatus((s) => ({ ...s, [i]: "pending" }))} />;
             return (
               <div key={`u${i}`} style={card}>
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", fontStyle: "italic" }}>« {u.quote} »</div>
                 <input value={unclearEdit[i] ?? u.proposed} onChange={(e) => setUnclearEdit((s) => ({ ...s, [i]: e.target.value }))} style={smallInput} />
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <button onClick={() => replaceUnclear(i, u)} style={actionBtn(true)}><MdCheck /> Reformuler</button>
-                  <button onClick={() => setUnclearStatus((s) => ({ ...s, [i]: "skipped" }))} style={actionBtn()}><MdClose /> Laisser</button>
+                  <button onClick={() => replaceUnclear(i, u)} style={actionBtn(true)}><MdCheck /> {t("resolve.unclear.reformulate")}</button>
+                  <button onClick={() => setUnclearStatus((s) => ({ ...s, [i]: "skipped" }))} style={actionBtn()}><MdClose /> {t("resolve.unclear.leave")}</button>
                   <ReplayButton start={u.start} end={u.end} play={play} ready={ready} />
                 </div>
               </div>
             );
           })}
 
-          <GroupLabel icon={<MdPersonOutline />} label="Responsable manquant" count={tasks.length} />
-          {tasks.map((t, i) => {
+          <GroupLabel icon={<MdPersonOutline />} label={t("resolve.tasks.group")} count={tasks.length} />
+          {tasks.map((taskItem, i) => {
             const status = taskStatus[i] ?? "pending";
-            if (status !== "pending") return <ResolvedRow key={`t${i}`} label={status === "applied" ? `✓ ${taskOwner[i] ? "Responsable : " + taskOwner[i] : "Sans responsable"}` : "Ignoré"} onUndo={() => setTaskStatus((s) => ({ ...s, [i]: "pending" }))} />;
+            if (status !== "pending") return <ResolvedRow key={`t${i}`} label={status === "applied" ? (taskOwner[i] ? t("resolve.tasks.appliedWithOwner", { owner: taskOwner[i] }) : t("resolve.tasks.appliedNoOwner")) : t("resolve.tasks.skipped")} onUndo={() => setTaskStatus((s) => ({ ...s, [i]: "pending" }))} />;
             return (
               <div key={`t${i}`} style={card}>
-                <div style={{ fontSize: 13, color: "var(--text-primary)" }}>{t.task}</div>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{t.question}</div>
-                <input placeholder="Responsable (prénom)" value={taskOwner[i] ?? ""} onChange={(e) => setTaskOwner((s) => ({ ...s, [i]: e.target.value }))} style={smallInput} />
+                <div style={{ fontSize: 13, color: "var(--text-primary)" }}>{taskItem.task}</div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{taskItem.question}</div>
+                <input placeholder={t("resolve.tasks.ownerPlaceholder")} value={taskOwner[i] ?? ""} onChange={(e) => setTaskOwner((s) => ({ ...s, [i]: e.target.value }))} style={smallInput} />
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => assignTask(i, t)} style={actionBtn(true)}><MdCheck /> Valider</button>
-                  <button onClick={() => setTaskStatus((s) => ({ ...s, [i]: "skipped" }))} style={actionBtn()}><MdClose /> Ignorer</button>
+                  <button onClick={() => assignTask(i, taskItem)} style={actionBtn(true)}><MdCheck /> {t("resolve.tasks.validate")}</button>
+                  <button onClick={() => setTaskStatus((s) => ({ ...s, [i]: "skipped" }))} style={actionBtn()}><MdClose /> {t("resolve.tasks.ignore")}</button>
                 </div>
               </div>
             );
           })}
 
-          <GroupLabel icon={<MdLightbulbOutline />} label="À retenir sur votre contexte" count={adds.length} />
+          <GroupLabel icon={<MdLightbulbOutline />} label={t("resolve.contextAdds.group")} count={adds.length} />
           {adds.map((a, i) => (
             <div key={`a${i}`} style={{ ...card, flexDirection: "row", alignItems: "center", gap: 8 }}>
               <input type="checkbox" checked={a.accepted} onChange={(e) => setAdds((prev) => prev.map((x, k) => (k === i ? { ...x, accepted: e.target.checked } : x)))} style={{ flexShrink: 0, accentColor: "var(--accent)" }} />
@@ -364,7 +368,7 @@ export default function Resolve() {
             </div>
           ))}
           {adds.length > 0 && (
-            <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "0 2px" }}>J'ajoute les faits cochés à « Appris automatiquement » dans votre note de contexte.</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "0 2px" }}>{t("resolve.contextAdds.hint")}</div>
           )}
         </div>
       </div>

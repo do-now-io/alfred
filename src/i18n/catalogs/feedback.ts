@@ -1,0 +1,63 @@
+// Feedback : écran détaillé (spec/14) + widget rapide en topbar (spec/21).
+export default {
+  fr: {
+    screen: {
+      title: "Feedback",
+      subtitle: "Un bug, une idée, ou juste un mot gentil — ça m'aide à m'améliorer.",
+      categories: {
+        bug: "Bug",
+        feature: "Suggestion",
+        praise: "Compliment",
+      },
+      textPlaceholder: "Décrivez votre retour — collez une capture d'écran directement ici si besoin (Ctrl/Cmd+V)…",
+      pasteHint: "Coller une image l'ajoute à votre retour (jusqu'à 5)",
+      removeImage: "Retirer",
+      emailPlaceholder: "Email de contact (facultatif — pour qu'on puisse vous répondre)",
+      errorSuffix: " — votre texte est conservé, réessayez.",
+      send: "Envoyer",
+      sending: "Envoi…",
+      sent: "Merci, c'est envoyé !",
+    },
+    widget: {
+      openTitle: "Envoyer un retour",
+      title: "Un retour ?",
+      textPlaceholder: "Un bug, une idée, une remarque…",
+      errorSuffix: " — votre texte est conservé, réessayez.",
+      detailedForm: "Formulaire détaillé",
+      detailedFormTitle: "Catégorie, captures d'écran, email de contact",
+      send: "Envoyer",
+      sending: "Envoi…",
+      sent: "Merci !",
+    },
+  },
+  en: {
+    screen: {
+      title: "Feedback",
+      subtitle: "A bug, an idea, or just a kind word — it helps me improve.",
+      categories: {
+        bug: "Bug",
+        feature: "Suggestion",
+        praise: "Compliment",
+      },
+      textPlaceholder: "Describe your feedback — paste a screenshot directly here if needed (Ctrl/Cmd+V)…",
+      pasteHint: "Pasting an image adds it to your feedback (up to 5)",
+      removeImage: "Remove",
+      emailPlaceholder: "Contact email (optional — so we can get back to you)",
+      errorSuffix: " — your text is kept, please try again.",
+      send: "Send",
+      sending: "Sending…",
+      sent: "Thanks, it's sent!",
+    },
+    widget: {
+      openTitle: "Send feedback",
+      title: "Got feedback?",
+      textPlaceholder: "A bug, an idea, a remark…",
+      errorSuffix: " — your text is kept, please try again.",
+      detailedForm: "Detailed form",
+      detailedFormTitle: "Category, screenshots, contact email",
+      send: "Send",
+      sending: "Sending…",
+      sent: "Thanks!",
+    },
+  },
+};

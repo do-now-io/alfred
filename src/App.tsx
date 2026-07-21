@@ -27,6 +27,7 @@ import { NoteTypeIcon } from "./utils/noteType";
 import NoteContextMenu from "./components/notes/NoteContextMenu";
 import GuidedTour from "./components/tour/GuidedTour";
 import FeedbackWidget from "./components/FeedbackWidget";
+import { t as translate, useI18nStore, useT } from "./i18n";
 
 // ─── Logo — recording trigger AND the app's single status readout ──────────────
 // (spec/03/10, ajusté après test) Top-left Alfred is where you look to know what
@@ -35,6 +36,7 @@ import FeedbackWidget from "./components/FeedbackWidget";
 // STOP; transcribing/thinking → guidance page (progress).
 
 function AlfredLogo() {
+  const t = useT();
   const navigate = useNavigate();
   const [hover, setHover] = useState(false);
   const recStatus = useRecordingStore((s) => s.status);
@@ -73,10 +75,10 @@ function AlfredLogo() {
   const clickableStatus = busy && !!target && (!!target.targetPath || !!target.targetRoute);
 
   const title = isRecording
-    ? "Arrêter l'enregistrement"
+    ? t("nav.logo.stopRecording")
     : recStatus === "idle"
-      ? "Démarrer un enregistrement"
-      : "Voir la progression";
+      ? t("nav.logo.startRecording")
+      : t("nav.logo.seeProgress");
 
   return (
     <div style={{ padding: "20px 20px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
@@ -133,7 +135,7 @@ function AlfredLogo() {
           quand Alfred travaille sur une cible : mène à ce qu'il fait (spec/10). */}
       <div
         onClick={clickableStatus ? goToTarget : undefined}
-        title={clickableStatus ? "Voir ce que je suis en train de traiter" : undefined}
+        title={clickableStatus ? t("nav.logo.seeWhatImProcessing") : undefined}
         style={{
           display: "flex", alignItems: "center", gap: 6,
           fontSize: 12.5, whiteSpace: "nowrap",
@@ -149,7 +151,7 @@ function AlfredLogo() {
           background: "currentColor",
           animation: busy || isRecording ? "alfred-pulse 1.4s ease-in-out infinite" : "none",
         }} />
-        {alfredStatusLabel(butler, progress)}
+        {alfredStatusLabel(butler, progress, t)}
       </div>
     </div>
   );
@@ -205,6 +207,7 @@ function formatRecentDate(unixSeconds: number | bigint): string {
 }
 
 function Recents() {
+  const t = useT();
   const navigate = useNavigate();
   const recents = useNotesStore(s => s.recents);
   const selectedPath = useNotesStore(s => s.selectedFile?.path ?? null);
@@ -234,7 +237,7 @@ function Recents() {
   return (
     <div style={{ padding: "8px 0" }}>
       <div style={{ padding: "8px 24px 6px", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text-muted)", textTransform: "uppercase" }}>
-        Récents
+        {t("nav.recents.title")}
       </div>
       {recents.map((item) => {
         const active = item.path === selectedPath;
@@ -266,7 +269,7 @@ function Recents() {
             </span>
             {processing && (
               <span
-                title="Alfred travaille sur cette note"
+                title={t("nav.recents.workingOnThisNote")}
                 style={{
                   width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", flexShrink: 0,
                   animation: "alfred-pulse 1.4s ease-in-out infinite",
@@ -282,11 +285,11 @@ function Recents() {
           x={contextMenu.x}
           y={contextMenu.y}
           onRename={() => {
-            const name = window.prompt("Renommer la note", contextMenu.title);
+            const name = window.prompt(t("nav.recents.renamePrompt"), contextMenu.title);
             if (name && name.trim()) renameNote(contextMenu.path, name.trim());
           }}
           onDelete={() => {
-            if (window.confirm(`Supprimer "${contextMenu.title}" ?`)) deleteNote(contextMenu.path);
+            if (window.confirm(t("nav.recents.deleteConfirm", { name: contextMenu.title }))) deleteNote(contextMenu.path);
           }}
           onClose={() => setContextMenu(null)}
         />
@@ -298,6 +301,7 @@ function Recents() {
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 function Sidebar() {
+  const t = useT();
   return (
     <aside style={{
       width: 240, minWidth: 240,
@@ -309,17 +313,17 @@ function Sidebar() {
       <AlfredLogo />
 
       <nav style={{ flex: 1, overflowY: "auto", paddingBottom: 8 }}>
-        <NavItem to="/" icon={<MdAutoAwesome />} label="Alfred" tourId="nav-chat" end />
-        <NavItem to="/tasks" icon={<MdCheckBox />} label="Tâches" tourId="nav-tasks" />
-        <NavItem to="/notes" icon={<MdStickyNote2 />} label="Notes" tourId="nav-notes" />
-        <NavItem to="/graph" icon={<MdHub />} label="Graphe" tourId="nav-graph" />
+        <NavItem to="/" icon={<MdAutoAwesome />} label={t("nav.sidebar.alfred")} tourId="nav-chat" end />
+        <NavItem to="/tasks" icon={<MdCheckBox />} label={t("nav.sidebar.tasks")} tourId="nav-tasks" />
+        <NavItem to="/notes" icon={<MdStickyNote2 />} label={t("nav.sidebar.notes")} tourId="nav-notes" />
+        <NavItem to="/graph" icon={<MdHub />} label={t("nav.sidebar.graph")} tourId="nav-graph" />
 
         <div style={{ height: 1, background: "var(--border)", margin: "12px 16px" }} />
         <Recents />
       </nav>
 
       <div style={{ borderTop: "1px solid var(--border)", padding: "8px" }}>
-        <NavItem to="/settings" icon={<MdSettings />} label="Paramètres" />
+        <NavItem to="/settings" icon={<MdSettings />} label={t("nav.sidebar.settings")} />
       </div>
     </aside>
   );
@@ -351,6 +355,7 @@ function Topbar() {
 // ─── Main layout ──────────────────────────────────────────────────────────────
 
 function AppInner() {
+  const t = useT();
   const setStatus = useRecordingStore((s) => s.setStatus);
   const setAlfredState = useAlfredStatusStore((s) => s.set);
   const setAlfredTarget = useAlfredStatusStore((s) => s.setTarget);
@@ -417,7 +422,7 @@ function AppInner() {
       }
       setAlfredState("idle");
       if (e.payload.status === "error") {
-        setIngestError(e.payload.message ?? "Erreur inconnue pendant la rédaction du compte-rendu");
+        setIngestError(e.payload.message ?? translate("nav.ingestError.fallback"));
       }
     }).then(fn => unsubs.push(fn));
 
@@ -479,7 +484,7 @@ function AppInner() {
         }}>
           <span style={{ color: "var(--danger)", flexShrink: 0, marginTop: 1 }}>⚠</span>
           <div style={{ color: "var(--text-primary)", lineHeight: 1.5 }}>
-            <div style={{ fontWeight: 600, marginBottom: 2 }}>Le compte-rendu n'a pas pu être rédigé</div>
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>{t("nav.ingestError.title")}</div>
             <div style={{ color: "var(--text-secondary)" }}>{ingestError}</div>
           </div>
           <button
@@ -530,6 +535,7 @@ function AppInner() {
 // Invite to the resolution screen when a session is pending (spec/17 §3). Hidden
 // while already on /resolve. Dismiss = drop the session (equivalent to "Ignorer").
 function ResolveBanner() {
+  const t = useT();
   const navigate = useNavigate();
   const location = useLocation();
   const session = useResolveStore((s) => s.session);
@@ -581,8 +587,8 @@ function ResolveBanner() {
       <div style={{ flex: 1, color: "var(--text-primary)", lineHeight: 1.5 }}>
         <div style={{ fontWeight: 600, marginBottom: 4 }}>
           {count > 0
-            ? `J'ai ${count} point${count > 1 ? "s" : ""} à vérifier`
-            : "Votre compte-rendu est prêt à valider"}
+            ? t(count > 1 ? "nav.resolveBanner.pointsToCheckPlural" : "nav.resolveBanner.pointsToCheck", { count })
+            : t("nav.resolveBanner.ready")}
         </div>
         <button
           onClick={() => navigate("/resolve")}
@@ -591,13 +597,13 @@ function ResolveBanner() {
             borderRadius: 8, padding: "5px 12px", cursor: "pointer", fontSize: 12.5, fontWeight: 600,
           }}
         >
-          Vérifier maintenant
+          {t("nav.resolveBanner.checkNow")}
         </button>
       </div>
       <button
         onClick={dismiss}
         disabled={dismissing}
-        title="Ignorer et rédiger directement le compte-rendu"
+        title={t("nav.resolveBanner.dismissTitle")}
         style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 15, padding: 0, lineHeight: 1 }}
       >
         ✕
@@ -641,6 +647,10 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Langue de l'UI (spec/21) — lue en parallèle, indépendamment de la garde
+  // d'onboarding ci-dessus : défaut `fr` jusqu'à résolution, jamais de blocage.
+  useEffect(() => { useI18nStore.getState().init(); }, []);
 
   // A genuine first-run completion also launches the guided tour (spec/13).
   // Replaying the intro from Settings ("Revoir l'introduction") does not — the

@@ -12,10 +12,13 @@ import type { NoteFile } from "../bindings/NoteFile";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
 import { toggleChecked, groupTasksBySection, type TaskLine } from "../utils/todoTasks";
 import { renderInlineMd } from "../utils/inlineMd";
+import { useI18nStore, useT } from "../i18n";
+import { TODO_SECTION_LABELS, type TodoSectionKey } from "../i18n/todoSections";
 
 // ─── Hero card — enregistrement ───────────────────────────────────────────────
 
 function HeroCard() {
+  const t = useT();
   const navigate = useNavigate();
   const { status, startRecording, stopRecording, importAudioFile } = useRecordingStore();
   // Guided tour (spec/13) spotlights this exact card as "cliquez ici pour démarrer".
@@ -79,26 +82,26 @@ function HeroCard() {
         {isIdle && (
           <>
             <div style={{ fontSize: 18, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>
-              Prendre des notes maintenant
+              {t("dashboard.heroCard.takeNotesNow")}
             </div>
             <div style={{ fontSize: 13, color: "#9B9B9B" }}>
-              J'enregistre, transcris et extrais les actions
+              {t("dashboard.heroCard.idleSubtitle")}
             </div>
           </>
         )}
         {isRecording && (
           <>
             <div style={{ fontSize: 18, fontWeight: 600, color: "#E05050", marginBottom: 4 }}>
-              Enregistrement en cours… {fmt(elapsed)}
+              {t("dashboard.heroCard.recording", { time: fmt(elapsed) })}
             </div>
             <div style={{ fontSize: 13, color: "#9B9B9B" }}>
-              Parlez naturellement — je transcris en temps réel
+              {t("dashboard.heroCard.recordingSubtitle")}
             </div>
           </>
         )}
         {isProcessing && (
           <div style={{ fontSize: 16, color: "#9B9B9B" }}>
-            Transcription en cours…
+            {t("dashboard.heroCard.transcribing")}
           </div>
         )}
       </div>
@@ -116,7 +119,7 @@ function HeroCard() {
             fontSize: 13, fontWeight: 500,
           }}
         >
-          ⏹ Arrêter
+          ⏹ {t("dashboard.heroCard.stop")}
         </button>
       )}
       {/* Import d'un fichier audio existant (spec/03) — incorporé à la carte
@@ -124,7 +127,7 @@ function HeroCard() {
       {isIdle && (
         <button
           onClick={(e) => { e.stopPropagation(); importAudioFile(); }}
-          title="Importer un fichier audio (.wav)"
+          title={t("dashboard.heroCard.importAudio")}
           style={{
             position: "absolute", top: 10, right: 10, width: 32, height: 32, borderRadius: "50%",
             background: "rgba(255,255,255,0.08)", border: "1px solid var(--border)", color: "#9B9B9B",
@@ -144,12 +147,15 @@ function HeroCard() {
 // summary rather than the full editor.
 
 const DEFAULT_TODO_RELATIVE = "wiki/Todo.md";
-const SECTIONS_SHOWN = ["Prioritaire", "En cours", "À faire"];
+// Clés stables (spec/21) — reconnues en FR et EN par `groupTasksBySection`,
+// affichées via `TODO_SECTION_LABELS[lang]`.
+const SECTIONS_SHOWN: TodoSectionKey[] = ["priority", "in_progress", "todo"];
 const SECTION_LIMIT = 5;
 
 function TaskRow({ task, onToggle, onOpen }: {
   task: TaskLine; onToggle: () => void; onOpen: () => void;
 }) {
+  const t = useT();
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 12,
@@ -163,7 +169,7 @@ function TaskRow({ task, onToggle, onOpen }: {
       />
       <span
         onClick={onOpen}
-        title="Ouvrir dans Tâches"
+        title={t("dashboard.tasksSection.openInTasks")}
         style={{
           flex: 1, fontSize: 13.5, color: "var(--text-primary)", cursor: "pointer",
           textDecoration: task.checked ? "line-through" : "none",
@@ -199,6 +205,8 @@ function TaskSectionBlock({ name, tasks, onToggle, onOpen }: {
 }
 
 function TasksSection() {
+  const t = useT();
+  const lang = useI18nStore((s) => s.lang);
   const navigate = useNavigate();
   const vaultPath = useNotesStore(s => s.vaultPath);
   const fetchVaultPath = useNotesStore(s => s.fetchVaultPath);
@@ -265,36 +273,36 @@ function TasksSection() {
     <div className="card" style={{ padding: "20px 24px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>
-          Vos tâches
+          {t("dashboard.tasksSection.yourTasks")}
         </h2>
         <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-          {totalPending > 0 ? `${totalPending} en attente` : "tout est fait"}
+          {totalPending > 0 ? t("dashboard.tasksSection.pending", { count: totalPending }) : t("dashboard.tasksSection.allDone")}
         </span>
         <button
           onClick={() => setCollapsed(c => !c)}
           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12 }}
         >
-          {collapsed ? "Déplier ▾" : "Replier ▴"}
+          {collapsed ? t("dashboard.tasksSection.expand") : t("dashboard.tasksSection.collapse")}
         </button>
         <button
           onClick={() => navigate("/tasks")}
           style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 12.5, fontWeight: 500 }}
         >
-          Voir toutes les tâches →
+          {t("dashboard.tasksSection.seeAllTasks")}
         </button>
       </div>
 
       {!collapsed && (
         totalPending === 0 ? (
           <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "10px 0 2px" }}>
-            Rien en attente — belle organisation.
+            {t("dashboard.tasksSection.nothingPending")}
           </div>
         ) : (
-          SECTIONS_SHOWN.map(name => (
+          SECTIONS_SHOWN.map(key => (
             <TaskSectionBlock
-              key={name}
-              name={name}
-              tasks={groups.get(name) ?? []}
+              key={key}
+              name={TODO_SECTION_LABELS[lang][key]}
+              tasks={groups.get(key) ?? []}
               onToggle={(taskIndex) => apply(toggleChecked(body, taskIndex))}
               onOpen={() => navigate("/tasks")}
             />
@@ -308,6 +316,7 @@ function TasksSection() {
 // ─── Brief quotidien — bloc « Aujourd'hui » (spec/05 usage 3, spec/10) ─────────
 
 function BriefCard() {
+  const t = useT();
   const [text, setText] = useState<string | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -350,7 +359,7 @@ function BriefCard() {
     <div className="card" style={{ padding: "20px 24px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <span style={{ color: "var(--accent)", fontSize: 16 }}>✦</span>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>Aujourd'hui</h2>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>{t("dashboard.briefCard.today")}</h2>
         <button
           onClick={generate}
           disabled={loading}
@@ -360,24 +369,24 @@ function BriefCard() {
             fontSize: 12, color: "var(--text-secondary)",
           }}
         >
-          {loading ? "⏳" : "↻ Régénérer"}
+          {loading ? "⏳" : t("dashboard.briefCard.regenerate")}
         </button>
       </div>
 
       {loading && !text ? (
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Je prépare votre brief…</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("dashboard.briefCard.preparing")}</div>
       ) : text ? (
         <>
           <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
             <BriefingContent markdown={text} onWikilink={handleWikilink} />
           </div>
           {generatedAt && (
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>Généré le {generatedAt}</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>{t("dashboard.briefCard.generatedOn", { date: generatedAt })}</div>
           )}
         </>
       ) : (
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Enregistrez ou écrivez quelque chose, et je vous préparerai un point chaque jour.
+          {t("dashboard.briefCard.empty")}
         </div>
       )}
     </div>

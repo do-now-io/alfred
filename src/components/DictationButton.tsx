@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { MdMic, MdStop, MdAutorenew } from "react-icons/md";
 import { useRecordingStore } from "../store/recordingStore";
+import { useT } from "../i18n";
 
 // Dictée vocale (spec/07b) : bouton micro dans une barre de saisie. Clic →
 // capture éphémère (start_dictation) ; stop → Whisper transcrit et le texte est
@@ -19,6 +20,7 @@ export default function DictationButton({
   onText: (text: string) => void;
   size?: number;
 }) {
+  const t = useT();
   const [state, setState] = useState<DictationState>("idle");
   const [error, setError] = useState<string | null>(null);
   const recStatus = useRecordingStore((s) => s.status);
@@ -64,14 +66,14 @@ export default function DictationButton({
   };
 
   const title = meetingBusy
-    ? "Indisponible pendant un enregistrement"
+    ? t("recording.dictation.titleUnavailable")
     : state === "recording"
-      ? "Arrêter et transcrire"
+      ? t("recording.dictation.titleStop")
       : state === "transcribing"
-        ? "Transcription…"
+        ? t("recording.dictation.titleTranscribing")
         : error
-          ? `Dictée : ${error}`
-          : "Dicter la question";
+          ? t("recording.dictation.titleError", { error })
+          : t("recording.dictation.titleIdle");
 
   return (
     <button

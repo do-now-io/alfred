@@ -7,6 +7,7 @@ import type { NoteFile } from "../../bindings/NoteFile";
 import { useNotesStore } from "../../store/notesStore";
 import { NoteTypeIcon, noteKind } from "../../utils/noteType";
 import FileTreeNode from "./FileTreeNode";
+import { useT } from "../../i18n";
 
 /** Une entrée de la vue Projets : la note « porteuse » + éventuellement sa
  *  transcription appariée par `recording_id` (spec/07 — la paire reste ensemble,
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Props) {
+  const t = useT();
   const { createNote, deleteNote, renameNote, moveNote, createFolder, renameFolder, deleteFolder, fetchTree } = useNotesStore();
   const [renaming, setRenaming] = useState<{ path: string; current: string } | null>(null);
   const [newName, setNewName] = useState("");
@@ -146,7 +148,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
   const handleCreate = async () => {
     if (!vaultPath) return;
     // New notes land in the vault's raw/ folder (the ingest source).
-    await createNote(`${vaultPath}/raw`, "Nouvelle note");
+    await createNote(`${vaultPath}/raw`, t("notes.fileTree.newNoteDefaultTitle"));
   };
 
   // Re-runs the merged ingestion (spec/05) on the selected alfred-raw/ note —
@@ -164,7 +166,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
       setTimeout(() => setIngest("idle"), 2500);
     } catch (e) {
       const msg = String(e);
-      console.error("Ingestion échouée:", msg);
+      console.error("Ingest failed:", msg);
       setIngestError(msg);
       setIngest("error");
       setTimeout(() => setIngest("idle"), 5000);
@@ -172,7 +174,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
   };
 
   const handleDelete = async (path: string, name: string) => {
-    if (window.confirm(`Supprimer "${name}" ?`)) {
+    if (window.confirm(t("notes.fileTree.confirmDeleteNote", { name }))) {
       await deleteNote(path);
     }
   };
@@ -190,7 +192,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
 
   const handleCreateFolder = (parentPath: string) => {
     setFolderDialog({ mode: "create", parent: parentPath });
-    setFolderName("Nouveau dossier");
+    setFolderName(t("notes.fileTree.newFolderDefaultName"));
   };
 
   const handleRenameFolder = (path: string, current: string) => {
@@ -199,7 +201,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
   };
 
   const handleDeleteFolder = async (path: string, name: string) => {
-    if (window.confirm(`Supprimer le dossier "${name}" et tout son contenu ?`)) {
+    if (window.confirm(t("notes.fileTree.confirmDeleteFolder", { name }))) {
       await deleteFolder(path);
     }
   };
@@ -228,14 +230,14 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
         borderBottom: "1px solid var(--border)",
       }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Notes
+          {t("notes.fileTree.title")}
         </span>
         {vaultPath && (
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <IngestButton state={ingest} error={ingestError} disabled={!selectedPath} onClick={handleIngest} />
+            <IngestButton state={ingest} error={ingestError} disabled={!selectedPath} onClick={handleIngest} t={t} />
             <button
               onClick={() => handleCreateFolder(vaultPath)}
-              title="Nouveau dossier"
+              title={t("notes.fileTree.newFolder")}
               style={{
                 background: "none", border: "none", cursor: "pointer",
                 color: "var(--text-secondary)", fontSize: 16, lineHeight: 1, padding: 2,
@@ -246,7 +248,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
             </button>
             <button
               onClick={handleCreate}
-              title="Nouvelle note"
+              title={t("notes.fileTree.newNote")}
               style={{
                 background: "none", border: "none", cursor: "pointer",
                 color: "var(--accent)", fontSize: 18, lineHeight: 1, padding: 2,
@@ -262,7 +264,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
       {/* View toggle: physical folders vs virtual grouping by project (spec/07). */}
       {vaultPath && (
         <div style={{ display: "flex", gap: 4, padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
-          {([["folders", "Dossiers", <MdStickyNote2 key="f" />], ["projects", "Projets", <MdFolderSpecial key="p" />]] as const).map(([id, label, icon]) => (
+          {([["folders", t("notes.fileTree.viewFolders"), <MdStickyNote2 key="f" />], ["projects", t("notes.fileTree.viewProjects"), <MdFolderSpecial key="p" />]] as const).map(([id, label, icon]) => (
             <button
               key={id}
               onClick={() => setView(id)}
@@ -305,8 +307,8 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
       >
         {!vaultPath && (
           <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.6 }}>
-            Aucun dossier configuré.<br />
-            <span style={{ color: "var(--text-secondary)" }}>Settings → Notes</span>
+            {t("notes.fileTree.noVaultConfigured")}<br />
+            <span style={{ color: "var(--text-secondary)" }}>{t("notes.fileTree.noVaultHint")}</span>
           </div>
         )}
 
@@ -329,7 +331,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
         {vaultPath && view === "projects" && (
           projectGroups.length === 0 ? (
             <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.6 }}>
-              Aucune note.
+              {t("notes.fileTree.noNotes")}
             </div>
           ) : projectGroups.map(({ project, entries }) => (
             <div
@@ -352,7 +354,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
                 outline: dropTarget === project ? "1px dashed var(--accent)" : "none",
               }}>
                 <MdFolderSpecial size={13} style={{ color: project ? "var(--accent)" : "var(--text-muted)" }} />
-                {project || "Sans projet"}
+                {project || t("notes.fileTree.noProject")}
                 <span style={{ marginLeft: "auto", opacity: 0.7 }}>{entries.length}</span>
               </div>
               {entries.map(({ note: n, pair }) => {
@@ -366,11 +368,12 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
                       expandable={!!pair}
                       expanded={isExpanded}
                       onToggleExpand={() => toggleEntryExpanded(n.path)}
+                      t={t}
                     />
                     {/* Transcription appariée (même recording_id) — repliée par
                         défaut, dépliée via le chevron (spec/07, feedback tests). */}
                     {pair && isExpanded && (
-                      <ProjectNoteRow note={pair} active={pair.path === selectedPath} onSelect={onSelect} indent />
+                      <ProjectNoteRow note={pair} active={pair.path === selectedPath} onSelect={onSelect} indent t={t} />
                     )}
                   </div>
                 );
@@ -386,7 +389,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
           padding: 12, borderTop: "1px solid var(--border)",
           background: "var(--card-bg)",
         }}>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>Renommer</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>{t("notes.fileTree.renameLabel")}</div>
           <input
             autoFocus
             value={newName}
@@ -403,8 +406,8 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
             }}
           />
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={handleRenameSubmit} style={btnStyle("#C8914A", "#fff")}>OK</button>
-            <button onClick={() => setRenaming(null)} style={btnStyle("transparent", "var(--text-secondary)", true)}>Annuler</button>
+            <button onClick={handleRenameSubmit} style={btnStyle("#C8914A", "#fff")}>{t("notes.fileTree.ok")}</button>
+            <button onClick={() => setRenaming(null)} style={btnStyle("transparent", "var(--text-secondary)", true)}>{t("notes.fileTree.cancel")}</button>
           </div>
         </div>
       )}
@@ -416,7 +419,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
           background: "var(--card-bg)",
         }}>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
-            {folderDialog.mode === "create" ? "Nouveau dossier" : "Renommer le dossier"}
+            {folderDialog.mode === "create" ? t("notes.fileTree.newFolderDialogTitle") : t("notes.fileTree.renameFolderDialogTitle")}
           </div>
           <input
             autoFocus
@@ -434,8 +437,8 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
             }}
           />
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={handleFolderDialogSubmit} style={btnStyle("#C8914A", "#fff")}>OK</button>
-            <button onClick={() => setFolderDialog(null)} style={btnStyle("transparent", "var(--text-secondary)", true)}>Annuler</button>
+            <button onClick={handleFolderDialogSubmit} style={btnStyle("#C8914A", "#fff")}>{t("notes.fileTree.ok")}</button>
+            <button onClick={() => setFolderDialog(null)} style={btnStyle("transparent", "var(--text-secondary)", true)}>{t("notes.fileTree.cancel")}</button>
           </div>
         </div>
       )}
@@ -448,7 +451,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
  *  `expandable` (spec/07, feedback tests) : un chevron déplie/replie la
  *  transcription appariée au lieu de toujours l'afficher en retrait. */
 function ProjectNoteRow({
-  note, active, onSelect, indent, expandable, expanded, onToggleExpand,
+  note, active, onSelect, indent, expandable, expanded, onToggleExpand, t,
 }: {
   note: ProjectNote;
   active: boolean;
@@ -457,6 +460,7 @@ function ProjectNoteRow({
   expandable?: boolean;
   expanded?: boolean;
   onToggleExpand?: () => void;
+  t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   return (
     <div
@@ -478,7 +482,7 @@ function ProjectNoteRow({
       {expandable ? (
         <span
           onClick={(e) => { e.stopPropagation(); onToggleExpand?.(); }}
-          title={expanded ? "Masquer l'enregistrement lié" : "Voir l'enregistrement lié"}
+          title={expanded ? t("notes.fileTree.hideLinkedRecording") : t("notes.fileTree.showLinkedRecording")}
           style={{ fontSize: 10, width: 16, flexShrink: 0, color: "var(--text-muted)", textAlign: "center" }}
         >
           {expanded ? "▼" : "▶"}
@@ -505,11 +509,13 @@ function IngestButton({
   error,
   disabled,
   onClick,
+  t,
 }: {
   state: IngestState;
   error: string | null;
   disabled: boolean;
   onClick: () => void;
+  t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   const running = state === "running";
 
@@ -519,25 +525,25 @@ function IngestButton({
         return {
           icon: <MdAutorenew style={{ display: "block", transformOrigin: "center", animation: "alfred-spin 0.8s linear infinite" }} />,
           color: "var(--accent)",
-          title: "Ré-ingestion en cours…",
+          title: t("notes.fileTree.ingest.running"),
         };
       case "done":
         return {
           icon: <MdCheck style={{ animation: "alfred-pop 0.3s ease" }} />,
           color: "#34C759",
-          title: "Ré-ingestion terminée — compte-rendu régénéré",
+          title: t("notes.fileTree.ingest.done"),
         };
       case "error":
         return {
           icon: <MdErrorOutline style={{ animation: "alfred-pop 0.3s ease" }} />,
           color: "var(--danger)",
-          title: error ? `Ré-ingestion échouée : ${error}` : "Ré-ingestion échouée",
+          title: error ? t("notes.fileTree.ingest.error", { error }) : t("notes.fileTree.ingest.errorGeneric"),
         };
       default:
         return {
           icon: <MdMoveToInbox />,
           color: disabled ? "var(--text-muted)" : "var(--text-secondary)",
-          title: disabled ? "Sélectionne une note à ré-ingérer" : "Ré-ingérer la note sélectionnée",
+          title: disabled ? t("notes.fileTree.ingest.disabled") : t("notes.fileTree.ingest.idle"),
         };
     }
   })();

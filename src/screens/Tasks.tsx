@@ -11,6 +11,8 @@ import { useNotesStore } from "../store/notesStore";
 import { useProfileStore, isSelf } from "../store/profileStore";
 import { renderInlineMd, stripInlineMd } from "../utils/inlineMd";
 import type { Todo } from "../bindings/Todo";
+import { useT, useI18nStore } from "../i18n";
+import { TODO_SECTION_LABELS, TODO_SECTION_KEYS, normalizeSectionHeading, type TodoSectionKey } from "../i18n/todoSections";
 
 // Page Tâches — vue KANBAN et vue MARKDOWN (document) sur `Todo.md` (spec/06,
 // feedback tests + demande users, 2e passe). Le fichier RESTE la source de
@@ -20,7 +22,11 @@ import type { Todo } from "../bindings/Todo";
 // Cliquer une carte (Kanban) ou une ligne (Markdown) ouvre la **fiche tâche**
 // (sous-puces, description, +Projet/priorité/estimation, provenance).
 
-const COLUMNS = ["Prioritaire", "En cours", "À faire", "Archivé"] as const;
+// Colonnes = les 4 sections stables de Todo.md, désormais identifiées par leur
+// clé canonique (spec/21 — `../i18n/todoSections.ts`) et non plus par leur
+// libellé littéral, pour rester correctes quel que soit la langue de l'UI ou
+// celle dans laquelle le vault a été écrit.
+const COLUMNS: TodoSectionKey[] = TODO_SECTION_KEYS;
 
 /** Comparaison insensible à la casse et aux accents (« reunion » matche « Réunion »).
  *  Le range ci-dessous couvre le bloc Unicode "Combining Diacritical Marks"
@@ -56,17 +62,33 @@ function dueKind(echeance: string | null | undefined): "late" | "today" | "soon"
   return "later";
 }
 
-const DUE_STYLE: Record<NonNullable<ReturnType<typeof dueKind>>, { bg: string; text: string; label: string }> = {
-  late: { bg: "#FEE2E2", text: "#B91C1C", label: "en retard" },
-  today: { bg: "#FEF3C7", text: "#B45309", label: "aujourd'hui" },
-  soon: { bg: "#DBEAFE", text: "#1D4ED8", label: "cette semaine" },
-  later: { bg: "var(--bg)", text: "var(--text-muted)", label: "" },
+// Libellés affichés via `t()` dans les composants (voir `DUE_LABEL_KEY` /
+// `PRIORITY_LABEL_KEY` ci-dessous) — seuls le style et la clé de donnée
+// (`haute`/`moyenne`/`basse`, écrits tels quels dans Todo.md) restent ici.
+const DUE_STYLE: Record<NonNullable<ReturnType<typeof dueKind>>, { bg: string; text: string }> = {
+  late: { bg: "#FEE2E2", text: "#B91C1C" },
+  today: { bg: "#FEF3C7", text: "#B45309" },
+  soon: { bg: "#DBEAFE", text: "#1D4ED8" },
+  later: { bg: "var(--bg)", text: "var(--text-muted)" },
 };
 
-const PRIORITY_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-  haute: { bg: "#FEE2E2", text: "#B91C1C", label: "Haute" },
-  moyenne: { bg: "#FEF3C7", text: "#B45309", label: "Moyenne" },
-  basse: { bg: "var(--bg)", text: "var(--text-muted)", label: "Basse" },
+const DUE_LABEL_KEY: Record<NonNullable<ReturnType<typeof dueKind>>, string> = {
+  late: "tasks.due.late",
+  today: "tasks.due.today",
+  soon: "tasks.due.soon",
+  later: "",
+};
+
+const PRIORITY_STYLE: Record<string, { bg: string; text: string }> = {
+  haute: { bg: "#FEE2E2", text: "#B91C1C" },
+  moyenne: { bg: "#FEF3C7", text: "#B45309" },
+  basse: { bg: "var(--bg)", text: "var(--text-muted)" },
+};
+
+const PRIORITY_LABEL_KEY: Record<string, string> = {
+  haute: "tasks.priority.high",
+  moyenne: "tasks.priority.medium",
+  basse: "tasks.priority.low",
 };
 
 interface DragInfo {
@@ -74,6 +96,8 @@ interface DragInfo {
 }
 
 export default function Tasks() {
+  const t = useT();
+  const lang = useI18nStore((s) => s.lang);
   const { vaultPath, fetchVaultPath } = useNotesStore();
   const profileName = useProfileStore((s) => s.name);
   const loadProfile = useProfileStore((s) => s.load);
@@ -91,12 +115,12 @@ export default function Tasks() {
   const [projectFilter, setProjectFilter] = useState<string>("");
   // Drag en cours + cible de dépôt (colonne, index d'insertion).
   const [drag, setDrag] = useState<DragInfo | null>(null);
-  const [dropCol, setDropCol] = useState<string | null>(null);
+  const [dropCol, setDropCol] = useState<TodoSectionKey | null>(null);
   // Ajout rapide par colonne.
-  const [adding, setAdding] = useState<string | null>(null);
+  const [adding, setAdding] = useState<TodoSectionKey | null>(null);
   const [addText, setAddText] = useState("");
   // Sections repliées en vue Markdown (Archivé replié par défaut).
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set(["Archivé"]));
+  const [collapsedSections, setCollapsedSections] = useState<Set<TodoSectionKey>>(() => new Set(["archived"]));
   // Fiche tâche ouverte (Kanban ET Markdown, spec/06 2e passe).
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
@@ -156,15 +180,18 @@ export default function Tasks() {
   }, [textFilter, ownerFilter, dueFilter, projectFilter]);
 
   const byColumn = useMemo(() => {
-    const map = new Map<string, Todo[]>(COLUMNS.map((c) => [c, []]));
-    for (const t of todos) {
-      const col = map.has(t.section) ? t.section : "À faire";
-      map.get(col)!.push(t);
+    const map = new Map<TodoSectionKey, Todo[]>(COLUMNS.map((c) => [c, []]));
+    for (const todo of todos) {
+      const key = normalizeSectionHeading(todo.section) ?? "todo";
+      map.get(key)!.push(todo);
     }
     return map;
   }, [todos]);
 
-  const moveTo = async (id: string, section: string, position?: number) => {
+  const moveTo = async (id: string, sectionKey: TodoSectionKey, position?: number) => {
+    // Le fichier n'a aucune notion de clé canonique (spec/21) : on y écrit
+    // toujours le libellé littéral de la langue courante.
+    const section = TODO_SECTION_LABELS[lang][sectionKey];
     // Optimiste : re-sectionne localement, le fichier suit (puis re-lecture).
     setTodos((prev) => {
       const t = prev.find((x) => x.id === id);
@@ -190,11 +217,12 @@ export default function Tasks() {
     load();
   };
 
-  const quickAdd = async (section: string) => {
+  const quickAdd = async (sectionKey: TodoSectionKey) => {
     const title = addText.trim();
     setAddText("");
     setAdding(null);
     if (!title) return;
+    const section = TODO_SECTION_LABELS[lang][sectionKey];
     try {
       await invoke("create_todo", { input: { title, responsable: null, echeance: null, section } });
     } catch (e) {
@@ -203,7 +231,7 @@ export default function Tasks() {
     load();
   };
 
-  const toggleSection = (section: string) => {
+  const toggleSection = (section: TodoSectionKey) => {
     setCollapsedSections((prev) => {
       const next = new Set(prev);
       if (next.has(section)) next.delete(section); else next.add(section);
@@ -222,24 +250,24 @@ export default function Tasks() {
         background: "var(--card-bg)",
       }}>
         <MdCheckBox style={{ color: "var(--accent)", fontSize: 18 }} />
-        <h1 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--text-primary)" }}>Tâches</h1>
+        <h1 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--text-primary)" }}>{t("tasks.title")}</h1>
 
         {/* Bascule Kanban / Markdown (spec/06 2e passe) — même Todo.md. */}
         {showBoard && (
           <div style={{ display: "flex", gap: 4, marginLeft: 12 }}>
             <button
               onClick={() => setView("kanban")}
-              title="Vue Kanban"
+              title={t("tasks.view.kanbanTitle")}
               style={viewToggleBtn(view === "kanban")}
             >
-              <MdViewColumn size={15} /> Kanban
+              <MdViewColumn size={15} /> {t("tasks.view.kanban")}
             </button>
             <button
               onClick={() => setView("markdown")}
-              title="Vue Markdown (document)"
+              title={t("tasks.view.markdownTitle")}
               style={viewToggleBtn(view === "markdown")}
             >
-              <MdViewList size={15} /> Markdown
+              <MdViewList size={15} /> {t("tasks.view.markdown")}
             </button>
           </div>
         )}
@@ -251,8 +279,8 @@ export default function Tasks() {
               value={textFilter}
               onChange={(e) => setTextFilter(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") setTextFilter(""); }}
-              placeholder="Rechercher…"
-              title="Rechercher dans les tâches (titre, responsable) — Échap pour effacer"
+              placeholder={t("tasks.filters.searchPlaceholder")}
+              title={t("tasks.filters.searchTitle")}
               style={{
                 border: "1px solid var(--border)", borderRadius: 6,
                 padding: "5px 8px", fontSize: 13, width: 160, outline: "none",
@@ -263,9 +291,9 @@ export default function Tasks() {
               className="alfred-select"
               value={ownerFilter}
               onChange={(e) => setOwnerFilter(e.target.value)}
-              title="Filtrer par responsable"
+              title={t("tasks.filters.ownerTitle")}
             >
-              <option value="">Tous les responsables</option>
+              <option value="">{t("tasks.filters.allOwners")}</option>
               {owners.map((o) => <option key={o} value={o}>@{o}</option>)}
             </select>
             {projects.length > 0 && (
@@ -273,9 +301,9 @@ export default function Tasks() {
                 className="alfred-select"
                 value={projectFilter}
                 onChange={(e) => setProjectFilter(e.target.value)}
-                title="Filtrer par projet"
+                title={t("tasks.filters.projectTitle")}
               >
-                <option value="">Tous les projets</option>
+                <option value="">{t("tasks.filters.allProjects")}</option>
                 {projects.map((p) => <option key={p} value={p}>+{p}</option>)}
               </select>
             )}
@@ -283,11 +311,11 @@ export default function Tasks() {
               className="alfred-select"
               value={dueFilter}
               onChange={(e) => setDueFilter(e.target.value as typeof dueFilter)}
-              title="Filtrer par échéance"
+              title={t("tasks.filters.dueTitle")}
             >
-              <option value="">Toutes les échéances</option>
-              <option value="late">En retard</option>
-              <option value="week">Cette semaine</option>
+              <option value="">{t("tasks.filters.allDue")}</option>
+              <option value="late">{t("tasks.filters.late")}</option>
+              <option value="week">{t("tasks.filters.week")}</option>
             </select>
           </div>
         )}
@@ -313,14 +341,14 @@ export default function Tasks() {
           }}>
             <MdFolderOff size={28} />
             <div style={{ fontSize: 14 }}>
-              {!vaultPath ? "Aucun dossier Notes configuré" : `Impossible de lire ${todoRel}`}
+              {!vaultPath ? t("tasks.empty.noVault") : t("tasks.empty.readError", { file: todoRel })}
             </div>
           </div>
         ) : view === "kanban" ? (
           <div style={{ display: "flex", gap: 14, alignItems: "flex-start", minHeight: "100%" }}>
             {COLUMNS.map((col) => {
-              const tasks = (byColumn.get(col) ?? []).filter(visible);
-              const isArchive = col === "Archivé";
+              const colTasks = (byColumn.get(col) ?? []).filter(visible);
+              const isArchive = col === "archived";
               const collapsed = isArchive && !archiveOpen;
               return (
                 <div
@@ -344,18 +372,18 @@ export default function Tasks() {
                 >
                   {/* Column header + compteur + « + » */}
                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 4px" }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-primary)" }}>{col}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-primary)" }}>{TODO_SECTION_LABELS[lang][col]}</span>
                     <span style={{
                       fontSize: 11, fontWeight: 600, color: "var(--text-muted)",
                       background: "var(--bg)", borderRadius: 10, padding: "1px 7px",
                     }}>
-                      {tasks.length}
+                      {colTasks.length}
                     </span>
                     <span style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
                       {isArchive && (
                         <button
                           onClick={() => setArchiveOpen((o) => !o)}
-                          title={archiveOpen ? "Replier" : "Déplier"}
+                          title={archiveOpen ? t("tasks.column.collapse") : t("tasks.column.expand")}
                           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex", padding: 2 }}
                         >
                           {archiveOpen ? <MdExpandLess size={16} /> : <MdExpandMore size={16} />}
@@ -364,7 +392,7 @@ export default function Tasks() {
                       {!isArchive && (
                         <button
                           onClick={() => { setAdding(col); setAddText(""); }}
-                          title="Ajouter une tâche"
+                          title={t("tasks.column.addTask")}
                           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", display: "flex", padding: 2 }}
                         >
                           <MdAdd size={16} />
@@ -384,7 +412,7 @@ export default function Tasks() {
                         if (e.key === "Escape") { setAdding(null); setAddText(""); }
                       }}
                       onBlur={() => quickAdd(col)}
-                      placeholder="Nouvelle tâche…"
+                      placeholder={t("tasks.column.newTaskPlaceholder")}
                       style={{
                         border: "1px solid var(--accent)", borderRadius: 8, padding: "7px 10px",
                         fontSize: 13, background: "var(--bg)", color: "var(--text-primary)", outline: "none",
@@ -393,30 +421,30 @@ export default function Tasks() {
                   )}
 
                   {/* Cards */}
-                  {!collapsed && tasks.map((t, idx) => (
+                  {!collapsed && colTasks.map((task, idx) => (
                     <TaskCard
-                      key={t.id}
-                      task={t}
+                      key={task.id}
+                      task={task}
                       profileName={profileName}
-                      onToggle={() => toggleChecked(t)}
-                      onOpen={() => setOpenTaskId(t.id)}
-                      onDragStart={() => setDrag({ id: t.id })}
+                      onToggle={() => toggleChecked(task)}
+                      onOpen={() => setOpenTaskId(task.id)}
+                      onDragStart={() => setDrag({ id: task.id })}
                       onDragEnd={() => { setDrag(null); setDropCol(null); }}
                       onDropBefore={() => {
-                        if (drag && drag.id !== t.id) moveTo(drag.id, col, idx);
+                        if (drag && drag.id !== task.id) moveTo(drag.id, col, idx);
                         setDrag(null);
                         setDropCol(null);
                       }}
                     />
                   ))}
-                  {!collapsed && tasks.length === 0 && (
+                  {!collapsed && colTasks.length === 0 && (
                     <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "10px 0" }}>
-                      Aucune tâche
+                      {t("tasks.empty.noTasks")}
                     </div>
                   )}
                   {collapsed && (
                     <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "2px 4px" }}>
-                      {tasks.length} tâche{tasks.length > 1 ? "s" : ""} archivée{tasks.length > 1 ? "s" : ""}
+                      {t(colTasks.length > 1 ? "tasks.column.archivedCountPlural" : "tasks.column.archivedCount", { count: colTasks.length })}
                     </div>
                   )}
                 </div>
@@ -427,7 +455,7 @@ export default function Tasks() {
           // Vue Markdown (document) — sections repliables, même Todo.md (spec/06 2e passe).
           <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 720, margin: "0 auto" }}>
             {COLUMNS.map((col) => {
-              const tasks = (byColumn.get(col) ?? []).filter(visible);
+              const colTasks = (byColumn.get(col) ?? []).filter(visible);
               const isCollapsed = collapsedSections.has(col);
               return (
                 <div key={col} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
@@ -440,15 +468,15 @@ export default function Tasks() {
                     }}
                   >
                     <MdChevronRight size={16} style={{ transform: isCollapsed ? "none" : "rotate(90deg)", transition: "transform 0.12s", color: "var(--text-muted)" }} />
-                    {col}
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>({tasks.length})</span>
+                    {TODO_SECTION_LABELS[lang][col]}
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>({colTasks.length})</span>
                   </button>
                   {!isCollapsed && (
                     <div style={{ display: "flex", flexDirection: "column" }}>
-                      {tasks.map((t) => (
+                      {colTasks.map((task) => (
                         <div
-                          key={t.id}
-                          onClick={() => setOpenTaskId(t.id)}
+                          key={task.id}
+                          onClick={() => setOpenTaskId(task.id)}
                           style={{
                             display: "flex", alignItems: "flex-start", gap: 8,
                             padding: "6px 8px 6px 26px", cursor: "pointer", borderRadius: 6,
@@ -458,25 +486,25 @@ export default function Tasks() {
                         >
                           <input
                             type="checkbox"
-                            checked={t.checked}
+                            checked={task.checked}
                             onClick={(e) => e.stopPropagation()}
-                            onChange={() => toggleChecked(t)}
+                            onChange={() => toggleChecked(task)}
                             style={{ accentColor: "var(--accent)", marginTop: 3, cursor: "pointer" }}
                           />
-                          <span style={{ fontSize: 13.5, lineHeight: 1.5, color: "var(--text-primary)", textDecoration: t.checked ? "line-through" : "none" }}>
-                            {renderInlineMd(t.title)}
-                            {t.responsable && (
+                          <span style={{ fontSize: 13.5, lineHeight: 1.5, color: "var(--text-primary)", textDecoration: task.checked ? "line-through" : "none" }}>
+                            {renderInlineMd(task.title)}
+                            {task.responsable && (
                               <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                                {" — @"}{isSelf(t.responsable, profileName) ? "moi" : t.responsable}
+                                {" — @"}{isSelf(task.responsable, profileName) ? t("tasks.owner.me") : task.responsable}
                               </span>
                             )}
-                            {t.echeance && <span style={{ color: "var(--text-muted)", fontSize: 12 }}> — 📅 {t.echeance}</span>}
-                            {t.project && <span style={{ color: "var(--accent)", fontSize: 12 }}> — +{t.project}</span>}
+                            {task.echeance && <span style={{ color: "var(--text-muted)", fontSize: 12 }}> — 📅 {task.echeance}</span>}
+                            {task.project && <span style={{ color: "var(--accent)", fontSize: 12 }}> — +{task.project}</span>}
                           </span>
                         </div>
                       ))}
-                      {tasks.length === 0 && (
-                        <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "4px 26px" }}>Aucune tâche</div>
+                      {colTasks.length === 0 && (
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "4px 26px" }}>{t("tasks.empty.noTasks")}</div>
                       )}
                     </div>
                   )}
@@ -493,7 +521,7 @@ export default function Tasks() {
           owners={owners}
           projects={projects}
           onClose={() => setOpenTaskId(null)}
-          onSaved={(updated) => setTodos((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))}
+          onSaved={(updated) => setTodos((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))}
         />
       )}
     </div>
@@ -523,7 +551,9 @@ function TaskCard({
   /** Déposer une autre carte SUR celle-ci = insérer avant (réordonnancement). */
   onDropBefore: () => void;
 }) {
+  const t = useT();
   const due = dueKind(task.echeance);
+  const dueLabelKey = due ? DUE_LABEL_KEY[due] : "";
   const owner = task.responsable;
   const hasBlock = task.notes.length > 0 || task.description.length > 0;
   return (
@@ -563,7 +593,7 @@ function TaskCard({
               background: PRIORITY_STYLE[task.priority].bg, color: PRIORITY_STYLE[task.priority].text,
               borderRadius: 20, padding: "1px 8px", fontSize: 11.5, fontWeight: 600,
             }}>
-              {PRIORITY_STYLE[task.priority].label}
+              {t(PRIORITY_LABEL_KEY[task.priority])}
             </span>
           )}
           {task.project && (
@@ -579,14 +609,14 @@ function TaskCard({
             const mine = isSelf(owner, profileName);
             return (
               <span
-                title={`Responsable : ${owner}`}
+                title={t("tasks.owner.responsibleTitle", { owner })}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 4,
                   background: bg, color: text, borderRadius: 20,
                   padding: "1px 8px", fontSize: 11.5, fontWeight: 600,
                 }}
               >
-                {mine ? "moi" : owner}
+                {mine ? t("tasks.owner.me") : owner}
               </span>
             );
           })()}
@@ -595,11 +625,11 @@ function TaskCard({
               background: DUE_STYLE[due].bg, color: DUE_STYLE[due].text,
               borderRadius: 20, padding: "1px 8px", fontSize: 11.5, fontWeight: 500,
             }}>
-              📅 {task.echeance}{DUE_STYLE[due].label ? ` · ${DUE_STYLE[due].label}` : ""}
+              📅 {task.echeance}{dueLabelKey ? ` · ${t(dueLabelKey)}` : ""}
             </span>
           )}
           {hasBlock && (
-            <span title="Cette tâche a des détails (sous-tâches / description)" style={{ color: "var(--text-muted)", fontSize: 12 }}>
+            <span title={t("tasks.card.detailsTitle")} style={{ color: "var(--text-muted)", fontSize: 12 }}>
               ≡
             </span>
           )}

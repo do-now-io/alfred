@@ -4,6 +4,7 @@ import { MdCalendarToday, MdLabel, MdCategory, MdToggleOn, MdFolderSpecial, MdGr
 import type { NoteMetadata } from "../../bindings/NoteMetadata";
 import { useProfileStore, isSelf } from "../../store/profileStore";
 import TagChip from "./TagChip";
+import { useT } from "../../i18n";
 
 interface Props {
   metadata: NoteMetadata;
@@ -23,6 +24,7 @@ function ChipsInput({
   placeholder,
   colored,
   selfName,
+  meLabel,
 }: {
   values: string[];
   onChange: (next: string[]) => void;
@@ -33,6 +35,7 @@ function ChipsInput({
   /** Profil local (spec/07, feedback tests) : la valeur qui matche est affichée
    *  « Moi » — reconnaissance de l'utilisateur parmi les participants. */
   selfName?: string;
+  meLabel: string;
 }) {
   const [input, setInput] = useState("");
   const [focused, setFocused] = useState(false);
@@ -68,7 +71,7 @@ function ChipsInput({
                 padding: "2px 8px", borderRadius: 20, fontSize: 12, fontWeight: 500,
               }}
             >
-              {selfName && isSelf(v, selfName) ? "Moi" : v}
+              {selfName && isSelf(v, selfName) ? meLabel : v}
               <button
                 onClick={() => remove(i)}
                 style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "inherit", fontSize: 11, lineHeight: 1, opacity: 0.7 }}
@@ -124,6 +127,7 @@ function ChipsInput({
 }
 
 export default function PropertiesPanel({ metadata, onChange }: Props) {
+  const t = useT();
   // Valeurs existantes du vault, pour l'autocomplétion (spec/07 — list_tags /
   // list_projects). Chargées à l'affichage du panneau ; un échec laisse juste
   // les suggestions vides.
@@ -148,12 +152,12 @@ export default function PropertiesPanel({ metadata, onChange }: Props) {
       background: "var(--card-bg)",
     }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 12 }}>
-        Properties
+        {t("notes.properties.header")}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {/* Date */}
-        <Row icon={<MdCalendarToday />} label="date">
+        <Row icon={<MdCalendarToday />} label={t("notes.properties.dateLabel")}>
           <input
             type="date"
             value={metadata.date}
@@ -163,39 +167,42 @@ export default function PropertiesPanel({ metadata, onChange }: Props) {
         </Row>
 
         {/* Tags — existants + autocomplétion (spec/07) */}
-        <Row icon={<MdLabel />} label="tags">
+        <Row icon={<MdLabel />} label={t("notes.properties.tagsLabel")}>
           <ChipsInput
             colored
             values={metadata.tags}
             onChange={(tags) => update({ tags })}
             suggestions={allTags}
-            placeholder="+ tag"
+            placeholder={t("notes.properties.tagPlaceholder")}
+            meLabel={t("notes.properties.me")}
           />
         </Row>
 
         {/* Projets — MULTI-sélection, combobox sur les projets du vault (spec/07) */}
-        <Row icon={<MdFolderSpecial />} label="projets">
+        <Row icon={<MdFolderSpecial />} label={t("notes.properties.projectsLabel")}>
           <ChipsInput
             values={metadata.project}
             onChange={(project) => update({ project })}
             suggestions={allProjects}
-            placeholder="+ projet"
+            placeholder={t("notes.properties.projectPlaceholder")}
+            meLabel={t("notes.properties.me")}
           />
         </Row>
 
         {/* Participants (spec/07) */}
-        <Row icon={<MdGroups />} label="avec">
+        <Row icon={<MdGroups />} label={t("notes.properties.participantsLabel")}>
           <ChipsInput
             values={metadata.participants}
             onChange={(participants) => update({ participants })}
             suggestions={[]}
-            placeholder="+ participant"
+            placeholder={t("notes.properties.participantPlaceholder")}
             selfName={profileName}
+            meLabel={t("notes.properties.me")}
           />
         </Row>
 
         {/* Type */}
-        <Row icon={<MdCategory />} label="type">
+        <Row icon={<MdCategory />} label={t("notes.properties.typeLabel")}>
           <select
             className="alfred-select"
             value={metadata.type}
@@ -208,7 +215,7 @@ export default function PropertiesPanel({ metadata, onChange }: Props) {
         </Row>
 
         {/* Status */}
-        <Row icon={<MdToggleOn />} label="status">
+        <Row icon={<MdToggleOn />} label={t("notes.properties.statusLabel")}>
           <select
             className="alfred-select"
             value={metadata.status}

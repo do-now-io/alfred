@@ -4,6 +4,7 @@ import type { VaultNode } from "../../bindings/VaultNode";
 import { useNotesStore } from "../../store/notesStore";
 import { NoteTypeIcon } from "../../utils/noteType";
 import NoteContextMenu, { menuItemStyle } from "./NoteContextMenu";
+import { useT } from "../../i18n";
 
 /** MIME custom du glisser-déposer interne (spec/07) — déjà utilisé pour déposer
  *  une note sur un groupe de projet ; réutilisé ici pour la déposer sur un
@@ -26,6 +27,7 @@ interface Props {
 export default function FileTreeNode({
   node, depth, selectedPath, onSelect, onDelete, onRename, onMove, onCreateFolder, onDeleteFolder, onRenameFolder,
 }: Props) {
+  const t = useT();
   const { expandedPaths, toggleExpanded } = useNotesStore();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -109,19 +111,19 @@ export default function FileTreeNode({
                 onClick={() => { onCreateFolder(node.path); setContextMenu(null); }}
                 style={menuItemStyle}
               >
-                <MdCreateNewFolder size={15} /> Nouveau dossier
+                <MdCreateNewFolder size={15} /> {t("notes.contextMenu.newFolder")}
               </button>
               <button
                 onClick={() => { onRenameFolder(node.path, node.name); setContextMenu(null); }}
                 style={menuItemStyle}
               >
-                <MdEdit size={15} /> Renommer
+                <MdEdit size={15} /> {t("notes.contextMenu.rename")}
               </button>
               <button
                 onClick={() => { onDeleteFolder(node.path, node.name); setContextMenu(null); }}
                 style={{ ...menuItemStyle, color: "var(--danger)" }}
               >
-                <MdDelete size={15} /> Supprimer
+                <MdDelete size={15} /> {t("notes.contextMenu.delete")}
               </button>
             </div>
           </>

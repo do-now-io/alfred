@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { MdReplay, MdArrowForward } from "react-icons/md";
 import { useRecordingStore } from "../store/recordingStore";
+import { useT } from "../i18n";
 
 // Panneau de revue « prise terminée » du téléprompteur de contexte (spec/03,
 // spec/13) — Recommencer (jette la prise) / Continuer (transcrit puis
@@ -32,6 +33,7 @@ export default function RecordingReview({
   /** Après Continuer (transcription + structuration du contexte). */
   onContinued?: () => void;
 }) {
+  const t = useT();
   const discardReview = useRecordingStore((s) => s.discardReview);
   const processReview = useRecordingStore((s) => s.processReview);
 
@@ -61,19 +63,19 @@ export default function RecordingReview({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
-        <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>Prise terminée</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>{t("recording.review.title")}</div>
         <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-          Vous pouvez recommencer votre présentation, ou continuer — je la transcris puis je construis votre contexte.
+          {t("recording.review.body")}
         </div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={discard} disabled={busy} style={dangerGhostBtn()}>
           <MdReplay size={16} />
-          {confirmDiscard ? "Confirmer la suppression ?" : "Recommencer"}
+          {confirmDiscard ? t("recording.review.confirmDelete") : t("recording.review.restart")}
         </button>
         <button onClick={cont} disabled={busy} style={{ ...primaryBtn(), marginLeft: "auto" }}>
-          Continuer <MdArrowForward size={16} />
+          {t("recording.review.continue")} <MdArrowForward size={16} />
         </button>
       </div>
     </div>

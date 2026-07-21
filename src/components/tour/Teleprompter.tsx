@@ -1,6 +1,7 @@
 import { MdMic, MdStop, MdFiberManualRecord, MdPause, MdPlayArrow } from "react-icons/md";
 import { useRecordingStore } from "../../store/recordingStore";
 import RecordingReview from "../RecordingReview";
+import { useT } from "../../i18n";
 
 // The context-recording script (spec/13). Guides, never dictates: the user
 // paraphrases at their own pace. The point is to surface as many proper nouns /
@@ -16,14 +17,18 @@ interface ScriptItem {
   hint: string;
 }
 
-const SCRIPT: ScriptItem[] = [
-  { n: 1, title: "Qui vous êtes", hint: "Votre prénom, votre rôle, votre entreprise et ce qu'elle fait." },
-  { n: 2, title: "Ce que vous allez enregistrer", hint: "Quels types de réunions ou d'échanges (points d'équipe, appels clients, notes perso…)." },
-  { n: 3, title: "Votre équipe", hint: "Les prénoms de vos collègues proches et leur rôle (« Marie, cheffe de projet ; Tom, dev back… »)." },
-  { n: 4, title: "Vos clients / partenaires", hint: "Les noms d'entreprises et de personnes qui reviennent souvent." },
-  { n: 5, title: "Vos projets en cours", hint: "Leurs noms — surtout les noms de code inhabituels." },
-  { n: 6, title: "Votre vocabulaire", hint: "Les mots, sigles et outils que vous employez souvent. Ex. : « je dis Kube pour Kubernetes, et j'utilise Grafana, GitHub, Terraform… »." },
-];
+// Le script est construit à partir de `t()` DANS le composant (et non en
+// constante de module) pour rester réactif au changement de langue (spec/21).
+function buildScript(t: ReturnType<typeof useT>): ScriptItem[] {
+  return [
+    { n: 1, title: t("tour.teleprompter.script.item1.title"), hint: t("tour.teleprompter.script.item1.hint") },
+    { n: 2, title: t("tour.teleprompter.script.item2.title"), hint: t("tour.teleprompter.script.item2.hint") },
+    { n: 3, title: t("tour.teleprompter.script.item3.title"), hint: t("tour.teleprompter.script.item3.hint") },
+    { n: 4, title: t("tour.teleprompter.script.item4.title"), hint: t("tour.teleprompter.script.item4.hint") },
+    { n: 5, title: t("tour.teleprompter.script.item5.title"), hint: t("tour.teleprompter.script.item5.hint") },
+    { n: 6, title: t("tour.teleprompter.script.item6.title"), hint: t("tour.teleprompter.script.item6.hint") },
+  ];
+}
 
 function fmt(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -48,6 +53,8 @@ export default function Teleprompter({
   /** Continuer depuis la revue — la transcription (mode contexte) démarre. */
   onContinued: () => void;
 }) {
+  const t = useT();
+  const SCRIPT = buildScript(t);
   const status = useRecordingStore((s) => s.status);
   const pauseRecording = useRecordingStore((s) => s.pauseRecording);
   const resumeRecording = useRecordingStore((s) => s.resumeRecording);
@@ -73,12 +80,10 @@ export default function Teleprompter({
           <>
             <div>
               <h2 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--text-primary)" }}>
-                Présentez-vous à Alfred
+                {t("tour.teleprompter.header.title")}
               </h2>
               <p style={{ margin: "6px 0 0", fontSize: 13.5, lineHeight: 1.55, color: "var(--text-secondary)" }}>
-                Parlez naturellement, comme si vous décriviez votre travail à un nouveau collègue.
-                Épelez les noms inhabituels. Besoin d'une pause ? Mettez en pause et reprenez quand
-                vous voulez — vous pourrez recommencer ou tout relire et corriger juste après.
+                {t("tour.teleprompter.header.text")}
               </p>
             </div>
 
@@ -104,10 +109,10 @@ export default function Teleprompter({
                 <>
                   <span style={{ display: "flex", alignItems: "center", gap: 6, color: paused ? "var(--text-muted)" : "var(--danger)", fontSize: 13, fontWeight: 600 }}>
                     <MdFiberManualRecord style={{ animation: paused ? "none" : "alfred-pulse 1.4s ease-in-out infinite" }} />
-                    {paused ? "En pause" : "Enregistrement"} · {fmt(elapsed)}
+                    {paused ? t("tour.teleprompter.paused") : t("tour.teleprompter.recording")} · {fmt(elapsed)}
                   </span>
                   <button onClick={paused ? resumeRecording : pauseRecording} style={{ ...ghostControl, marginLeft: "auto" }}>
-                    {paused ? <><MdPlayArrow size={16} /> Reprendre</> : <><MdPause size={15} /> Pause</>}
+                    {paused ? <><MdPlayArrow size={16} /> {t("tour.teleprompter.resume")}</> : <><MdPause size={15} /> {t("tour.teleprompter.pause")}</>}
                   </button>
                   <button
                     onClick={onStop}
@@ -117,13 +122,13 @@ export default function Teleprompter({
                       display: "flex", alignItems: "center", gap: 8,
                     }}
                   >
-                    <MdStop /> J'ai terminé
+                    <MdStop /> {t("tour.teleprompter.finish")}
                   </button>
                 </>
               ) : (
                 <>
                   <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-                    Prêt ? Lancez et déroulez les points ci-dessus.
+                    {t("tour.teleprompter.readyHint")}
                   </span>
                   <button
                     onClick={onStart}
@@ -133,7 +138,7 @@ export default function Teleprompter({
                       display: "flex", alignItems: "center", gap: 8,
                     }}
                   >
-                    <MdMic /> Commencer l'enregistrement
+                    <MdMic /> {t("tour.teleprompter.start")}
                   </button>
                 </>
               )}

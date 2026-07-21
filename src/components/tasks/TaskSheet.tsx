@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { MdClose, MdAdd, MdAutoAwesome, MdHub, MdOpenInNew, MdPersonPin } from "react-icons/md";
 import { useNotesStore } from "../../store/notesStore";
 import { useProfileStore } from "../../store/profileStore";
+import { useT } from "../../i18n";
 import BriefingContent from "../BriefingContent";
 import type { Todo } from "../../bindings/Todo";
 import type { TaskFieldsInput } from "../../bindings/TaskFieldsInput";
@@ -44,6 +45,7 @@ export default function TaskSheet({
   onClose: () => void;
   onSaved: (updated: Todo) => void;
 }) {
+  const t = useT();
   const navigate = useNavigate();
   const openNoteByRef = useNotesStore((s) => s.openNoteByRef);
   const profileName = useProfileStore((s) => s.name);
@@ -173,17 +175,17 @@ export default function TaskSheet({
             background: "var(--active-bg)", borderRadius: 8, padding: "7px 11px", fontSize: 12.5,
           }}>
             <span style={{ color: "var(--text-secondary)" }}>
-              Origine : <strong style={{ color: "var(--text-primary)" }}>{todo.source_note}</strong>
+              {t("tasks.sheet.origin", { name: "" })}<strong style={{ color: "var(--text-primary)" }}>{todo.source_note}</strong>
               {todo.source_date && <> · {todo.source_date}</>}
             </span>
             <button onClick={openSource} style={{ ...linkBtn }}>
-              <MdOpenInNew size={13} /> Ouvrir la note
+              <MdOpenInNew size={13} /> {t("tasks.sheet.openNote")}
             </button>
             <button
               onClick={() => navigate(`/graph?focus=${encodeURIComponent(todo.source_note!)}`)}
               style={{ ...linkBtn }}
             >
-              <MdHub size={13} /> Voir dans le graphe
+              <MdHub size={13} /> {t("tasks.sheet.viewInGraph")}
             </button>
           </div>
         )}
@@ -191,21 +193,21 @@ export default function TaskSheet({
         {/* Champs de ligne */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <Field>
-            <label style={label}>Responsable</label>
+            <label style={label}>{t("tasks.sheet.owner")}</label>
             <div style={{ display: "flex", gap: 6 }}>
               <input
                 list="task-sheet-owners"
                 value={responsable}
                 onChange={(e) => setResponsable(e.target.value)}
                 onBlur={() => saveFields({ responsable: responsable || null })}
-                placeholder="Prénom"
+                placeholder={t("tasks.sheet.namePlaceholder")}
                 style={fieldInput}
               />
               {/* @moi (spec/06/10/11) : assigner en un clic avec le profil local. */}
               {profileName && responsable !== profileName && (
                 <button
                   onClick={() => { setResponsable(profileName); saveFields({ responsable: profileName }); }}
-                  title="M'assigner cette tâche"
+                  title={t("tasks.sheet.assignToMe")}
                   style={{
                     background: "none", border: "1px solid var(--border)", borderRadius: 8,
                     padding: "0 9px", cursor: "pointer", color: "var(--accent)", display: "flex", alignItems: "center", flexShrink: 0,
@@ -220,7 +222,7 @@ export default function TaskSheet({
             </datalist>
           </Field>
           <Field>
-            <label style={label}>Échéance</label>
+            <label style={label}>{t("tasks.sheet.due")}</label>
             <input
               type="date"
               value={echeance}
@@ -229,13 +231,13 @@ export default function TaskSheet({
             />
           </Field>
           <Field>
-            <label style={label}>Projet</label>
+            <label style={label}>{t("tasks.sheet.project")}</label>
             <input
               list="task-sheet-projects"
               value={project}
               onChange={(e) => setProject(e.target.value)}
               onBlur={() => saveFields({ project: project || null })}
-              placeholder="+Projet"
+              placeholder={t("tasks.sheet.projectPlaceholder")}
               style={fieldInput}
             />
             <datalist id="task-sheet-projects">
@@ -243,39 +245,39 @@ export default function TaskSheet({
             </datalist>
           </Field>
           <Field>
-            <label style={label}>Priorité</label>
+            <label style={label}>{t("tasks.sheet.priority")}</label>
             <select
               className="alfred-select"
               value={priority}
               onChange={(e) => { setPriority(e.target.value); saveFields({ priority: e.target.value || null }); }}
               style={{ width: "100%" }}
             >
-              <option value="">—</option>
-              <option value="haute">Haute</option>
-              <option value="moyenne">Moyenne</option>
-              <option value="basse">Basse</option>
+              <option value="">{t("tasks.priority.none")}</option>
+              <option value="haute">{t("tasks.priority.high")}</option>
+              <option value="moyenne">{t("tasks.priority.medium")}</option>
+              <option value="basse">{t("tasks.priority.low")}</option>
             </select>
           </Field>
           <Field>
-            <label style={label}>Estimation</label>
+            <label style={label}>{t("tasks.sheet.estimate")}</label>
             <input
               value={estimate}
               onChange={(e) => setEstimate(e.target.value)}
               onBlur={() => saveFields({ estimate: estimate || null })}
-              placeholder="ex. 2h"
+              placeholder={t("tasks.sheet.estimatePlaceholder")}
               style={fieldInput}
             />
           </Field>
         </div>
-        {saving && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Enregistrement…</div>}
+        {saving && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("tasks.sheet.saving")}</div>}
 
         {/* Description longue */}
         <div>
-          <label style={label}>Description</label>
+          <label style={label}>{t("tasks.sheet.description")}</label>
           <textarea
             value={description}
             onChange={(e) => { setDescription(e.target.value); saveBlock(notes, e.target.value); }}
-            placeholder="Détails, contexte, notes libres…"
+            placeholder={t("tasks.sheet.descriptionPlaceholder")}
             rows={3}
             style={{ ...fieldInput, resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 }}
           />
@@ -283,7 +285,7 @@ export default function TaskSheet({
 
         {/* Sous-puces libres */}
         <div>
-          <label style={label}>Sous-tâches</label>
+          <label style={label}>{t("tasks.sheet.subtasks")}</label>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {notes.map((n, i) => (
               <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -317,7 +319,7 @@ export default function TaskSheet({
                 fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6,
               }}
             >
-              <MdAdd size={13} /> Ajouter une sous-tâche
+              <MdAdd size={13} /> {t("tasks.sheet.addSubtask")}
             </button>
           </div>
         </div>
@@ -333,7 +335,7 @@ export default function TaskSheet({
               fontSize: 13, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 8,
             }}
           >
-            <MdAutoAwesome size={15} /> {gathering ? "Rassemblement en cours…" : "Rassembler le contexte"}
+            <MdAutoAwesome size={15} /> {gathering ? t("tasks.sheet.gathering") : t("tasks.sheet.gatherContext")}
           </button>
           {gatherError && <div style={{ fontSize: 12, color: "var(--danger)" }}>⚠ {gatherError}</div>}
           {context && (

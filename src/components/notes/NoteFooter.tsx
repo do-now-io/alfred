@@ -1,4 +1,5 @@
 import { MdUnfoldLess, MdUnfoldMore } from "react-icons/md";
+import { useT } from "../../i18n";
 
 interface Props {
   wordCount: number;
@@ -22,6 +23,7 @@ export default function NoteFooter({
   wordCount, charCount, propCount,
   allCollapsed = false, onToggleCollapseAll,
 }: Props) {
+  const t = useT();
   return (
     <div style={{
       borderTop: "1px solid var(--border)",
@@ -32,18 +34,22 @@ export default function NoteFooter({
       flexShrink: 0,
     }}>
       <span>
-        {wordCount.toLocaleString()} mots · {charCount.toLocaleString()} caractères · {propCount} propriétés
+        {t("notes.footer.stats", {
+          words: wordCount.toLocaleString(),
+          chars: charCount.toLocaleString(),
+          props: propCount,
+        })}
       </span>
       {onToggleCollapseAll && (
         <button
           onClick={onToggleCollapseAll}
-          title={allCollapsed ? "Tout déplier" : "Tout replier"}
+          title={allCollapsed ? t("notes.footer.expandAll") : t("notes.footer.collapseAll")}
           style={btnStyle(allCollapsed)}
         >
           {allCollapsed
             ? <MdUnfoldMore style={{ verticalAlign: "middle", marginRight: 4 }} />
             : <MdUnfoldLess style={{ verticalAlign: "middle", marginRight: 4 }} />}
-          {allCollapsed ? "Tout déplier" : "Tout replier"}
+          {allCollapsed ? t("notes.footer.expandAll") : t("notes.footer.collapseAll")}
         </button>
       )}
     </div>

@@ -25,6 +25,25 @@ pub struct AiAccess {
     mode: &'static str,
 }
 
+/// Instruction de langue des sorties IA (spec/21 — indépendante de la langue
+/// de l'UI) : Alfred rédige dans la langue du contenu qu'on lui donne
+/// (transcription/question) — Claude infère très bien ça seul depuis le
+/// texte — et ne se rabat sur `app_language` (config, défaut `fr`) qu'en cas
+/// d'ambiguïté (transcription trop courte, multilingue, etc.).
+async fn language_instruction(db: &SqlitePool) -> String {
+    let app_language: String = sqlx::query_scalar("SELECT value FROM config WHERE key = 'app_language'")
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "fr".to_string());
+    let fallback = if app_language == "en" { "English" } else { "French" };
+    format!(
+        "- Langue de la réponse : écris dans la MÊME langue que le texte fourni (transcription ou question) ; si cette langue est ambiguë ou indéterminable, réponds en {}.",
+        fallback
+    )
+}
+
 /// Pick the AI access mode from config (`ai_mode` = "alfredia" | "byo"), falling
 /// back to whichever secret is present. Personal key → api.anthropic.com
 /// (`x-api-key`); AlfredIA token → our proxy (`Authorization: Bearer`). The
@@ -89,7 +108,7 @@ const INGESTION_SYSTEM: &str = r#"Tu es Alfred, un assistant personnel. On te do
 
 Consignes :
 - `titre` : un SUJET COURT qui nomme l'échange (ex. « Réunion Flexiflit — migration GKE », « Point équipe produit »). C'est le nom de fichier du compte-rendu : descriptif, concis (≤ 60 caractères), sans date. Chaîne vide si la transcription est inexploitable.
-- `resume` : compte-rendu structuré en Markdown (points clés abordés), en français, concis.
+- `resume` : compte-rendu structuré en Markdown (points clés abordés), concis, dans la même langue que la transcription (voir consigne de langue ci-dessous si besoin d'un repli).
 - `points_cles` : liste des points clés abordés, en phrases courtes.
 - `taches` : chaque tâche à faire identifiée dans la transcription. Quand un responsable est nommé (prénom), rappelle-le dans `responsable` — c'est important, ne l'invente pas s'il n'est pas mentionné. `echeance` au format YYYY-MM-DD si une date est mentionnée, sinon omets-la.
 - `participants` : les prénoms des personnes présentes / citées comme participant à l'échange (pas les personnes simplement mentionnées). Liste vide si indéterminable.
@@ -228,7 +247,7 @@ async fn call_ingestion(
     let access = resolve_access(db).await?;
     let client = reqwest::Client::new();
 
-    let system_prompt = if want_tasks {
+    let mut system_prompt = if want_tasks {
         INGESTION_SYSTEM.to_string()
     } else {
         format!(
@@ -236,6 +255,7 @@ async fn call_ingestion(
             INGESTION_SYSTEM
         )
     };
+    system_prompt.push_str(&format!("\n{}", language_instruction(db).await));
 
     let body = json!({
         "model": MODEL,
@@ -874,7 +894,7 @@ Soumets le glossaire via l'outil `submit_glossary`. Règles STRICTES :
 - Une liste PLATE de noms propres et termes uniquement : prénoms/noms de personnes, entreprises, clients, projets (noms de code), outils, sigles, jargon maison. AUCUNE définition, AUCUNE explication, AUCune phrase (Whisper est acoustique, pas sémantique). Ex. « Kubernetes, Grafana, ArgoCD, Terraform », pas « Kube = Kubernetes ».
 - Ordonne les termes du plus important / le plus susceptible d'être mal transcrit au moins important (la fin peut être tronquée).
 - Budget : environ 60 à 90 termes maximum (~200 tokens). Reste concis.
-- Enrobe la liste dans une courte phrase, dans la langue principale du contexte (français par défaut), sur ce modèle : « Transcription en français. Termes et noms propres : <liste séparée par des virgules>. »
+- Enrobe la liste dans une courte phrase, dans la langue principale du contexte (repli donné ci-dessous si indéterminable), sur ce modèle : « Transcription en français. Termes et noms propres : <liste séparée par des virgules>. »
 - Si le contexte ne contient aucun nom propre / terme exploitable, renvoie une chaîne vide."#;
 
 fn glossary_tool() -> serde_json::Value {
@@ -929,13 +949,14 @@ pub async fn generate_glossary_from_context(db: &SqlitePool, vault_root: Option<
 
     let access = resolve_access(db).await?;
     let client = reqwest::Client::new();
+    let system_text = format!("{}\n{}", GLOSSARY_SYSTEM, language_instruction(db).await);
     let body = json!({
         "model": MODEL,
         "max_tokens": 1024,
         "thinking": {"type": "disabled"},
         "system": [{
             "type": "text",
-            "text": GLOSSARY_SYSTEM,
+            "text": system_text,
             "cache_control": {"type": "ephemeral"}
         }],
         "tools": glossary_tool(),
@@ -981,7 +1002,7 @@ Consignes :
 - `equipe` : les collègues cités (prénom + rôle), en liste à puces « - Prénom : rôle ». Vide si rien.
 - `vocabulaire` : noms propres, clients, sigles, outils et jargon cités, en liste à puces. C'est la matière du glossaire de transcription : sois exhaustif sur les noms propres et termes techniques. Vide si rien.
 - `projets` : les projets en cours cités (nom + une ligne), en liste à puces. Vide si rien.
-- Reste fidèle : n'invente pas d'information non dite. Rédige en français. Orthographie au mieux les noms propres (au besoin d'après le son)."#;
+- Reste fidèle : n'invente pas d'information non dite. Rédige dans la même langue que la présentation orale (voir consigne de langue ci-dessous si besoin d'un repli). Orthographie au mieux les noms propres (au besoin d'après le son)."#;
 
 fn context_build_tool() -> serde_json::Value {
     json!([{
@@ -1072,11 +1093,12 @@ async fn build_context_inner(
 
     let access = resolve_access(db).await?;
     let client = reqwest::Client::new();
+    let system_text = format!("{}\n{}", CONTEXT_BUILD_SYSTEM, language_instruction(db).await);
     let body = json!({
         "model": MODEL,
         "max_tokens": 2048,
         "thinking": {"type": "disabled"},
-        "system": [{ "type": "text", "text": CONTEXT_BUILD_SYSTEM, "cache_control": {"type": "ephemeral"} }],
+        "system": [{ "type": "text", "text": system_text, "cache_control": {"type": "ephemeral"} }],
         "tools": context_build_tool(),
         "tool_choice": {"type": "tool", "name": "submit_context"},
         "messages": [{ "role": "user", "content": format!("Présentation orale :\n{}", transcription_text) }]
@@ -1163,13 +1185,14 @@ pub async fn generate_daily_brief(db: &SqlitePool, vault_root: Option<&Path>) ->
     let prompt = format!("## Tâches en cours\n{}\n\n## Notes récentes\n{}", todos_text, recents_text);
 
     let client = reqwest::Client::new();
+    let system_text = format!("{}\n{}", DAILY_BRIEF_SYSTEM, language_instruction(db).await);
     let body = json!({
         "model": MODEL,
         "max_tokens": 400,
         "thinking": {"type": "disabled"},
         "system": [{
             "type": "text",
-            "text": DAILY_BRIEF_SYSTEM,
+            "text": system_text,
             "cache_control": {"type": "ephemeral"}
         }],
         "messages": [{"role": "user", "content": prompt}]

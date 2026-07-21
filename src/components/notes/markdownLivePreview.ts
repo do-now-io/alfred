@@ -24,6 +24,7 @@ import type { SyntaxNode } from "@lezer/common";
 import {
   Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType,
 } from "@codemirror/view";
+import { t as translate } from "../../i18n";
 
 export interface LivePreviewOptions {
   /** Called when a rendered [[wikilink]] (or relative .md link) is clicked. */
@@ -201,7 +202,9 @@ class StarWidget extends WidgetType {
     b.type = "button";
     b.className = "cm-md-star" + (this.important ? " cm-md-star-on" : "");
     b.textContent = this.important ? "★" : "☆";
-    b.title = this.important ? "Retirer des importantes" : "Marquer comme importante";
+    b.title = this.important
+      ? translate("notes.livePreview.unmarkImportant")
+      : translate("notes.livePreview.markImportant");
     b.dataset.line = String(this.lineFrom); // start of the task line, to find the ⭐
     return b;
   }
@@ -494,7 +497,7 @@ function foldMarker(open: boolean): HTMLElement {
   const s = document.createElement("span");
   s.className = "cm-md-foldmarker" + (open ? " cm-md-open" : "");
   s.textContent = "▸";
-  s.title = open ? "Replier la section" : "Déplier la section";
+  s.title = open ? translate("notes.livePreview.collapseSection") : translate("notes.livePreview.expandSection");
   return s;
 }
 

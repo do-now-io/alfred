@@ -1,9 +1,11 @@
 // Helpers for the Markdown to-do list (the file shown in the Tâches tab).
 // A task is "important" when its line ends with ⭐ — flagged tasks surface in
-// the Dashboard's "Ce qui mérite votre attention" section.
+// the Dashboard's "attention" section.
 //
 // `taskIndex` is the position among task lines, matching the order in which
 // NotePreview wires its checkboxes, so the two stay in sync.
+
+import { normalizeSectionHeading } from "../i18n/todoSections";
 
 const TASK_RE = /^(\s*[-*+] )\[([ xX])\]\s?(.*)$/;
 export const STAR = "⭐";
@@ -82,13 +84,19 @@ const HEADING_RE = /^##\s+(.+?)\s*$/;
  * Groups tasks by the `## Section` heading they fall under (spec/06: Prioritaire /
  * En cours / À faire / Archivé). `taskIndex` on each task is still the file-wide
  * index used by `toggleChecked`/`setImportant` — grouping is purely presentational.
+ *
+ * Les 4 sections stables sont **normalisées** en clé interne (spec/21 —
+ * `priority`/`in_progress`/`todo`/`archived`, reconnues en FR **et** EN) pour
+ * qu'un vault écrit dans une langue reste groupé correctement après un
+ * changement de langue de l'UI. Une section perso de l'utilisateur (non
+ * reconnue) est groupée sous son libellé littéral, inchangé.
  */
 export function groupTasksBySection(body: string): Map<string, TaskLine[]> {
   const lines = body.split("\n");
   const headings: { name: string; lineIndex: number }[] = [];
   lines.forEach((line, lineIndex) => {
     const m = HEADING_RE.exec(line);
-    if (m) headings.push({ name: m[1], lineIndex });
+    if (m) headings.push({ name: normalizeSectionHeading(m[1]) ?? m[1], lineIndex });
   });
 
   const sectionFor = (lineIndex: number): string => {

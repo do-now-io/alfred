@@ -1,4 +1,5 @@
 import { MdGraphicEq, MdSubject, MdDescription, MdCheckBox, MdContactPage, MdStickyNote2 } from "react-icons/md";
+import { useT, t as translate } from "../i18n";
 
 // Icônes de type de note (spec/07) : glyphes Material Design (react-icons/md) —
 // du SVG inline embarqué au build, donc identique sur Windows/macOS/Linux (pas
@@ -17,13 +18,13 @@ export type NoteKind = "audio" | "transcription" | "report" | "task" | "context"
 
 type IconProps = { size?: number; style?: React.CSSProperties };
 
-const KIND_META: Record<NoteKind, { Icon: React.ComponentType<IconProps>; label: string }> = {
-  audio: { Icon: MdGraphicEq, label: "Transcription d'un enregistrement audio" },
-  transcription: { Icon: MdSubject, label: "Note brute" },
-  report: { Icon: MdDescription, label: "Synthèse Alfred (compte-rendu)" },
-  task: { Icon: MdCheckBox, label: "Tâches" },
-  context: { Icon: MdContactPage, label: "Contexte Alfred" },
-  note: { Icon: MdStickyNote2, label: "Note" },
+const KIND_META: Record<NoteKind, { Icon: React.ComponentType<IconProps>; labelKey: string }> = {
+  audio: { Icon: MdGraphicEq, labelKey: "notes.noteType.audio" },
+  transcription: { Icon: MdSubject, labelKey: "notes.noteType.transcription" },
+  report: { Icon: MdDescription, labelKey: "notes.noteType.report" },
+  task: { Icon: MdCheckBox, labelKey: "notes.noteType.task" },
+  context: { Icon: MdContactPage, labelKey: "notes.noteType.context" },
+  note: { Icon: MdStickyNote2, labelKey: "notes.noteType.note" },
 };
 
 // Nom daté produit par `format_note_title` (transcriptions ET .wav jumeau).
@@ -56,8 +57,11 @@ export function noteKind({
   return "note";
 }
 
+/** Hors composant React (pas de hook disponible ici) — lit la langue courante
+ *  via l'export non-hook de i18n. */
 export function noteKindMeta(kind: NoteKind) {
-  return KIND_META[kind];
+  const { Icon, labelKey } = KIND_META[kind];
+  return { Icon, label: translate(labelKey) };
 }
 
 /** Icône prête à poser (arbre, Récents, vue Projets). */
@@ -74,10 +78,11 @@ export function NoteTypeIcon({
   size?: number;
   style?: React.CSSProperties;
 }) {
+  const t = useT();
   const kind = noteKind({ path, noteType, recordingId });
-  const { Icon, label } = KIND_META[kind];
+  const { Icon, labelKey } = KIND_META[kind];
   return (
-    <span title={label} style={{ display: "inline-flex", flexShrink: 0, color: "var(--text-muted)", ...style }}>
+    <span title={t(labelKey)} style={{ display: "inline-flex", flexShrink: 0, color: "var(--text-muted)", ...style }}>
       <Icon size={size} />
     </span>
   );

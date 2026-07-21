@@ -6,6 +6,7 @@ import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { MdRefresh, MdHub } from "react-icons/md";
 import { useNotesStore } from "../store/notesStore";
 import type { VaultGraph } from "../bindings/VaultGraph";
+import { useT } from "../i18n";
 
 const TAG_COLOR = "#5FAE54";
 const NOTE_COLOR = "#8A8A8A";
@@ -25,6 +26,7 @@ interface GNode {
 }
 
 export default function Graph() {
+  const t = useT();
   const [graph, setGraph] = useState<VaultGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hoverNode, setHoverNode] = useState<GNode | null>(null);
@@ -242,11 +244,11 @@ export default function Graph() {
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
               <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
-                {data.nodes.filter(n => n.kind === "note").length} notes · {data.nodes.filter(n => n.kind === "tag").length} tags
+                {t("graph.counts", { notes: data.nodes.filter(n => n.kind === "note").length, tags: data.nodes.filter(n => n.kind === "tag").length })}
               </span>
               <button
                 onClick={fetchGraph}
-                title="Rafraîchir le graphe"
+                title={t("graph.refresh")}
                 style={{
                   background: "none", border: "none", cursor: "pointer",
                   color: "var(--text-secondary)", padding: 2, display: "flex",
@@ -255,11 +257,11 @@ export default function Graph() {
                 <MdRefresh size={15} />
               </button>
             </div>
-            <LegendRow color={TAG_COLOR} label="Tags" />
+            <LegendRow color={TAG_COLOR} label={t("graph.tags")} />
             {data.legend.map(l => (
               <LegendRow key={l.folder} color={l.color} label={l.folder} />
             ))}
-            <LegendRow color={NOTE_COLOR} label="Notes (racine)" />
+            <LegendRow color={NOTE_COLOR} label={t("graph.rootNotes")} />
           </div>
         </>
       )}

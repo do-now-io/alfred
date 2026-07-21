@@ -108,10 +108,10 @@ Une **passe unique** sur tout le WAV en v1 (pas de chunking — spec/17 Hors v1)
   (v1, ~10 utilisateurs, quelques octets par transcription).
 
 Fin : `transcription-complete` ou `transcription-failed { recording_id,
-message }` — ✅ émis par le worker sur toute erreur, y compris **modèle
-manquant** (message dédié invitant à passer par Réglages → Transcription).
-L'UI (`App.tsx`) affiche une bannière d'échec, avec bouton « Ouvrir les
-Réglages » dans le cas modèle manquant.
+message, model_missing }` — ✅ émis par le worker sur toute erreur, y compris
+**modèle manquant** (message dédié + `model_missing: true`). L'UI (`App.tsx`)
+affiche une bannière d'échec, avec bouton « Ouvrir les Réglages » quand
+`model_missing`.
 
 ## Sorties dans le vault (au succès, si vault configuré)
 

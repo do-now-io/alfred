@@ -229,9 +229,14 @@ export default function Tasks() {
     try {
       await invoke("move_todo", { id, section, position });
     } catch (e) {
+      // L'état optimiste ci-dessus est déjà celui qu'`invoke` vient d'écrire
+      // — pas besoin d'un aller-retour de relecture pour le confirmer. On ne
+      // recharge que si l'écriture a réellement échoué, pour revenir à l'état
+      // fichier réel (perf : évite de doubler chaque déplacement par une
+      // lecture complète de Todo.md).
       console.error("[tasks] move_todo failed:", e);
+      load();
     }
-    load();
   };
 
   const toggleChecked = async (t: Todo) => {
@@ -244,9 +249,10 @@ export default function Tasks() {
     try {
       await invoke("complete_todo", { id: t.id, checked: nextChecked });
     } catch (e) {
+      // Idem `moveTo` : ne recharge que si l'écriture a échoué.
       console.error("[tasks] complete_todo failed:", e);
+      load();
     }
-    load();
   };
 
   const quickAdd = async (sectionKey: TodoSectionKey) => {

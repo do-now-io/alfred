@@ -232,7 +232,7 @@ fn resolve_model_path_parts(model_size: &str, data_dir: &std::path::Path, resour
     // en français, actionnable — le cas typique est l'onboarding passé sans
     // téléchargement (spec/04).
     Err(anyhow!(
-        "Modèle Whisper « {} » introuvable — téléchargez-le dans Réglages → Transcription.",
+        "Modèle Whisper « {} » introuvable. Téléchargez-le dans Réglages → Transcription.",
         model_size
     ))
 }
@@ -954,7 +954,7 @@ pub async fn delete_whisper_model(
         return Err(anyhow!("Impossible de supprimer le modèle actif"));
     }
     if downloads.lock().unwrap().contains_key(size) {
-        return Err(anyhow!("Téléchargement en cours — annulez-le d'abord"));
+        return Err(anyhow!("Téléchargement en cours, annulez-le d'abord"));
     }
     let path = data_dir.join("models").join(format!("ggml-{}.bin", size));
     if path.exists() {

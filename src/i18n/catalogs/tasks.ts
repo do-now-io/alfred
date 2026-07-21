@@ -11,7 +11,7 @@ export default {
     },
     filters: {
       searchPlaceholder: "Rechercher…",
-      searchTitle: "Rechercher dans les tâches (titre, responsable) — Échap pour effacer",
+      searchTitle: "Rechercher dans les tâches (titre, responsable). Échap pour effacer",
       ownerTitle: "Filtrer par responsable",
       allOwners: "Tous les responsables",
       projectTitle: "Filtrer par projet",
@@ -45,7 +45,7 @@ export default {
       high: "Haute",
       medium: "Moyenne",
       low: "Basse",
-      none: "—",
+      none: "-",
     },
     owner: {
       me: "moi",
@@ -84,7 +84,7 @@ export default {
     },
     filters: {
       searchPlaceholder: "Search…",
-      searchTitle: "Search tasks (title, owner) — Escape to clear",
+      searchTitle: "Search tasks (title, owner). Escape to clear",
       ownerTitle: "Filter by owner",
       allOwners: "All owners",
       projectTitle: "Filter by project",
@@ -118,7 +118,7 @@ export default {
       high: "High",
       medium: "Medium",
       low: "Low",
-      none: "—",
+      none: "-",
     },
     owner: {
       me: "me",

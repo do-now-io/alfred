@@ -41,7 +41,7 @@ export default {
       hideLinkedRecording: "Masquer l'enregistrement lié",
       ingest: {
         running: "Ré-ingestion en cours…",
-        done: "Ré-ingestion terminée — compte-rendu régénéré",
+        done: "Ré-ingestion terminée, compte-rendu régénéré",
         error: "Ré-ingestion échouée : {error}",
         errorGeneric: "Ré-ingestion échouée",
         disabled: "Sélectionne une note à ré-ingérer",
@@ -153,7 +153,7 @@ export default {
       hideLinkedRecording: "Hide linked recording",
       ingest: {
         running: "Re-ingesting…",
-        done: "Re-ingestion complete — summary regenerated",
+        done: "Re-ingestion complete, summary regenerated",
         error: "Re-ingestion failed: {error}",
         errorGeneric: "Re-ingestion failed",
         disabled: "Select a note to re-ingest",

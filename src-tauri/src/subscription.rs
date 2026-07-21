@@ -103,11 +103,11 @@ async fn wait_for_token(listener: &TcpListener) -> Result<String> {
         let (status, page) = match &token {
             Some(_) => (
                 "200 OK",
-                "<h1>Alfred — abonnement activé ✓</h1><p>Tu peux fermer cet onglet et revenir à Alfred.</p>",
+                "<h1>Alfred : abonnement activé ✓</h1><p>Tu peux fermer cet onglet et revenir à Alfred.</p>",
             ),
             None => (
                 "400 Bad Request",
-                "<h1>Alfred — erreur</h1><p>Aucun token reçu. Réessaie depuis les Réglages.</p>",
+                "<h1>Alfred : erreur</h1><p>Aucun token reçu. Réessaie depuis les Réglages.</p>",
             ),
         };
         let html = format!(

@@ -18,7 +18,7 @@ export default {
     },
     empty: {
       title: "Demander à Alfred",
-      text: "Posez une question sur vos notes — je cherche dans votre coffre et je réponds en citant mes sources.",
+      text: "Posez une question sur vos notes : je cherche dans votre coffre et je réponds en citant mes sources.",
     },
     sources: {
       title: "Sources",
@@ -50,7 +50,7 @@ export default {
     },
     empty: {
       title: "Ask Alfred",
-      text: "Ask a question about your notes — I search your vault and answer citing my sources.",
+      text: "Ask a question about your notes: I search your vault and answer citing my sources.",
     },
     sources: {
       title: "Sources",

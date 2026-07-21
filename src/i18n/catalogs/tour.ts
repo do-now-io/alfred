@@ -5,19 +5,19 @@ export default {
     skipVisit: "Passer la visite",
     intro: {
       title: "Laissez-moi apprendre à vous connaître",
-      text: "Vous allez vous présenter à voix haute pendant que je vous transcris — je m'en servirai pour bien orthographier vos collègues, vos clients et votre jargon. Deux minutes.",
+      text: "Vous allez vous présenter à voix haute pendant que je vous transcris : je m'en servirai pour bien orthographier vos collègues, vos clients et votre jargon. Deux minutes.",
       primary: "Allons-y",
       secondary: "Plus tard",
     },
     error: {
       title: "Petit accroc",
       continueBtn: "Continuer",
-      recordingFailed: "J'ai rencontré un problème pendant l'enregistrement — pas de souci, vous pourrez réessayer plus tard.",
+      recordingFailed: "J'ai rencontré un problème pendant l'enregistrement. Pas de souci, vous pourrez réessayer plus tard.",
       contextFailed: "Je n'ai pas réussi à construire votre contexte, mais votre transcription est bien enregistrée. Vous pourrez remplir la note de contexte à la main.",
-      openContextFailed: "Je n'arrive pas à ouvrir votre note de contexte — vous pourrez la corriger plus tard depuis les Réglages.",
+      openContextFailed: "Je n'arrive pas à ouvrir votre note de contexte. Vous pourrez la corriger plus tard depuis les Réglages.",
     },
     ready: {
-      title: "Je vous connais — mais vérifiez ce que j'ai compris",
+      title: "Je vous connais, mais vérifiez ce que j'ai compris",
       recap: "J'ai rempli votre contexte ({sections} {sectionWord}) et ajouté {terms} noms propres au glossaire de transcription. Un coup d'œil pour corriger ce qu'il faut ?",
       noRecap: "Votre contexte est prêt. Un coup d'œil pour corriger ce qu'il faut ?",
       section: "section",
@@ -26,24 +26,24 @@ export default {
     },
     closing: {
       title: "Vous êtes équipé",
-      text: "Désormais : parlez, je vous écoute, je résume et je retiens — et je connais votre univers. Le reste, vous le découvrirez en m'utilisant.",
+      text: "Désormais : parlez, je vous écoute, je résume et je retiens. Et je connais votre univers. Le reste, vous le découvrirez en m'utilisant.",
       primary: "Terminer",
     },
     visit: {
       notes: {
         title: "Vos notes",
-        text: "De chaque enregistrement, je produis la transcription et le compte-rendu, rangés ici — regroupés par projet.",
+        text: "De chaque enregistrement, je produis la transcription et le compte-rendu, rangés ici, regroupés par projet.",
       },
       tasks: {
         title: "Vos tâches",
-        text: "Les actions décidées en réunion arrivent toutes seules ici (avec le responsable quand il est nommé). À faire / En cours / Fait — cochez, assignez, archivez.",
+        text: "Les actions décidées en réunion arrivent toutes seules ici (avec le responsable quand il est nommé). À faire / En cours / Fait : cochez, assignez, archivez.",
       },
       graph: {
         title: "Le graphe",
-        text: "Je relie vos notes entre elles par projets et participants — pratique pour retrouver le fil d'un sujet.",
+        text: "Je relie vos notes entre elles par projets et participants, pratique pour retrouver le fil d'un sujet.",
       },
       chat: {
-        title: "Questions à Alfred — et comment enregistrer",
+        title: "Questions à Alfred, et comment enregistrer",
         text: "Posez vos questions ici, je réponds en citant vos notes. Et pour enregistrer : cliquez mon logo (en haut à gauche), la carte d'accueil, ou importez un audio.",
       },
       next: "Suivant",
@@ -56,14 +56,14 @@ export default {
     teleprompter: {
       header: {
         title: "Présentez-vous à Alfred",
-        text: "Parlez naturellement, comme si vous décriviez votre travail à un nouveau collègue. Épelez les noms inhabituels. Besoin d'une pause ? Mettez en pause et reprenez quand vous voulez — vous pourrez recommencer ou tout relire et corriger juste après.",
+        text: "Parlez naturellement, comme si vous décriviez votre travail à un nouveau collègue. Épelez les noms inhabituels. Besoin d'une pause ? Mettez en pause et reprenez quand vous voulez : vous pourrez recommencer ou tout relire et corriger juste après.",
       },
       script: {
         item1: { title: "Qui vous êtes", hint: "Votre prénom, votre rôle, votre entreprise et ce qu'elle fait." },
         item2: { title: "Ce que vous allez enregistrer", hint: "Quels types de réunions ou d'échanges (points d'équipe, appels clients, notes perso…)." },
         item3: { title: "Votre équipe", hint: "Les prénoms de vos collègues proches et leur rôle (« Marie, cheffe de projet ; Tom, dev back… »)." },
         item4: { title: "Vos clients / partenaires", hint: "Les noms d'entreprises et de personnes qui reviennent souvent." },
-        item5: { title: "Vos projets en cours", hint: "Leurs noms — surtout les noms de code inhabituels." },
+        item5: { title: "Vos projets en cours", hint: "Leurs noms, surtout les noms de code inhabituels." },
         item6: { title: "Votre vocabulaire", hint: "Les mots, sigles et outils que vous employez souvent. Ex. : « je dis Kube pour Kubernetes, et j'utilise Grafana, GitHub, Terraform… »." },
       },
       recording: "Enregistrement",
@@ -79,19 +79,19 @@ export default {
     skipVisit: "Skip the tour",
     intro: {
       title: "Let me get to know you",
-      text: "You'll introduce yourself out loud while I transcribe — I'll use it to spell your colleagues, clients, and jargon correctly. Two minutes.",
+      text: "You'll introduce yourself out loud while I transcribe: I'll use it to spell your colleagues, clients, and jargon correctly. Two minutes.",
       primary: "Let's go",
       secondary: "Later",
     },
     error: {
       title: "Small hiccup",
       continueBtn: "Continue",
-      recordingFailed: "I ran into a problem during the recording — no worries, you can try again later.",
+      recordingFailed: "I ran into a problem during the recording. No worries, you can try again later.",
       contextFailed: "I couldn't build your context, but your transcription was saved just fine. You'll be able to fill in the context note by hand.",
-      openContextFailed: "I can't open your context note — you'll be able to fix it later from Settings.",
+      openContextFailed: "I can't open your context note. You'll be able to fix it later from Settings.",
     },
     ready: {
-      title: "I know you now — but check what I understood",
+      title: "I know you now, but check what I understood",
       recap: "I filled in your context ({sections} {sectionWord}) and added {terms} proper noun{termsSuffix} to the transcription glossary. Want to take a look and fix anything?",
       noRecap: "Your context is ready. Want to take a look and fix anything?",
       section: "section",
@@ -100,24 +100,24 @@ export default {
     },
     closing: {
       title: "You're all set",
-      text: "From now on: talk, I'll listen, summarize, and remember — and I know your world. You'll discover the rest as you use me.",
+      text: "From now on: talk, I'll listen, summarize, and remember. And I know your world. You'll discover the rest as you use me.",
       primary: "Finish",
     },
     visit: {
       notes: {
         title: "Your notes",
-        text: "From every recording, I produce the transcription and the summary, stored here — grouped by project.",
+        text: "From every recording, I produce the transcription and the summary, stored here, grouped by project.",
       },
       tasks: {
         title: "Your tasks",
-        text: "Actions decided in a meeting land here on their own (with an owner when one is named). To do / In progress / Done — check off, assign, archive.",
+        text: "Actions decided in a meeting land here on their own (with an owner when one is named). To do / In progress / Done: check off, assign, archive.",
       },
       graph: {
         title: "The graph",
-        text: "I link your notes together by project and participant — handy for picking back up the thread of a topic.",
+        text: "I link your notes together by project and participant, handy for picking back up the thread of a topic.",
       },
       chat: {
-        title: "Ask Alfred — and how to record",
+        title: "Ask Alfred, and how to record",
         text: "Ask your questions here, I'll answer by citing your notes. And to record: click my logo (top left), the home card, or import an audio file.",
       },
       next: "Next",
@@ -130,14 +130,14 @@ export default {
     teleprompter: {
       header: {
         title: "Introduce yourself to Alfred",
-        text: "Speak naturally, as if describing your work to a new colleague. Spell out unusual names. Need a break? Pause and resume whenever you like — you'll be able to start over or review and fix everything right after.",
+        text: "Speak naturally, as if describing your work to a new colleague. Spell out unusual names. Need a break? Pause and resume whenever you like: you'll be able to start over or review and fix everything right after.",
       },
       script: {
         item1: { title: "Who you are", hint: "Your first name, your role, your company, and what it does." },
         item2: { title: "What you'll be recording", hint: "What kinds of meetings or conversations (team check-ins, client calls, personal notes…)." },
         item3: { title: "Your team", hint: "The first names of your close colleagues and their roles (\"Marie, project lead; Tom, backend dev…\")." },
         item4: { title: "Your clients / partners", hint: "The company and person names that come up often." },
-        item5: { title: "Your ongoing projects", hint: "Their names — especially unusual code names." },
+        item5: { title: "Your ongoing projects", hint: "Their names, especially unusual code names." },
         item6: { title: "Your vocabulary", hint: "The words, acronyms, and tools you use often. E.g.: \"I say K8s for Kubernetes, and I use Grafana, GitHub, Terraform…\"." },
       },
       recording: "Recording",

@@ -29,7 +29,7 @@ async fn start_recording(
 ) -> Result<(), String> {
     // La capture est un singleton (spec/07b) : pas d'enregistrement pendant une dictée.
     if *state.dictation_active.lock().unwrap() {
-        return Err("Une dictée est en cours — terminez-la avant d'enregistrer.".to_string());
+        return Err("Une dictée est en cours, terminez-la avant d'enregistrer.".to_string());
     }
 
     let data_dir = app
@@ -310,7 +310,7 @@ async fn start_dictation(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     if state.active_recording_id.lock().unwrap().is_some() {
-        return Err("Un enregistrement est en cours — la dictée est indisponible.".to_string());
+        return Err("Un enregistrement est en cours, la dictée est indisponible.".to_string());
     }
     {
         let mut active = state.dictation_active.lock().unwrap();

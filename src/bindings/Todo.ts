@@ -10,7 +10,7 @@ id: string, title: string, responsable: string | null,
  */
 echeance: string | null, 
 /**
- * Which `## Section` the task sits under (Prioritaire / En cours / À faire / Archivé).
+ * Which `## Section` the task sits under (À faire / En cours / Fait / Archivé).
  */
 section: string, checked: boolean, 
 /**

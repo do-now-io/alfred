@@ -91,6 +91,12 @@ const PRIORITY_LABEL_KEY: Record<string, string> = {
   basse: "tasks.priority.low",
 };
 
+// Tri intra-colonne par priorité (spec/06 v2, feedback tests) : haute en haut,
+// puis moyenne, basse, sans priorité — visuel seulement, l'ordre du fichier
+// reste la source (pas de réécriture juste pour trier).
+const PRIORITY_ORDER: Record<string, number> = { haute: 0, moyenne: 1, basse: 2 };
+const priorityRank = (p: string | null | undefined) => (p ? PRIORITY_ORDER[p] ?? 3 : 3);
+
 interface DragInfo {
   id: string;
 }
@@ -113,6 +119,7 @@ export default function Tasks() {
   const [ownerFilter, setOwnerFilter] = useState<string>("");
   const [dueFilter, setDueFilter] = useState<"" | "late" | "week">("");
   const [projectFilter, setProjectFilter] = useState<string>("");
+  const [priorityFilter, setPriorityFilter] = useState<string>("");
   // Drag en cours + cible de dépôt (colonne, index d'insertion).
   const [drag, setDrag] = useState<DragInfo | null>(null);
   const [dropCol, setDropCol] = useState<TodoSectionKey | null>(null);
@@ -180,19 +187,24 @@ export default function Tasks() {
     }
     if (ownerFilter && t.responsable !== ownerFilter) return false;
     if (projectFilter && t.project !== projectFilter) return false;
+    if (priorityFilter && t.priority !== priorityFilter) return false;
     if (dueFilter) {
       const k = dueKind(t.echeance);
       if (dueFilter === "late" && k !== "late") return false;
       if (dueFilter === "week" && k !== "today" && k !== "soon" && k !== "late") return false;
     }
     return true;
-  }, [textFilter, ownerFilter, dueFilter, projectFilter]);
+  }, [textFilter, ownerFilter, dueFilter, projectFilter, priorityFilter]);
 
   const byColumn = useMemo(() => {
     const map = new Map<TodoSectionKey, Todo[]>(COLUMNS.map((c) => [c, []]));
     for (const todo of todos) {
       const key = normalizeSectionHeading(todo.section) ?? "todo";
       map.get(key)!.push(todo);
+    }
+    // Tri visuel par priorité, à l'intérieur de chaque colonne (spec/06 v2).
+    for (const list of map.values()) {
+      list.sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority));
     }
     return map;
   }, [todos]);
@@ -202,11 +214,17 @@ export default function Tasks() {
     // toujours le libellé littéral de la langue courante.
     const section = TODO_SECTION_LABELS[lang][sectionKey];
     // Optimiste : re-sectionne localement, le fichier suit (puis re-lecture).
+    // Bijection cocher ⇔ Fait (spec/06 v2) : entrer dans Fait coche, en sortir
+    // (vers une colonne de travail, pas Archivé) décoche — même règle que
+    // `move_task` côté backend.
     setTodos((prev) => {
       const t = prev.find((x) => x.id === id);
       if (!t) return prev;
       const rest = prev.filter((x) => x.id !== id);
-      return [...rest, { ...t, section }];
+      let checked = t.checked;
+      if (sectionKey === "done") checked = true;
+      else if (normalizeSectionHeading(t.section) === "done" && sectionKey !== "archived") checked = false;
+      return [...rest, { ...t, section, checked }];
     });
     try {
       await invoke("move_todo", { id, section, position });
@@ -217,9 +235,14 @@ export default function Tasks() {
   };
 
   const toggleChecked = async (t: Todo) => {
-    setTodos((prev) => prev.map((x) => (x.id === t.id ? { ...x, checked: !t.checked } : x)));
+    // Cocher/décocher DÉPLACE la tâche (spec/06 v2 — bijection avec Fait) :
+    // le fichier suit la même règle côté backend (`set_checked`), on
+    // l'anticipe ici pour éviter un flash visuel avant la relecture.
+    const nextChecked = !t.checked;
+    const nextSection = TODO_SECTION_LABELS[lang][nextChecked ? "done" : "todo"];
+    setTodos((prev) => prev.map((x) => (x.id === t.id ? { ...x, checked: nextChecked, section: nextSection } : x)));
     try {
-      await invoke("complete_todo", { id: t.id, checked: !t.checked });
+      await invoke("complete_todo", { id: t.id, checked: nextChecked });
     } catch (e) {
       console.error("[tasks] complete_todo failed:", e);
     }
@@ -325,6 +348,17 @@ export default function Tasks() {
               <option value="">{t("tasks.filters.allDue")}</option>
               <option value="late">{t("tasks.filters.late")}</option>
               <option value="week">{t("tasks.filters.week")}</option>
+            </select>
+            <select
+              className="alfred-select"
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              title={t("tasks.filters.priorityTitle")}
+            >
+              <option value="">{t("tasks.filters.allPriorities")}</option>
+              <option value="haute">{t("tasks.priority.high")}</option>
+              <option value="moyenne">{t("tasks.priority.medium")}</option>
+              <option value="basse">{t("tasks.priority.low")}</option>
             </select>
           </div>
         )}

@@ -1,6 +1,6 @@
 // Écran Tâches (spec/06/21) — vue Kanban + Markdown sur Todo.md, et fiche
-// tâche (TaskSheet). Les 4 sections stables (Prioritaire/En cours/À
-// faire/Archivé) sont gérées via `../todoSections.ts` (clé canonique +
+// tâche (TaskSheet). Les 4 sections stables (À faire/En cours/Fait/
+// Archivé) sont gérées via `../todoSections.ts` (clé canonique +
 // libellé par langue) — PAS ici, pour rester la source unique de vérité.
 export default {
   fr: {
@@ -22,6 +22,8 @@ export default {
       allDue: "Toutes les échéances",
       late: "En retard",
       week: "Cette semaine",
+      priorityTitle: "Filtrer par priorité",
+      allPriorities: "Toutes les priorités",
     },
     empty: {
       noVault: "Aucun dossier Notes configuré",
@@ -95,6 +97,8 @@ export default {
       allDue: "All due dates",
       late: "Overdue",
       week: "This week",
+      priorityTitle: "Filter by priority",
+      allPriorities: "All priorities",
     },
     empty: {
       noVault: "No notes folder configured",

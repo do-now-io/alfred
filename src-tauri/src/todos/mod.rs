@@ -21,7 +21,7 @@ pub struct Todo {
     pub responsable: Option<String>,
     /// YYYY-MM-DD, when present on the line (`📅`).
     pub echeance: Option<String>,
-    /// Which `## Section` the task sits under (Prioritaire / En cours / À faire / Archivé).
+    /// Which `## Section` the task sits under (À faire / En cours / Fait / Archivé).
     pub section: String,
     pub checked: bool,
     /// `+Projet` — un seul projet par tâche (spec/06 2e passe).
@@ -119,10 +119,22 @@ fn to_todo(t: todo_md::ParsedTask) -> Todo {
     }
 }
 
+/// Migre le contenu si besoin (spec/06 v2 — anciens en-têtes retirés / tâches
+/// cochées égarées) et persiste le résultat s'il a changé, avant de le
+/// retourner — sans effet une fois le fichier déjà à jour (idempotent).
+async fn read_and_migrate(path: &Path) -> Option<String> {
+    let content = read_file(path).await?;
+    let migrated = todo_md::migrate(&content);
+    if migrated != content {
+        let _ = write_file(path, &migrated).await;
+    }
+    Some(migrated)
+}
+
 /// Pending tasks: unchecked and not archived, in file order.
 pub async fn get_todos(db: &SqlitePool, vault_root: Option<&Path>) -> Result<Vec<Todo>> {
     let path = resolve_path(db, vault_root).await?;
-    let Some(content) = read_file(&path).await else {
+    let Some(content) = read_and_migrate(&path).await else {
         return Ok(vec![]); // no Todo.md yet = no tasks
     };
     Ok(todo_md::parse_all(&content)
@@ -179,7 +191,7 @@ pub async fn create_todo(input: &CreateTodoInput, db: &SqlitePool, vault_root: O
 /// pour la vue Kanban (spec/06 : colonnes = sections, Archivé compris).
 pub async fn get_all_todos(db: &SqlitePool, vault_root: Option<&Path>) -> Result<Vec<Todo>> {
     let path = resolve_path(db, vault_root).await?;
-    let Some(content) = read_file(&path).await else {
+    let Some(content) = read_and_migrate(&path).await else {
         return Ok(vec![]);
     };
     Ok(todo_md::parse_all(&content).into_iter().map(to_todo).collect())
@@ -200,7 +212,8 @@ pub async fn move_todo(
     write_file(&path, &new_content).await
 }
 
-/// Toggle done: check/uncheck in place (spec/06 — the line never moves).
+/// Toggle done (spec/06 v2) : cocher **déplace** la tâche vers `## Fait`,
+/// décocher la renvoie vers `## À faire`.
 pub async fn set_todo_checked(id: &str, checked: bool, db: &SqlitePool, vault_root: Option<&Path>) -> Result<()> {
     let path = resolve_path(db, vault_root).await?;
     let content = read_file(&path).await.ok_or_else(|| anyhow!("Todo.md introuvable"))?;

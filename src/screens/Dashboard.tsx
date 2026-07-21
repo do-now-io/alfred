@@ -141,7 +141,7 @@ function HeroCard() {
   );
 }
 
-// ─── Section tâches — sections Prioritaire / En cours / À faire (spec/10) ──────
+// ─── Section tâches — sections À faire / En cours (spec/06 v2/10) ──────────────
 // Reads/writes Todo.md directly (same pattern as Tasks.tsx), grouped by the
 // `## Section` headings the file already uses (spec/06) — a lighter, in-place
 // summary rather than the full editor.
@@ -149,7 +149,7 @@ function HeroCard() {
 const DEFAULT_TODO_RELATIVE = "wiki/Todo.md";
 // Clés stables (spec/21) — reconnues en FR et EN par `groupTasksBySection`,
 // affichées via `TODO_SECTION_LABELS[lang]`.
-const SECTIONS_SHOWN: TodoSectionKey[] = ["priority", "in_progress", "todo"];
+const SECTIONS_SHOWN: TodoSectionKey[] = ["todo", "in_progress"];
 const SECTION_LIMIT = 5;
 
 function TaskRow({ task, onToggle, onOpen }: {

@@ -68,7 +68,7 @@ Feedback (§13) → Nav & indicateur d'état (§14). Le §1 dépend d'un état r
 - [ ] Étape **Vault** : choisir un dossier → `alfred-raw/`, `alfred-intelligence/`, `Todo.md` créés. 🎯 pas d'écrasement si déjà présents.
 - [ ] Étape **Accès IA** : coller une clé perso (test OK) **ou** lancer l'abonnement AlfredIA. 🎯 clé validée / token récupéré.
 - [ ] Étape **Micro** : test → 🎯 prompt OS (macOS) / ouverture WASAPI (Windows), pas d'erreur.
-- [ ] Fin d'onboarding → 🎯 **contenu de démarrage semé** : checklist de tâches (Prioritaire/En cours/À faire, une cochée), 2 notes de démo dans « Projets », une conversation d'exemple dans l'historique du chat.
+- [ ] Fin d'onboarding → 🎯 **contenu de démarrage semé** : checklist de tâches (À faire/En cours, une dans Fait), 2 notes de démo dans « Projets », une conversation d'exemple dans l'historique du chat.
 - [ ] Fin d'onboarding → **la visite guidée démarre** automatiquement.
 - [ ] **Téléprompteur** (contexte à la voix) : « Commencer l'enregistrement » → se présenter (nom, entreprise, équipe, jargon).
   - [ ] **Pause / Reprendre** pendant la prise → 🎯 le chrono se fige, la capture s'arrête sans clôturer.
@@ -157,12 +157,13 @@ Feedback (§13) → Nav & indicateur d'état (§14). Le §1 dépend d'un état r
 
 ## 8. Tâches (spec 06) 💻
 - [ ] Onglet **Tâches** : bascule **Kanban / Markdown** en tête de page — 🎯 les deux affichent le **même** `Todo.md`.
-- [ ] **Vue Kanban** : colonnes Prioritaire / En cours / À faire / Archivé (Archivé **repliée par défaut**, dépliable).
-  - [ ] ⚠️ **Glisser-déposer une carte d'une colonne à l'autre** → 🎯 **fonctionne** (bug corrigé : `dragDropEnabled` de Tauri bloquait tout le HTML5 DnD du webview). La carte change de section dans `Todo.md`.
+- [ ] **Vue Kanban** : colonnes **À faire / En cours / Fait / Archivé** (Archivé **repliée par défaut**, dépliable). Plus de colonne « Prioritaire ».
+  - [ ] ⚠️ **Glisser-déposer une carte d'une colonne à l'autre** → 🎯 **fonctionne** (bug corrigé : `dragDropEnabled` de Tauri bloquait tout le HTML5 DnD du webview). La carte change de section dans `Todo.md`. 🎯 **Déposer dans Fait coche** la case ; **en sortir la décoche**.
   - [ ] Déposer une carte **sur une autre** (même colonne) → réordonnancement.
-  - [ ] Carte : titre (markdown inline rendu, pas de `**` bruts) + case à cocher (coché → carte estompée/barrée, reste en place) + puce **responsable** colorée + badge **échéance** coloré selon la proximité (en retard / aujourd'hui / cette semaine) + badge **priorité** + badge **projet**.
+  - [ ] Carte : titre (markdown inline rendu, pas de `**` bruts) + case à cocher (🎯 cocher **déplace la carte vers Fait** ; décocher la renvoie vers À faire) + puce **responsable** colorée + badge **échéance** coloré selon la proximité (en retard / aujourd'hui / cette semaine) + badge **priorité** + badge **projet**.
   - [ ] **« + »** en tête de colonne → ajout rapide dans la section correspondante ; compteur à jour.
-  - [ ] Filtres : **recherche texte** (titre/responsable, insensible casse/accents), **responsable**, **échéance**, **projet**.
+  - [ ] Filtres : **recherche texte** (titre/responsable, insensible casse/accents), **responsable**, **échéance**, **projet**, **priorité**. 🎯 Tri intra-colonne par priorité (haute en haut).
+  - [ ] Ouvrir un vieux `Todo.md` (colonne `Prioritaire`, tâches `[x]` égarées hors Fait/Archivé) → 🎯 **migré automatiquement** à la 1ʳᵉ lecture : `Prioritaire` fusionne dans `À faire`, les `[x]` égarés rejoignent `Fait`.
 - [ ] **Vue Markdown** : mêmes sections, **repliables**, cases à cocher fonctionnelles — lecture proche d'Obsidian.
 - [ ] **Fiche tâche** — cliquer une carte (Kanban) **ou** une ligne (Markdown) → 🎯 ouvre la fiche :
   - [ ] Édition **titre / responsable / échéance / projet (`+Projet`) / priorité / estimation** — auto-sauvegarde.
@@ -170,7 +171,7 @@ Feedback (§13) → Nav & indicateur d'état (§14). Le §1 dépend d'un état r
   - [ ] Si la tâche vient d'un enregistrement → 🎯 **provenance affichée** (compte-rendu source + date), boutons **« Ouvrir la note »** et **« Voir dans le graphe »** (centre + surligne le nœud). Provenance jamais éditable.
   - [ ] Bouton **« Rassembler le contexte »** → 🎯 action IA à la demande (pas automatique) qui résume compte-rendu source + notes liées ; réponse avec wikilinks cliquables.
   - [ ] ⚙️ Profil local configuré → bouton **« M'assigner »** à côté du champ responsable → remplit avec son propre prénom.
-- [ ] Bloc **tâches sur l'accueil** (dépliable, Prioritaire/En cours/À faire) + « voir toutes les tâches » → `/tasks`.
+- [ ] Bloc **tâches sur l'accueil** (dépliable, À faire/En cours) + « voir toutes les tâches » → `/tasks`.
 
 ## 9. Chat / RAG (spec 05/07b) 💻
 - [ ] Onglet **Alfred** : poser une question sur les notes → réponse **citant les sources** en `[[wikilink]]`.

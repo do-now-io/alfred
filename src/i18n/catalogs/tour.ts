@@ -36,7 +36,7 @@ export default {
       },
       tasks: {
         title: "Vos tâches",
-        text: "Les actions décidées en réunion arrivent toutes seules ici (avec le responsable quand il est nommé). Prioritaire / En cours / À faire — cochez, assignez, archivez.",
+        text: "Les actions décidées en réunion arrivent toutes seules ici (avec le responsable quand il est nommé). À faire / En cours / Fait — cochez, assignez, archivez.",
       },
       graph: {
         title: "Le graphe",
@@ -110,7 +110,7 @@ export default {
       },
       tasks: {
         title: "Your tasks",
-        text: "Actions decided in a meeting land here on their own (with an owner when one is named). Priority / In progress / To do — check off, assign, archive.",
+        text: "Actions decided in a meeting land here on their own (with an owner when one is named). To do / In progress / Done — check off, assign, archive.",
       },
       graph: {
         title: "The graph",

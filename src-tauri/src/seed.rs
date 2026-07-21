@@ -40,11 +40,11 @@ struct SeedContent {
 
 const SEED_FR: SeedContent = SeedContent {
     tasks: &[
-        ("Prioritaire", "Faire le tour d'Alfred", Some("Vous"), false),
+        ("À faire", "Faire le tour d'Alfred", Some("Vous"), false),
         ("En cours", "Faire un premier enregistrement", None, false),
         ("À faire", "Vérifier / compléter mon contexte", None, false),
         ("À faire", "Inviter un collègue à écouter un compte-rendu", Some("Marie"), false),
-        ("À faire", "Découvrir l'application", None, true),
+        ("Fait", "Découvrir l'application", None, true),
     ],
     demo_note_1_title: "Exemple — Point projet Horloge",
     demo_note_1_body: "> *Note d'exemple créée par Alfred — supprimez-la quand vous voulez.*\n\nCompte-rendu type d'un point d'équipe sur le projet **Horloge**.\n\n## Points clés\n- Le prototype est validé, on passe à la phase de test utilisateur.\n- Marie présente les maquettes finales jeudi.\n- Tom corrige le bug d'affichage avant la démo.\n\n## Décisions\n- Lancement du pilote la semaine prochaine.\n",
@@ -57,11 +57,11 @@ const SEED_FR: SeedContent = SeedContent {
 const SEED_EN: SeedContent = SeedContent {
     // La section reste le libellé FR interne stable (voir commentaire ci-dessus).
     tasks: &[
-        ("Prioritaire", "Take the Alfred tour", Some("You"), false),
+        ("À faire", "Take the Alfred tour", Some("You"), false),
         ("En cours", "Make your first recording", None, false),
         ("À faire", "Check / complete my context", None, false),
         ("À faire", "Invite a colleague to listen to a summary", Some("Marie"), false),
-        ("À faire", "Discover the app", None, true),
+        ("Fait", "Discover the app", None, true),
     ],
     demo_note_1_title: "Example — Clock project update",
     demo_note_1_body: "> *Example note created by Alfred — delete it whenever you like.*\n\nTypical summary of a team check-in on the **Clock** project.\n\n## Key points\n- The prototype is validated, moving on to user testing.\n- Marie presents the final mockups on Thursday.\n- Tom fixes the display bug before the demo.\n\n## Decisions\n- Pilot launch next week.\n",

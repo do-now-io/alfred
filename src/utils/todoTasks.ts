@@ -81,7 +81,7 @@ export function toggleImportant(body: string, taskIndex: number): string {
 const HEADING_RE = /^##\s+(.+?)\s*$/;
 
 /**
- * Groups tasks by the `## Section` heading they fall under (spec/06: Prioritaire /
+ * Groups tasks by the `## Section` heading they fall under (spec/06: À faire /
  * En cours / À faire / Archivé). `taskIndex` on each task is still the file-wide
  * index used by `toggleChecked`/`setImportant` — grouping is purely presentational.
  *

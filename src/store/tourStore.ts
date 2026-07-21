@@ -3,16 +3,20 @@ import { invoke } from "@tauri-apps/api/core";
 
 // Guided tour (spec/13): a real, event-driven walkthrough right after onboarding.
 // The first recording IS the creation of `Contexte Alfred.md` — the user
-// introduces themselves aloud (teleprompter, with pause/review controls), then,
-// while the transcription runs, the tour walks the app (Notes → Tâches → Graphe →
-// Alfred & enregistrer). As soon as `context-status-changed: done` fires, a
-// pop-up interrupts the visit: « Alfred vous connaît — vérifiez » with a single
-// « Revoir / corriger » button opening /resolve in context mode. After
-// validation → closing card. Never a simulation.
+// introduces themselves aloud (teleprompter, with pause/review controls), then
+// a short "I'm on it, I'll come back to you" card (`processing`) sets
+// expectations before, while the transcription runs, the tour walks the app
+// (Notes → Tâches → Graphe → Alfred & enregistrer). As soon as
+// `context-status-changed: done` fires, a pop-up interrupts the visit :
+// « Alfred vous connaît — vérifiez » with a single « Revoir / corriger »
+// button opening /resolve in context mode. After validation → closing card.
+// Never a simulation.
 
 export type TourStep =
   | "intro"
   | "record" // teleprompter: start / pause / review (Recommencer / Continuer)
+  | "processing" // "I'm working on it, I'll come back to you" — before the visit starts
+  | "status-dot" // spotlight on the sidebar status dot — what it means
   | "visit-notes" // app visit while the pipeline runs (spec/13 étape 3)
   | "visit-tasks"
   | "visit-graph"

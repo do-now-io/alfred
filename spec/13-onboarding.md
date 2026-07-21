@@ -117,7 +117,21 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
 
    Attend `recording-status-changed → "recording"` (et `"paused"` le cas échéant)
    puis, après **Continuer**, `→ "stopping"/"processing"`.
-3. **Visite de l'app pendant la transcription** — la transcription du contexte est
+3. **« Je m'occupe de tout » (carte, ✅ fait, demande utilisateur)** — juste après
+   **Continuer**, avant d'entamer la visite : une carte pose l'attente
+   explicitement plutôt que de basculer silencieusement sur Notes avec pour
+   seul indice le petit indicateur d'état. *« J'écoute ce que vous venez de
+   dire et j'en tire votre contexte — ça prend quelques instants. Je
+   reviendrai vers vous dès que c'est prêt. En attendant, faisons le tour de
+   l'application. »* → **« Découvrir l'application »** (avance vers l'étape 4).
+4. **Le point d'état de la sidebar (spotlight, ✅ fait, demande utilisateur)** —
+   avant de quitter `/recording`, un spotlight pointe le petit point sous le
+   logo Alfred (`AlfredLogo`, sidebar — toujours monté, quel que soit l'écran) :
+   *« Ce point, c'est moi. Il clignote quand je travaille — j'enregistre, je
+   transcris ou je réfléchis — et reste discret quand je suis disponible. Vous
+   le retrouverez à cet endroit à chaque fois. »* → **« Suivant »** (navigue vers
+   `/notes` à ce moment-là, pas avant, puis avance vers l'étape 5).
+5. **Visite de l'app pendant la transcription** — la transcription du contexte est
    **longue** ; au lieu d'un simple bandeau d'attente, la visite **occupe ce temps
    utile** en faisant découvrir l'app, étape par étape (spotlights non bloquants),
    pendant que le traitement tourne en arrière-plan :
@@ -130,7 +144,8 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
 
    Un **indicateur d'état discret** rappelle en permanence qu'Alfred « écoute et met
    au propre… » puis « range tout ça… » (piloté par `recording-status-changed =
-   processing`, puis `transcription-complete` → structuration).
+   processing`, puis `transcription-complete` → structuration) — le même point
+   d'état expliqué à l'étape 4, désormais reconnaissable.
 
    > **La visite ne doit PAS être interrompue** (feedback tests) : même si le
    > contexte finit d'être construit pendant qu'on visite, on **laisse
@@ -138,9 +153,9 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    > `context-status-changed { status: "done" }` est **mis de côté** (drapeau
    > « contexte prêt » + son récap : sections remplies, nombre de termes de
    > glossaire) — il **ne déclenche rien** en cours de visite, il est simplement
-   > **mémorisé** pour l'étape 4.
-4. **Contexte prêt (pop-up)** — s'affiche **à la fin de la visite** (après la
-   dernière étape de découverte, étape 3.4), **pas** au moment où le contexte est
+   > **mémorisé** pour l'étape 6.
+6. **Contexte prêt (pop-up)** — s'affiche **à la fin de la visite** (après la
+   dernière étape de découverte, étape 5.4), **pas** au moment où le contexte est
    prêt. Deux cas :
    - **Contexte déjà prêt** (l'événement `done` est arrivé pendant la visite, mis de
      côté) → la pop-up s'affiche immédiatement avec le récap mémorisé.
@@ -151,7 +166,7 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    + aperçu (sections remplies + *« {n} noms propres ajoutés au glossaire »*).
    **Un seul bouton : « Revoir / corriger »** (l'ancien bouton « Continuer » est
    **retiré** — on veut forcer le passage par la vérification).
-5. **Correction du contexte — MÊME écran que pour un vrai enregistrement** (📝 à
+7. **Correction du contexte — MÊME écran que pour un vrai enregistrement** (📝 à
    revoir, feedback tests) — « Revoir / corriger » ouvre **exactement le même écran
    `/resolve`** et **le même flux de vérification/correction** que la correction d'une
    note d'enregistrement normale (spec/17). **Pas de page ni de variante spécifiques
@@ -164,7 +179,7 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    > **différente** de celle d'une vérification normale. À **unifier** : supprimer
    > toute page/variante « mode contexte » spécifique — l'onboarding passe par le
    > même écran et le même parcours que n'importe quel enregistrement.
-6. **Clôture** — après validation, carte chaleureuse, ton majordome : *« Vous êtes
+8. **Clôture** — après validation, carte chaleureuse, ton majordome : *« Vous êtes
    équipé »* / *« Désormais : parlez, Alfred écoute, résume et retient — et il
    connaît votre univers. Le reste, vous le découvrirez en l'utilisant. »* →
    « Terminer ».

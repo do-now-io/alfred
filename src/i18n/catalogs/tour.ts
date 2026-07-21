@@ -9,6 +9,15 @@ export default {
       primary: "Allons-y",
       secondary: "Plus tard",
     },
+    processing: {
+      title: "Je m'occupe de tout",
+      text: "J'écoute ce que vous venez de dire et j'en tire votre contexte — ça prend quelques instants. Je reviendrai vers vous dès que c'est prêt. En attendant, faisons le tour de l'application.",
+      primary: "Découvrir l'application",
+    },
+    statusDot: {
+      title: "Ce point, c'est moi",
+      text: "Il clignote quand je travaille — j'enregistre, je transcris ou je réfléchis — et reste discret quand je suis disponible. Vous le retrouverez à cet endroit à chaque fois.",
+    },
     error: {
       title: "Petit accroc",
       continueBtn: "Continuer",
@@ -82,6 +91,15 @@ export default {
       text: "You'll introduce yourself out loud while I transcribe: I'll use it to spell your colleagues, clients, and jargon correctly. Two minutes.",
       primary: "Let's go",
       secondary: "Later",
+    },
+    processing: {
+      title: "I'm on it",
+      text: "I'm listening to what you just said and pulling your context out of it — it'll take a moment. I'll come back to you as soon as it's ready. In the meantime, let's take a tour of the app.",
+      primary: "Explore the app",
+    },
+    statusDot: {
+      title: "This dot is me",
+      text: "It pulses when I'm working — recording, transcribing, or thinking — and stays quiet when I'm available. You'll find it here every time.",
     },
     error: {
       title: "Small hiccup",

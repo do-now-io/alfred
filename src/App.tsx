@@ -73,6 +73,9 @@ function AlfredLogo() {
     }
   };
   const clickableStatus = busy && !!target && (!!target.targetPath || !!target.targetRoute);
+  // Visite guidée (spec/13) — pointé juste après la présentation pour
+  // expliquer ce que ce point représente, avant le reste de la visite.
+  const statusTourRef = useTourTarget("alfred-status");
 
   const title = isRecording
     ? t("nav.logo.stopRecording")
@@ -134,6 +137,7 @@ function AlfredLogo() {
       {/* Butler status — THE status readout (no duplicate elsewhere). Cliquable
           quand Alfred travaille sur une cible : mène à ce qu'il fait (spec/10). */}
       <div
+        ref={statusTourRef}
         onClick={clickableStatus ? goToTarget : undefined}
         title={clickableStatus ? t("nav.logo.seeWhatImProcessing") : undefined}
         style={{

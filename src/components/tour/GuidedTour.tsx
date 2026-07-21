@@ -15,11 +15,13 @@ import { useT } from "../../i18n";
 
 // The guided tour (spec/13): a real, event-driven walkthrough right after
 // onboarding. The first recording IS the creation of `Contexte Alfred.md` — the
-// user introduces themselves aloud (teleprompter with pause + review controls).
-// While the pipeline runs, the tour walks the app (Notes → Tâches → Graphe →
-// Alfred & enregistrer). As soon as the context is ready, a pop-up interrupts
-// the visit — single « Revoir / corriger » button → /resolve in context mode —
-// then the closing card. Every step reacts to the real backend pipeline.
+// user introduces themselves aloud (teleprompter with pause + review controls),
+// then a short "I'm on it, I'll come back to you" card (`processing`) sets
+// expectations before the visit starts. While the pipeline runs, the tour walks
+// the app (Notes → Tâches → Graphe → Alfred & enregistrer). As soon as the
+// context is ready, a pop-up interrupts the visit — single « Revoir / corriger »
+// button → /resolve in context mode — then the closing card. Every step reacts
+// to the real backend pipeline.
 
 const ACCENT = "var(--accent)";
 
@@ -277,8 +279,41 @@ export default function GuidedTour() {
             onStart={() => startRecording("mic_only", "context")}
             onStop={stopRecording}
             onDiscarded={() => { /* on reste sur le téléprompteur, prêt à relancer */ }}
-            onContinued={() => { navigate("/notes"); goto("visit-notes"); }}
+            onContinued={() => goto("processing")}
           />
+        </>
+      );
+
+    case "processing":
+      // Pose les attentes avant la visite (demande utilisateur) : Alfred
+      // annonce qu'il travaille et qu'il reviendra, plutôt que de basculer
+      // silencieusement sur Notes avec pour seul indice le petit toast
+      // d'état (`PipelineToast`, qui reste affiché pendant la visite).
+      return (
+        <TourModal
+          title={t("tour.processing.title")}
+          text={t("tour.processing.text")}
+          primary={t("tour.processing.primary")}
+          onPrimary={() => goto("status-dot")}
+        />
+      );
+
+    case "status-dot":
+      // Explique le point d'état de la sidebar (demande utilisateur) avant
+      // d'entamer la visite — pour qu'il soit reconnaissable ensuite, y
+      // compris pendant que le contexte finit de se construire en arrière-plan.
+      return (
+        <>
+          <SkipLink onClick={skip} />
+          <PipelineToast />
+          <Spotlight target={targets["alfred-status"]}>
+            <SpotlightCard
+              title={t("tour.statusDot.title")}
+              text={t("tour.statusDot.text")}
+              onNext={() => { navigate("/notes"); goto("visit-notes"); }}
+              nextLabel={t("tour.visit.next")}
+            />
+          </Spotlight>
         </>
       );
 

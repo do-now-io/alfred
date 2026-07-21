@@ -93,7 +93,18 @@ export default function Notes() {
 
   const handleBodyChange = (body: string) => {
     setLocalBody(body);
-    if (selectedFile && localMetadata) debouncedSave(selectedFile.path, localMetadata, body);
+    // Ne sauve que si le contenu diffère réellement de ce qui est chargé —
+    // sans ce garde-fou, le simple fait d'ouvrir une note pouvait déclencher
+    // une sauvegarde fantôme (la resynchro `body`/`noteKey` de NoteEditor au
+    // changement de note se produit sur deux rendus, avec un "correctif" de
+    // contenu qui remonte par `onChange` bien que rien n'ait été tapé) — sans
+    // aucun changement visible, mais en écrivant quand même sur disque à
+    // chaque ouverture, ce qui accumulait des sauts de ligne en tête de note
+    // (bug de non-idempotence corrigé côté frontmatter.rs) et faussait aussi
+    // le tri des Récents (censé n'avancer qu'à une vraie modification).
+    if (selectedFile && localMetadata && body !== selectedFile.body) {
+      debouncedSave(selectedFile.path, localMetadata, body);
+    }
   };
 
   const handlePickVault = async () => {

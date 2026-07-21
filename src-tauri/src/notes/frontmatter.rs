@@ -101,8 +101,11 @@ pub fn parse(raw: &str, filename_stem: &str) -> (NoteMetadata, String) {
         Some(pos) => {
             let fm = &after_open[..pos];
             let rest = &after_open[pos + 4..]; // skip \n---
-            let rest = rest.strip_prefix('\n').unwrap_or(rest);
-            let rest = rest.strip_prefix('\r').unwrap_or(rest);
+            // Strip ALL leading blank-line characters, not just one — makes
+            // serialize→parse idempotent regardless of how many accumulated
+            // (self-healing for notes already affected by that drift; see
+            // the matching fix in Notes.tsx's `handleBodyChange` no-op guard).
+            let rest = rest.trim_start_matches(['\n', '\r']);
             (fm, rest.to_string())
         }
         None => return (NoteMetadata::new(filename_stem), raw.to_string()),
@@ -243,6 +246,21 @@ mod tests {
         assert_eq!(parsed_meta.title, "Test Note");
         assert_eq!(parsed_meta.tags, vec!["work", "test"]);
         assert_eq!(parsed_body.trim(), body.trim());
+    }
+
+    #[test]
+    fn serialize_parse_roundtrip_never_grows_leading_blank_lines() {
+        // Regression: `serialize` always inserts exactly one blank line after
+        // `---`; if `parse` only stripped ONE leading newline back out, a body
+        // that already started with a blank line would gain one more on every
+        // round trip (opening then silently re-saving a note, repeatedly).
+        let meta = NoteMetadata::new("n");
+        let (_, body1) = parse(&serialize(&meta, "\n\ntext"), "n");
+        assert_eq!(body1, "text");
+        // Idempotent even starting from an ALREADY-drifted note (self-healing
+        // for notes affected by the bug before this fix).
+        let (_, body2) = parse(&serialize(&meta, &body1), "n");
+        assert_eq!(body2, "text");
     }
 
     #[test]

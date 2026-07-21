@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
-  MdCheckBox, MdFolderOff, MdAdd, MdExpandMore, MdExpandLess,
-  MdViewColumn, MdViewList, MdChevronRight,
+  MdCheckBox, MdFolderOff, MdAdd, MdExpandMore, MdExpandLess, MdViewList,
 } from "react-icons/md";
 import ShareButton from "../components/ShareButton";
 import TaskSheet from "../components/tasks/TaskSheet";
@@ -14,13 +14,15 @@ import type { Todo } from "../bindings/Todo";
 import { useT, useI18nStore } from "../i18n";
 import { TODO_SECTION_LABELS, TODO_SECTION_KEYS, normalizeSectionHeading, type TodoSectionKey } from "../i18n/todoSections";
 
-// Page Tâches — vue KANBAN et vue MARKDOWN (document) sur `Todo.md` (spec/06,
-// feedback tests + demande users, 2e passe). Le fichier RESTE la source de
-// vérité (compatible Obsidian) : les colonnes/sections sont ses `##`, le
-// glisser-déposer et les cases à cocher réécrivent le fichier via les commandes
-// (`move_todo`/`complete_todo`) ; les deux vues affichent le même `Todo.md`.
-// Cliquer une carte (Kanban) ou une ligne (Markdown) ouvre la **fiche tâche**
-// (sous-puces, description, +Projet/priorité/estimation, provenance).
+// Page Tâches — vue KANBAN sur `Todo.md` (spec/06, feedback tests + demande
+// users, 2e passe). Le fichier RESTE la source de vérité (compatible
+// Obsidian) : les colonnes/sections sont ses `##`, le glisser-déposer et les
+// cases à cocher réécrivent le fichier via les commandes (`move_todo`/
+// `complete_todo`). Le bouton « Markdown » n'est plus une 2e vue (redondante
+// avec l'écran Notes, qui affiche déjà le même fichier tel quel) — c'est un
+// raccourci qui ouvre `Todo.md` dans Notes. Cliquer une carte ouvre la
+// **fiche tâche** (sous-puces, description, +Projet/priorité/estimation,
+// provenance).
 
 // Colonnes = les 4 sections stables de Todo.md, désormais identifiées par leur
 // clé canonique (spec/21 — `../i18n/todoSections.ts`) et non plus par leur
@@ -103,8 +105,9 @@ interface DragInfo {
 
 export default function Tasks() {
   const t = useT();
+  const navigate = useNavigate();
   const lang = useI18nStore((s) => s.lang);
-  const { vaultPath, fetchVaultPath } = useNotesStore();
+  const { vaultPath, fetchVaultPath, selectFile } = useNotesStore();
   const profileName = useProfileStore((s) => s.name);
   const loadProfile = useProfileStore((s) => s.load);
   useEffect(() => { loadProfile(); }, [loadProfile]);
@@ -112,7 +115,6 @@ export default function Tasks() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [todoRel, setTodoRel] = useState<string>("");
-  const [view, setView] = useState<"kanban" | "markdown">("kanban");
   const [archiveOpen, setArchiveOpen] = useState(false);
   // Filtres (spec/06) : recherche texte + responsable + échéance + projet.
   const [textFilter, setTextFilter] = useState("");
@@ -126,9 +128,7 @@ export default function Tasks() {
   // Ajout rapide par colonne.
   const [adding, setAdding] = useState<TodoSectionKey | null>(null);
   const [addText, setAddText] = useState("");
-  // Sections repliées en vue Markdown (Archivé replié par défaut).
-  const [collapsedSections, setCollapsedSections] = useState<Set<TodoSectionKey>>(() => new Set(["archived"]));
-  // Fiche tâche ouverte (Kanban ET Markdown, spec/06 2e passe).
+  // Fiche tâche ouverte (spec/06 2e passe).
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -269,12 +269,12 @@ export default function Tasks() {
     load();
   };
 
-  const toggleSection = (section: TodoSectionKey) => {
-    setCollapsedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(section)) next.delete(section); else next.add(section);
-      return next;
-    });
+  // Le bouton « Markdown » n'est plus une vue — juste un raccourci vers le
+  // fichier réel dans l'écran Notes (même éditeur que n'importe quelle note).
+  const openInNotes = async () => {
+    if (!vaultPath || !todoRel) return;
+    await selectFile(`${vaultPath}/${todoRel}`);
+    navigate("/notes");
   };
 
   const showBoard = loaded && vaultPath && !error;
@@ -290,24 +290,16 @@ export default function Tasks() {
         <MdCheckBox style={{ color: "var(--accent)", fontSize: 18 }} />
         <h1 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "var(--text-primary)" }}>{t("tasks.title")}</h1>
 
-        {/* Bascule Kanban / Markdown (spec/06 2e passe) — même Todo.md. */}
+        {/* Raccourci vers le fichier réel dans Notes (même Todo.md, même éditeur
+            que n'importe quelle note — plus de 2e vue Markdown redondante). */}
         {showBoard && (
-          <div style={{ display: "flex", gap: 4, marginLeft: 12 }}>
-            <button
-              onClick={() => setView("kanban")}
-              title={t("tasks.view.kanbanTitle")}
-              style={viewToggleBtn(view === "kanban")}
-            >
-              <MdViewColumn size={15} /> {t("tasks.view.kanban")}
-            </button>
-            <button
-              onClick={() => setView("markdown")}
-              title={t("tasks.view.markdownTitle")}
-              style={viewToggleBtn(view === "markdown")}
-            >
-              <MdViewList size={15} /> {t("tasks.view.markdown")}
-            </button>
-          </div>
+          <button
+            onClick={openInNotes}
+            title={t("tasks.view.markdownTitle")}
+            style={viewToggleBtn(false)}
+          >
+            <MdViewList size={15} /> {t("tasks.view.markdown")}
+          </button>
         )}
 
         {/* Filtres (spec/06) */}
@@ -382,7 +374,7 @@ export default function Tasks() {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: "auto", padding: view === "kanban" ? "18px 24px" : "18px 24px 40px" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "18px 24px" }}>
         {!loaded ? null : !vaultPath || error ? (
           <div style={{
             height: "100%", display: "flex", flexDirection: "column",
@@ -393,7 +385,7 @@ export default function Tasks() {
               {!vaultPath ? t("tasks.empty.noVault") : t("tasks.empty.readError", { file: todoRel })}
             </div>
           </div>
-        ) : view === "kanban" ? (
+        ) : (
           <div style={{ display: "flex", gap: 14, alignItems: "flex-start", minHeight: "100%" }}>
             {COLUMNS.map((col) => {
               const colTasks = (byColumn.get(col) ?? []).filter(visible);
@@ -494,67 +486,6 @@ export default function Tasks() {
                   {collapsed && (
                     <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "2px 4px" }}>
                       {t(colTasks.length > 1 ? "tasks.column.archivedCountPlural" : "tasks.column.archivedCount", { count: colTasks.length })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          // Vue Markdown (document) — sections repliables, même Todo.md (spec/06 2e passe).
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 720, margin: "0 auto" }}>
-            {COLUMNS.map((col) => {
-              const colTasks = (byColumn.get(col) ?? []).filter(visible);
-              const isCollapsed = collapsedSections.has(col);
-              return (
-                <div key={col} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 8 }}>
-                  <button
-                    onClick={() => toggleSection(col)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 6, width: "100%",
-                      background: "none", border: "none", cursor: "pointer",
-                      padding: "8px 4px", fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)",
-                    }}
-                  >
-                    <MdChevronRight size={16} style={{ transform: isCollapsed ? "none" : "rotate(90deg)", transition: "transform 0.12s", color: "var(--text-muted)" }} />
-                    {TODO_SECTION_LABELS[lang][col]}
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>({colTasks.length})</span>
-                  </button>
-                  {!isCollapsed && (
-                    <div style={{ display: "flex", flexDirection: "column" }}>
-                      {colTasks.map((task) => (
-                        <div
-                          key={task.id}
-                          onClick={() => setOpenTaskId(task.id)}
-                          style={{
-                            display: "flex", alignItems: "flex-start", gap: 8,
-                            padding: "6px 8px 6px 26px", cursor: "pointer", borderRadius: 6,
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--active-bg)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={task.checked}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={() => toggleChecked(task)}
-                            style={{ accentColor: "var(--accent)", marginTop: 3, cursor: "pointer" }}
-                          />
-                          <span style={{ fontSize: 13.5, lineHeight: 1.5, color: "var(--text-primary)", textDecoration: task.checked ? "line-through" : "none" }}>
-                            {renderInlineMd(task.title)}
-                            {task.responsable && (
-                              <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                                {" — @"}{isSelf(task.responsable, profileName) ? t("tasks.owner.me") : task.responsable}
-                              </span>
-                            )}
-                            {task.echeance && <span style={{ color: "var(--text-muted)", fontSize: 12 }}> — 📅 {task.echeance}</span>}
-                            {task.project && <span style={{ color: "var(--accent)", fontSize: 12 }}> — +{task.project}</span>}
-                          </span>
-                        </div>
-                      ))}
-                      {colTasks.length === 0 && (
-                        <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "4px 26px" }}>{t("tasks.empty.noTasks")}</div>
-                      )}
                     </div>
                   )}
                 </div>

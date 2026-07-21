@@ -6,10 +6,8 @@ export default {
   fr: {
     title: "Tâches",
     view: {
-      kanban: "Kanban",
-      kanbanTitle: "Vue Kanban",
       markdown: "Markdown",
-      markdownTitle: "Vue Markdown (document)",
+      markdownTitle: "Ouvrir Todo.md dans Notes",
     },
     filters: {
       searchPlaceholder: "Rechercher…",
@@ -81,10 +79,8 @@ export default {
   en: {
     title: "Tasks",
     view: {
-      kanban: "Kanban",
-      kanbanTitle: "Kanban view",
       markdown: "Markdown",
-      markdownTitle: "Markdown view (document)",
+      markdownTitle: "Open Todo.md in Notes",
     },
     filters: {
       searchPlaceholder: "Search…",

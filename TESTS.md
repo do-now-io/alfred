@@ -156,7 +156,7 @@ Feedback (§13) → Nav & indicateur d'état (§14). Le §1 dépend d'un état r
   - [ ] Recherche/Ctrl+F dans l'éditeur de note (§14) fonctionne toujours.
 
 ## 8. Tâches (spec 06) 💻
-- [ ] Onglet **Tâches** : bascule **Kanban / Markdown** en tête de page — 🎯 les deux affichent le **même** `Todo.md`.
+- [ ] Onglet **Tâches** : **une seule vue Kanban** ; le bouton **« Markdown »** n'est plus une 2e vue — 🎯 il ouvre `Todo.md` dans l'écran **Notes** (même fichier, même éditeur que n'importe quelle note).
 - [ ] **Vue Kanban** : colonnes **À faire / En cours / Fait / Archivé** (Archivé **repliée par défaut**, dépliable). Plus de colonne « Prioritaire ».
   - [ ] ⚠️ **Glisser-déposer une carte d'une colonne à l'autre** → 🎯 **fonctionne** (bug corrigé : `dragDropEnabled` de Tauri bloquait tout le HTML5 DnD du webview). La carte change de section dans `Todo.md`. 🎯 **Déposer dans Fait coche** la case ; **en sortir la décoche**.
   - [ ] Déposer une carte **sur une autre** (même colonne) → réordonnancement.
@@ -164,8 +164,8 @@ Feedback (§13) → Nav & indicateur d'état (§14). Le §1 dépend d'un état r
   - [ ] **« + »** en tête de colonne → ajout rapide dans la section correspondante ; compteur à jour.
   - [ ] Filtres : **recherche texte** (titre/responsable, insensible casse/accents), **responsable**, **échéance**, **projet**, **priorité**. 🎯 Tri intra-colonne par priorité (haute en haut).
   - [ ] Ouvrir un vieux `Todo.md` (colonne `Prioritaire`, tâches `[x]` égarées hors Fait/Archivé) → 🎯 **migré automatiquement** à la 1ʳᵉ lecture : `Prioritaire` fusionne dans `À faire`, les `[x]` égarés rejoignent `Fait`.
-- [ ] **Vue Markdown** : mêmes sections, **repliables**, cases à cocher fonctionnelles — lecture proche d'Obsidian.
-- [ ] **Fiche tâche** — cliquer une carte (Kanban) **ou** une ligne (Markdown) → 🎯 ouvre la fiche :
+- [ ] Ouvrir `Todo.md` via Notes → 🎯 **structuré statut → projet → priorité** : chaque section `## ` regroupe ses tâches par `### Projet` (ordre alphabétique, « Sans projet » en dernier — pas d'en-tête `###` s'il n'y a qu'un seul groupe), triées par `!priorité` dans chaque groupe.
+- [ ] **Fiche tâche** — cliquer une carte (Kanban) → 🎯 ouvre la fiche :
   - [ ] Édition **titre / responsable / échéance / projet (`+Projet`) / priorité / estimation** — auto-sauvegarde.
   - [ ] **Sous-tâches libres** (ajout/édition/suppression) + **description longue** (texte multi-lignes) — 🎯 persistées sous la ligne dans `Todo.md`, toujours lisibles/éditables dans Obsidian.
   - [ ] Si la tâche vient d'un enregistrement → 🎯 **provenance affichée** (compte-rendu source + date), boutons **« Ouvrir la note »** et **« Voir dans le graphe »** (centre + surligne le nœud). Provenance jamais éditable.

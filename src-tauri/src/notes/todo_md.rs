@@ -382,6 +382,16 @@ pub fn merge_tasks(existing: Option<&str>, tasks: &[IngestTask], provenance: Opt
         added += 1;
     }
 
+    // Structuration statut → projet → priorité (spec/06) : au sein de chacune
+    // des 4 sections stables, regroupe par `+Projet` (« Sans projet » en
+    // dernier) puis trie par `!priorité` — sections perso (non reconnues)
+    // laissées telles quelles, non concernées par ce regroupement.
+    for (name, lines) in sections.iter_mut() {
+        if SECTIONS.contains(&name.as_str()) {
+            *lines = group_lines_by_project(lines);
+        }
+    }
+
     let mut out = String::new();
     for (name, lines) in &sections {
         out.push_str(&format!("## {}\n", name));
@@ -395,6 +405,96 @@ pub fn merge_tasks(existing: Option<&str>, tasks: &[IngestTask], provenance: Opt
     }
 
     (out.trim_end().to_string() + "\n", added)
+}
+
+/// Regroupe les tâches d'une section par `+Projet` (« Sans projet » toujours
+/// en dernier), puis trie par `!priorité` au sein de chaque groupe (spec/06 —
+/// structuration du fichier statut → projet → priorité). Pas d'en-tête `###`
+/// quand un seul groupe est présent (y compris s'il s'agit de « Sans projet
+/// » seul) — la structure ne s'affiche que quand elle apporte de l'info,
+/// pour ne pas alourdir une liste perso qui ne tague jamais de projet.
+///
+/// Les en-têtes `### Projet` sont entièrement DÉRIVÉS du marqueur `+Projet`
+/// de chaque ligne — jamais la source de vérité — donc régénérés à chaque
+/// écriture : un ancien en-tête `### ...` est toujours ignoré en lecture
+/// (jamais préservé tel quel), ce qui rend le résultat auto-cohérent même
+/// après une édition manuelle dans Obsidian qui aurait déplacé une tâche
+/// sous le mauvais groupe sans changer son marqueur `+Projet`.
+fn group_lines_by_project(lines: &[String]) -> Vec<String> {
+    if lines.is_empty() {
+        return Vec::new();
+    }
+
+    struct Block {
+        project: String,
+        priority: Option<String>,
+        lines: Vec<String>,
+    }
+
+    let mut blocks: Vec<Block> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = &lines[i];
+        if line.trim_start().starts_with("### ") {
+            i += 1; // en-tête de projet régénéré — jamais préservé tel quel
+            continue;
+        }
+        if let Some((_, fields)) = parse_line(line) {
+            let mut block_lines = vec![line.clone()];
+            let mut j = i + 1;
+            while j < lines.len() && is_block_line(&lines[j]) {
+                block_lines.push(lines[j].clone());
+                j += 1;
+            }
+            blocks.push(Block {
+                project: fields.project.unwrap_or_default(),
+                priority: fields.priority,
+                lines: block_lines,
+            });
+            i = j;
+        } else {
+            // Ligne libre non rattachée à une tâche (texte perso, ligne
+            // inconnue) — conservée, rangée dans le groupe « Sans projet ».
+            blocks.push(Block { project: String::new(), priority: None, lines: vec![line.clone()] });
+            i += 1;
+        }
+    }
+
+    let mut projects: Vec<String> = blocks
+        .iter()
+        .map(|b| b.project.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    projects.sort_by(|a, b| match (a.is_empty(), b.is_empty()) {
+        (true, true) => std::cmp::Ordering::Equal,
+        (true, false) => std::cmp::Ordering::Greater, // « Sans projet » toujours en dernier
+        (false, true) => std::cmp::Ordering::Less,
+        (false, false) => a.cmp(b),
+    });
+
+    let show_headers = projects.len() > 1;
+    let mut out = Vec::new();
+    for project in &projects {
+        let mut group: Vec<&Block> = blocks.iter().filter(|b| &b.project == project).collect();
+        group.sort_by_key(|b| priority_rank(&b.priority)); // tri stable : ordre d'origine conservé entre égalités
+        if show_headers {
+            out.push(format!("### {}", if project.is_empty() { "Sans projet" } else { project }));
+        }
+        for b in group {
+            out.extend(b.lines.iter().cloned());
+        }
+    }
+    out
+}
+
+fn priority_rank(p: &Option<String>) -> u8 {
+    match p.as_deref() {
+        Some("haute") => 0,
+        Some("moyenne") => 1,
+        Some("basse") => 2,
+        _ => 3,
+    }
 }
 
 /// Migration (spec/06 v2) : une tâche `[x]` qui traînait dans une section
@@ -966,6 +1066,68 @@ mod tests {
 
         // Idempotent — migrating twice changes nothing further.
         assert_eq!(migrate(&out), out);
+    }
+
+    #[test]
+    fn groups_by_project_then_priority_within_a_section() {
+        let content = "## À faire\n\
+            - [ ] Tâche libre basse — !basse\n\
+            - [ ] Atlas priorité basse — +Atlas — !basse\n\
+            - [ ] Atlas priorité haute — +Atlas — !haute\n\
+            - [ ] Tâche libre sans priorité\n\
+            - [ ] Refonte urgente — +Refonte Site — !haute\n";
+        let out = migrate(content);
+
+        let atlas = out.find("### Atlas").unwrap();
+        let refonte = out.find("### Refonte Site").unwrap();
+        let sans_projet = out.find("### Sans projet").unwrap();
+        // Ordre alphabétique des projets ("Atlas" < "Refonte Site"), "Sans
+        // projet" toujours en dernier.
+        assert!(atlas < refonte, "projects should be alphabetical:\n{out}");
+        assert!(refonte < sans_projet, "Sans projet should come last:\n{out}");
+
+        // Tri par priorité DANS le groupe Atlas : haute avant basse.
+        let atlas_haute = out.find("Atlas priorité haute").unwrap();
+        let atlas_basse = out.find("Atlas priorité basse").unwrap();
+        assert!(atlas_haute < atlas_basse, "haute should sort before basse within a project:\n{out}");
+
+        // Tri par priorité DANS le groupe Sans projet aussi.
+        let libre_basse = out.find("Tâche libre basse").unwrap();
+        let libre_sans_prio = out.find("Tâche libre sans priorité").unwrap();
+        assert!(libre_basse < libre_sans_prio, "basse should sort before no-priority:\n{out}");
+
+        // Idempotent.
+        assert_eq!(migrate(&out), out);
+    }
+
+    #[test]
+    fn no_project_headers_when_a_section_has_a_single_group() {
+        // Une section entièrement "Sans projet" (cas courant d'une liste
+        // perso qui ne tague jamais de projet) ne doit pas se retrouver
+        // encombrée d'un unique en-tête "### Sans projet" inutile.
+        let content = "## À faire\n- [ ] Tâche A — !haute\n- [ ] Tâche B — !basse\n";
+        let out = migrate(content);
+        assert!(!out.contains("###"), "single-group section should have no ### header:\n{out}");
+        // Priority sort still applies.
+        let a = out.find("Tâche A").unwrap();
+        let b = out.find("Tâche B").unwrap();
+        assert!(a < b, "haute should still sort before basse:\n{out}");
+
+        // Same when every task shares the SAME named project (single group too).
+        let content2 = "## À faire\n- [ ] Tâche A — +Atlas — !basse\n- [ ] Tâche B — +Atlas — !haute\n";
+        let out2 = migrate(content2);
+        assert!(!out2.contains("###"), "single-project section should have no ### header:\n{out2}");
+    }
+
+    #[test]
+    fn project_grouping_moves_sub_bullets_with_their_task() {
+        let content = "## À faire\n\
+            - [ ] Tâche Atlas — +Atlas\n  - une sous-puce\n\
+            - [ ] Tâche libre\n";
+        let out = migrate(content);
+        let task_pos = out.find("- [ ] Tâche Atlas").unwrap();
+        let sub_pos = out.find("  - une sous-puce").unwrap();
+        assert!(sub_pos > task_pos && sub_pos < task_pos + 40, "sub-bullet should stay right after its task:\n{out}");
     }
 
     #[test]

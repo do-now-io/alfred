@@ -21,14 +21,22 @@ SQLite → à refondre pour lire/écrire le fichier. Pas de migration de donnée
 ## Format du fichier
 
 Compatible Obsidian (cases à cocher standard), regroupé par sections qui
-correspondent aux colonnes du Kanban, **sans frontmatter** :
+correspondent aux colonnes du Kanban, **sans frontmatter**. Depuis que la vue
+Markdown de l'onglet Tâches a été retirée (redondante avec l'écran Notes, qui
+affiche ce même fichier tel quel — le bouton « Markdown » n'est plus qu'un
+raccourci pour l'ouvrir là), la structure du fichier lui-même porte le
+regroupement **statut → projet → priorité** :
 
 ```markdown
 ## À faire
-- [ ] Relire le contrat — !haute
+### Atlas
+- [ ] Préparer la démo — !haute
+- [ ] Relire le contrat — !basse
+
+### Sans projet
+- [ ] Tâche libre
 
 ## En cours
-- [ ] Préparer la démo
 
 ## Fait
 - [x] Rappeler le client Acme — @Jean — 📅 2026-07-10
@@ -37,25 +45,39 @@ correspondent aux colonnes du Kanban, **sans frontmatter** :
 - [ ] Ancienne tâche mise de côté
 ```
 
-> **Sections v1 (📝 à faire, feedback tests) : `À faire` → `En cours` → `Fait` →
-> `Archivé`.** La section **`Prioritaire` est retirée** ; la nouvelle section
-> **`Fait`** matérialise le statut « done ». Ordre = ordre des colonnes Kanban.
+> **Sections ✅ fait : `À faire` → `En cours` → `Fait` → `Archivé`.** La section
+> **`Prioritaire` est retirée** ; la section **`Fait`** matérialise le statut
+> « done ». Ordre = ordre des colonnes Kanban.
 
 - **`[x]` ⇔ section `Fait`** : une tâche cochée **vit dans `## Fait`**. Cocher une
   tâche la **déplace** vers `Fait` ; la décocher la renvoie vers `## À faire`.
   (Fini le « `[x]` reste en place » — cocher et « colonne Fait » sont **une seule et
-  même notion**.)
+  même notion**.) Glisser-déposer une carte dans la colonne `Fait` coche
+  pareillement ; l'en sortir (vers une colonne de travail, pas `Archivé`) décoche.
+- **Regroupement par projet — ✅ fait** : au sein de chaque section, les tâches
+  sont regroupées par `+Projet` sous un en-tête **`### Projet`** (ordre
+  alphabétique, **« Sans projet » toujours en dernier**), puis **triées par
+  priorité** à l'intérieur d'un groupe (`!haute` en haut). **Ces en-têtes `###`
+  sont entièrement dérivés** du marqueur `+Projet` de chaque ligne — jamais la
+  source de vérité — et donc **régénérés à chaque écriture** : un en-tête
+  fantaisiste ou déplacé à la main dans Obsidian sans changer le marqueur de
+  la ligne est corrigé au prochain passage. **Pas d'en-tête** quand une section
+  ne contient qu'un seul groupe (y compris si tout est « Sans projet ») — la
+  structure ne s'affiche que quand elle apporte de l'info.
 - **Priorité** : uniquement le champ inline **`!haute` / `!moyenne` / `!basse`**
-  (plus de colonne dédiée). Sert au **tri** (voir Kanban) et au filtre.
+  (plus de colonne dédiée). Sert au tri (fichier **et** Kanban) et au filtre.
 - Responsable (`@Prénom`), échéance (`📅 YYYY-MM-DD`), projet (`+Projet`),
   estimation (`⏱`) optionnels.
 - Les tâches **extraites par l'IA** arrivent dans `## À faire` ; l'utilisateur les
   fait avancer vers `En cours` puis `Fait`.
 
-> **Migration des fichiers existants** : `## Prioritaire` → fusionner dans
-> `## À faire` (les tâches y gardent leur `!priorité` si posée) ; les tâches `[x]`
-> qui traînaient **cochées dans d'autres sections** → déplacer vers `## Fait`
-> (celles déjà dans `## Archivé` **restent** archivées). Idempotent.
+> **Migration des fichiers existants — ✅ fait**, auto-appliquée + persistée à
+> la première lecture (`get_todos`/`get_all_todos`) : `## Prioritaire` →
+> fusionner dans `## À faire` (les tâches y gardent leur `!priorité` si
+> posée) ; les tâches `[x]` qui traînaient **cochées dans d'autres sections**
+> → déplacer vers `## Fait` (celles déjà dans `## Archivé` **restent**
+> archivées) ; regroupement par projet/priorité appliqué dans la même passe.
+> Idempotent.
 
 ## Provenance
 
@@ -86,7 +108,10 @@ on ne ré-ajoute pas une tâche déjà présente. *(L'ancienne dédup SQLite par
 
 ## Affichage
 
-- **Onglet Tâches** : **tableau Kanban** (ci-dessous) + bascule vue Markdown.
+- **Onglet Tâches** : **tableau Kanban** (ci-dessous) uniquement. Le bouton
+  « Markdown » n'est **plus une 2e vue** (retiré — redondante avec l'écran
+  Notes, qui affiche déjà ce même fichier tel quel) : c'est un **raccourci**
+  qui ouvre `Todo.md` dans Notes (`selectFile` + navigation).
 - **Accueil « Alfred »** : bloc dépliable — sections **À faire / En cours** (spec 10 ;
   plus de « Prioritaire »).
 
@@ -156,20 +181,21 @@ frontmatter par tâche.
 
 ## Évolutions Tâches — ✅ fait (feedback tests, 2e passe)
 
-Le Kanban est enrichi sans jeter la lecture Markdown.
+### Une seule vue Kanban — la lecture « document » se fait dans Notes — ✅ fait
 
-### Deux vues, même `Todo.md` — bascule sur la page Tâches — ✅ fait
+Il y avait initialement une 2e vue Markdown propre à l'onglet Tâches (lecture en
+lignes, sections repliables). **Retirée** : elle dupliquait ce que l'écran Notes
+affiche déjà pour n'importe quel fichier, avec son propre éditeur (recherche,
+wikilinks, aperçu markdown live). Le bouton « Markdown » de la page Tâches est
+maintenant un simple **raccourci** — `selectFile(vaultPath + todoRel)` puis
+navigation vers `/notes` — pas une vue de plus à maintenir en double. Le Kanban
+reste la seule vue de la page Tâches ; l'accès en lecture/édition Markdown brute
+se fait dans Notes, qui affiche le fichier tel qu'il est réellement structuré
+(voir §Format du fichier — statut → projet → priorité).
 
-- **Sélecteur Kanban / Markdown** en tête de la page Tâches. Les deux affichent le
-  **même `Todo.md`** (source de vérité unique, la même liste `Todo[]` récupérée par
-  `get_all_todos` alimente les deux rendus — pas un second parseur).
-- **Vue Markdown** = la lecture en lignes, avec **sections repliables** (À faire /
-  En cours / Fait / Archivé, Archivé replié par défaut). C'est la vue « document ».
-- **Vue Kanban** = colonnes.
+### Fiche tâche (ouvrable depuis le Kanban) — ✅ fait
 
-### Fiche tâche (ouvrable depuis le Kanban ET la vue Markdown) — ✅ fait
-
-Cliquer une tâche (carte Kanban ou ligne Markdown) ouvre une **fiche** (`TaskSheet.tsx`,
+Cliquer une tâche (carte Kanban) ouvre une **fiche** (`TaskSheet.tsx`,
 modale) présentant et éditant tout ce que la tâche porte :
 
 - **Sous-puces libres** (`  - texte`) sous la ligne de tâche dans `Todo.md` (compatible

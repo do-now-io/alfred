@@ -1250,7 +1250,15 @@ pub async fn generate_daily_brief(db: &SqlitePool, vault_root: Option<&Path>) ->
     let prompt = format!("## {}\n{}\n\n## {}\n{}", tasks_heading, todos_text, notes_heading, recents_text);
 
     let client = reqwest::Client::new();
-    let system_text = format!("{}\n{}", DAILY_BRIEF_SYSTEM, language_instruction(db).await);
+    // Contrairement à l'ingestion/au chat (une SEULE source — transcription ou
+    // question — dont la langue se détecte bien), le brief agrège des titres de
+    // plusieurs tâches/notes qui peuvent chacun être dans une langue différente :
+    // il n'y a pas de « langue du contenu » unique à suivre. `language_instruction`
+    // (repli seulement si ambigu) laissait Claude suivre la langue dominante des
+    // titres plutôt que `app_language` — brief resté en français malgré une note
+    // ajoutée en anglais (bug constaté, feedback tests). Consigne inconditionnelle.
+    let brief_language = if en { "anglais (English)" } else { "français" };
+    let system_text = format!("{}\n- Langue de la réponse : réponds TOUJOURS en {}, quelle que soit la langue des titres de tâches/notes ci-dessous.", DAILY_BRIEF_SYSTEM, brief_language);
     let body = json!({
         "model": MODEL,
         "max_tokens": 400,

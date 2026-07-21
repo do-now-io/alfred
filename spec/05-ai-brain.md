@@ -204,15 +204,21 @@ synthèse hebdo).
   Affichage du texte mis en cache + « Généré le {date} ».
 
 **Bug — brief en français sur une app EN (✅ corrigé, feedback tests).** Constat :
-sans tâche ni note notable, le brief sortait en français même avec `app_language =
-en`. Cause : le **contenu** envoyé à Claude (`## Tâches en cours` / `Aucune tâche en
-attente.` / `## Notes récentes` / `Aucune note récente.` / `Vault non configuré.`)
-était **codé en dur en français** — `language_instruction` dit à Claude d'écrire
-dans la langue **du contenu fourni**, et dans ce cas précis, tout le contenu fourni
-n'était QUE ce texte d'échafaudage français, sans aucun vrai texte utilisateur pour
-indiquer une autre langue. Corrigé : ces libellés suivent désormais `app_language`
-(`generate_daily_brief`, `ai/mod.rs`) — cohérent avec la règle spec/21 « à défaut,
-`app_language` ».
+même avec une note récente ajoutée en anglais, le brief restait en français.
+Deux causes :
+1. Le **contenu** envoyé à Claude (`## Tâches en cours` / `Aucune tâche en
+   attente.` / `## Notes récentes` / `Aucune note récente.` / `Vault non
+   configuré.`) était **codé en dur en français** — libellés localisés selon
+   `app_language` (`generate_daily_brief`, `ai/mod.rs`).
+2. **Plus profond** : le brief agrège les **titres** de plusieurs tâches/notes
+   qui peuvent chacune être dans une langue différente — contrairement à
+   l'ingestion/au chat (une seule source dont la langue se détecte bien), il n'y
+   a pas de « langue du contenu » unique à suivre. `language_instruction`
+   (repli seulement si ambigu) laissait Claude suivre la langue dominante des
+   titres plutôt que `app_language`, même avec une note ajoutée dans l'autre
+   langue. **Corrigé : consigne inconditionnelle** — le brief répond toujours
+   dans `app_language`, jamais dans la langue supposée du contenu (règle propre
+   au brief, différente du reste de l'IA — voir §Usage 1/2 ci-dessus).
 
 ---
 

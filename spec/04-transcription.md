@@ -22,21 +22,43 @@ note dans le vault**, puis déclenche l'IA (ingestion, spec 05).
   requises pour **tout** build, plus seulement un mode « whisper » à part.
 - Backend **CPU** par défaut (marche partout) ; Metal (macOS) optionnel.
 
-## Modèle — ✅ `small` embarqué
+## Modèle — téléchargé à l'onboarding (plus rien d'embarqué)
 
-- Config `whisper_model` (défaut `small` ; valeurs `tiny` / `base` / `small` /
-  `medium` / `large-v3`).
-- Résolution, dans l'ordre : `Resources/models/ggml-{size}.bin` (**embarqué au
-  build**) → `$APP_DATA_DIR/models/ggml-{size}.bin` (**téléchargé**).
-- **Bundling** : `tauri.conf.json` → `bundle.resources: ["models/ggml-small.bin"]`.
-  Le fichier doit exister sous `src-tauri/models/` **avant** `tauri build` — il
-  est gitignoré (466 Mo) et récupéré par `scripts/fetch-whisper-model.{sh,ps1}`
-  (appelé par `build-macos.sh` / `scripts/build-windows.ps1`, idempotent). `tauri
-  dev` ne bundle rien : les devs sans le fichier local ne sont pas bloqués.
-- Téléchargement (modèles optionnels depuis les Réglages) : `download_model(size)`
-  depuis `huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{size}.bin`,
-  émet `download-progress`. Écrit dans un `.part` puis renomme à la fin —
-  un téléchargement interrompu ne laisse plus de `.bin` corrompu pris pour complet.
+- Config `whisper_model` (défaut `small`).
+- **Catalogue** (source de vérité Rust : `WHISPER_MODELS`,
+  `transcription/mod.rs`) : `tiny` (75 Mo) / `base` (142 Mo) / `small` (466 Mo,
+  **recommandé**) / `medium` (1,5 Go) / `large-v3-turbo` (1,5 Go — qualité
+  large, vitesse medium). `large-v3` (2,9 Go) et les variantes quantisées q5 :
+  hors v1.
+- Résolution, dans l'ordre : `Resources/models/ggml-{size}.bin` (gardé pour le
+  confort dev — un modèle local `src-tauri/models/` est vu comme installé) →
+  `$APP_DATA_DIR/models/ggml-{size}.bin` (**téléchargé**).
+- **Aucun modèle embarqué au build** : `bundle.resources: []` (décision CI,
+  `.github/workflows/desktop-build.yml`). Le modèle est **téléchargé pendant
+  l'onboarding** (étape dédiée, spec/13) ou depuis Réglages → Transcription
+  (gestionnaire de modèles, spec/11). *(Anciens scripts
+  `fetch-whisper-model.{sh,ps1}` : confort dev uniquement, plus utilisés au
+  packaging.)*
+- **Téléchargement** : `download_model(size)` depuis
+  `huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{size}.bin`. Écrit
+  dans un `.part` puis renomme à la fin — un téléchargement interrompu ne
+  laisse pas de `.bin` corrompu pris pour complet ; les `.part` orphelins sont
+  ignorés (statut `missing`) et écrasés au retry.
+  - Événements : `download-progress { model, percent, bytes_downloaded,
+    total_bytes }` · `download-complete { model }` · `download-error { model,
+    message, cancelled }`.
+  - **Garde anti-doublon** (registre en mémoire, un téléchargement par modèle) +
+    **annulation** via `cancel_model_download(size)` (supprime le `.part`).
+  - Metrics (spec/15) : `model_download_started` / `model_download_completed` /
+    `model_download_failed` `{ model }`.
+- **État des modèles** : `list_whisper_models() -> WhisperModelInfo[]`
+  (`{ name, size_mb, recommended, status: "downloaded" | "downloading" |
+  "missing", active }`) — consommé par le composant partagé
+  `WhisperModelPicker` (onboarding + Réglages). **Suppression** :
+  `delete_whisper_model(size)` — refusée si le modèle est actif ou en cours de
+  téléchargement ; ne touche jamais le dossier Resources.
+- Pas de checksum ni de reprise de téléchargement en v1 ; pas de préflight
+  d'espace disque (l'erreur d'écriture remonte en `download-error`).
 
 ## Pipeline
 
@@ -85,7 +107,11 @@ Une **passe unique** sur tout le WAV en v1 (pas de chunking — spec/17 Hors v1)
   callback (pas de hook côté FFI) — fuite mémoire négligeable à cette échelle
   (v1, ~10 utilisateurs, quelques octets par transcription).
 
-Fin : `transcription-complete` ou `transcription-failed`.
+Fin : `transcription-complete` ou `transcription-failed { recording_id,
+message }` — ✅ émis par le worker sur toute erreur, y compris **modèle
+manquant** (message dédié invitant à passer par Réglages → Transcription).
+L'UI (`App.tsx`) affiche une bannière d'échec, avec bouton « Ouvrir les
+Réglages » dans le cas modèle manquant.
 
 ## Sorties dans le vault (au succès, si vault configuré)
 
@@ -111,7 +137,10 @@ Table `transcriptions` (`raw_text`, `segments_json`, `whisper_model`,
 
 ## Commandes Tauri (réel)
 
-- `download_model(size)`
+- `download_model(size)` (événements : voir §Modèle)
+- `cancel_model_download(size)`
+- `delete_whisper_model(size)`
+- `list_whisper_models() -> WhisperModelInfo[]`
 - `get_transcription(recording_id) -> JSON | null`
 
 (`retranscribe` de l'ancienne spec **non implémentée**.)

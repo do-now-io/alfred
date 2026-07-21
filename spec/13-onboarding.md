@@ -28,30 +28,41 @@ explicitement remis à `false` dans `finishOnboarding`/`finishOnboardingReplay`
    `fr`/`en`, sinon `en`). Toute la suite de l'onboarding s'affiche dans la langue
    choisie. Modifiable ensuite dans les Réglages.
 1. **Bienvenue**.
-2. **Intro 1** — Capturer à la voix → transcription locale (Whisper embarqué, marche direct).
-3. **Intro 2** — Notes + tâches automatiques (ingestion) + chat avec Alfred.
-4. **Vault** — « Avez-vous déjà un vault (Obsidian) ? »
+2. **Intro 1** — Capturer à la voix → transcription locale (Whisper, hors
+   ligne — le modèle s'installe à l'étape suivante).
+3. **Modèle de transcription** (✅ étape Whisper de retour — le modèle n'est
+   plus embarqué, spec/04) — choix + téléchargement d'un modèle via le
+   composant partagé `WhisperModelPicker` (catalogue spec/04). Disclaimer :
+   **Small recommandé** (largement suffisant au quotidien) ; Medium /
+   Large-v3 Turbo pour les machines puissantes (plus fidèles, plus lourds).
+   **Passable** ; « Suivant » désactivé pendant un téléchargement ; si on passe
+   en plein téléchargement, il **continue en arrière-plan** (les événements
+   portent le nom du modèle → Réglages ré-affiche la progression en cours). Le
+   premier modèle téléchargé devient automatiquement le modèle actif. Le choix
+   de **langue** reste en Paramètres.
+4. **Intro 2** — Notes + tâches automatiques (ingestion) + chat avec Alfred.
+5. **Vault** — « Avez-vous déjà un vault (Obsidian) ? »
    - **Oui** → choisir le dossier → Alfred crée `alfred-raw/` + `alfred-intelligence/`
      **dedans**, sans toucher au reste.
    - **Non** → choisir / créer un dossier → Alfred y crée `alfred-raw/`
      (transcriptions), `alfred-intelligence/` (comptes-rendus) et `Todo.md`.
    - Création à la validation, **idempotente** (ne pas écraser l'existant).
      **Aucun** fichier `.claude` / skill écrit (spec/07).
-5. **Accès IA** — les **deux** options présentées (modifiables ensuite dans Paramètres) :
+6. **Accès IA** — les **deux** options présentées (modifiables ensuite dans Paramètres) :
    - **Ma clé Claude** → coller la clé (`save_secret('claude_api_key')` + `test_api_key`).
    - **Abonnement AlfredIA** — 20 €/mois (ou annuel), **14 jours d'essai gratuit**
      (✅ fait) → bouton « Commencer l'essai gratuit » → Stripe + loopback
      (spec/15) → `alfredia_token` récupéré automatiquement. Accès immédiat pendant
      l'essai ; débit à la fin des 14 jours si non annulé (facturation : spec/15).
-6. **Micro** — test de permission (`test_microphone` ; déclenche le prompt macOS ;
+7. **Micro** — test de permission (`test_microphone` ; déclenche le prompt macOS ;
    sur Windows, ouverture WASAPI).
-7. **Contexte** (📝 à faire, spec/17) — carte d'annonce : *« Alfred travaille
+8. **Contexte** (📝 à faire, spec/17) — carte d'annonce : *« Alfred travaille
    bien mieux s'il connaît votre univers (collègues, clients, projets, jargon). On
    va le lui apprendre à la voix, juste après, en 2 minutes. »* **Aucun formulaire
    ici** : la création du contexte est faite **à la voix dans la visite guidée**
    (§ Tournée guidée, étape 2 — remplace l'ancien interview textuel). Nécessite
-   l'accès IA (étape 5). Skippable (contexte vide = comportement spec/16 actuel).
-8. **Terminé**.
+   l'accès IA (étape 6). Skippable (contexte vide = comportement spec/16 actuel).
+9. **Terminé**.
 
 ## Tournée guidée (post-onboarding) — **crée le contexte à la voix**
 
@@ -308,19 +319,20 @@ générique déconnecté.
 
 - **Étape « Connecter Google »** + slide agenda → **retirées** (calendrier hors v1).
 - ~~**Étape Whisper** (modèle / langue / téléchargement) → déplacée en Paramètres~~
-  **Revu** : le modèle n'est plus embarqué (spec/04 — téléchargé au premier besoin,
-  cf CI packaging). Une **étape de téléchargement du modèle** revient donc dans
-  l'onboarding (📝 à faire, propriétaire Tanguy) : déclencher `download_model`
-  pendant le wizard (avec la progression) plutôt que de laisser l'utilisateur
-  découvrir un modèle manquant à son premier enregistrement. Le choix de
-  **langue** reste en Paramètres.
+  **Revu, ✅ fait** : le modèle n'étant plus embarqué (spec/04, CI packaging),
+  l'étape de téléchargement est **revenue dans l'onboarding** — voir Flux,
+  étape 3 « Modèle de transcription ». Le choix de **langue** reste en
+  Paramètres ; le gestionnaire de modèles complet (pré-téléchargement,
+  annulation, suppression) vit en Paramètres (spec/11), avec le même composant.
 - **Slides d'intro** : 6 → **2**.
 
 ## Commandes Tauri utilisées
 
 `get_vault_path` / `set_vault_path` / `pick_vault_folder` (+ scaffolding dossiers) ·
 `save_secret` / `get_secret` (`claude_api_key`) · `test_api_key` · `subscribe_alfredia`
-(spec/15) · `test_microphone` · `get_config` / `set_config` (`onboarding_completed`,
+(spec/15) · `test_microphone` · **`list_whisper_models` / `download_model` /
+`cancel_model_download`** (✅ — étape « Modèle de transcription », spec/04) ·
+`get_config` / `set_config` (`onboarding_completed`,
 `tour_completed`) · `start_recording(purpose = "meeting" | "context")` /
 `stop_recording` (tournée guidée, via le store d'enregistrement existant) ·
 **`pause_recording` / `resume_recording`** (✅ — contrôles téléprompteur,

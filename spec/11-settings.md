@@ -9,7 +9,9 @@
 Pas de `get_settings` / `update_setting` : chaque réglage passe par
 `get_config` / `set_config`, `get_secret` / `save_secret`,
 `get_launch_at_login` / `set_launch_at_login`, `test_api_key`,
-`get_vault_path` / `set_vault_path` / `pick_vault_folder`, `download_model`.
+`get_vault_path` / `set_vault_path` / `pick_vault_folder`,
+`list_whisper_models` / `download_model` / `cancel_model_download` /
+`delete_whisper_model` (spec/04).
 
 ## Sections v1
 
@@ -37,9 +39,14 @@ d'une note (Properties, spec/07). Édité ici.
   l'abonnement (portail Stripe) = plus tard.
 - Basculer de mode **à tout moment**.
 
-**Transcription** (déplacé de l'onboarding) : modèle Whisper (`small` embarqué ;
-modèles plus gros **téléchargeables** → `download_model`, `download-progress`) +
-langue (`language_hint`).
+**Transcription** : **gestionnaire de modèles Whisper** — composant partagé
+`WhisperModelPicker`, le même que l'étape d'onboarding (spec/04/13). Liste du
+catalogue avec statut par modèle : téléchargé (badge « ✓ Actif » ou bouton
+**« Utiliser »** + suppression), en téléchargement (progression + **Annuler**),
+absent (**Télécharger**). Permet le **pré-téléchargement** de plusieurs
+modèles ; « Utiliser » n'existe que sur un modèle téléchargé (on ne peut plus
+activer un modèle absent) ; suppression refusée sur le modèle actif. Et
+langue (`language_hint`), inchangé.
 
 **Enregistrement** : source audio (`mic_only` / `system_only` / `mixed`) —
 **défaut `mixed`** (✅ fait ; repli auto sur `mic_only` si le système n'est

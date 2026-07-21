@@ -73,6 +73,24 @@ ce code base :
 Le system prompt reprend l'esprit des conseils de captation (spec/03) : rappeler le
 responsable de chaque tâche quand il est identifiable.
 
+**Langue de sortie — 📝 à faire (feedback tests EN, spec/21).** Constat test : une
+réunion **entièrement en anglais** a donné une **transcription ET un compte-rendu en
+français**. Deux causes distinctes :
+
+1. **Compte-rendu** : le system prompt d'ingestion (`INGESTION_SYSTEM`) est **rédigé
+   en français** et n'indique aucune langue de sortie → Claude répond en français par
+   défaut (renforcé par le contexte FR injecté). **À corriger** : Claude doit rédiger
+   le compte-rendu et les tâches **dans la langue du contenu** (la transcription), à
+   défaut dans `app_language`. Passer une consigne de langue explicite dans le prompt.
+2. **Transcription** : voir spec/17 (le glossaire injecté en `initial_prompt` est
+   enrobé d'une phrase **française** qui biaise Whisper vers le français).
+
+Les **titres générés** du compte-rendu (`## Points clés` → `## Key points`) sont
+aussi à localiser selon `app_language` (clé interne stable, cf. spec/16/21).
+La **langue UI, la langue de la transcription et la langue du compte-rendu** peuvent
+différer — la règle : le **contenu** (compte-rendu/tâches) suit la langue de l'audio ;
+l'**UI** suit `app_language`.
+
 **`titre` = nom du compte-rendu (✅ fait, feedback tests).** Nouveau champ : un
 **sujet court** qui **nomme le fichier compte-rendu** (`alfred-intelligence/{titre}.md`)
 au lieu du nom daté `AAAA-MM-JJ HHhMM` hérité de l'enregistrement. Une fois

@@ -110,6 +110,26 @@ recordingId? }` — alimentée par les mêmes événements (`recording-status-ch
 en résolvant le `recording_id` → chemin de note dès qu'elle existe. Le point ambre
 et le clic lisent cette cible.
 
+### Pastille pendant analyse/correction puis ingestion — 📝 à compléter (feedback tests)
+
+Constat test : après la transcription, **Alfred a lancé l'analyse (vérification/
+correction) sans rien montrer** — pas de pastille, pas d'invite `/resolve` visible.
+La cible « où Alfred travaille » doit couvrir **toutes** les phases, dans l'ordre :
+
+1. **Transcription** → pastille sur la **note brute** (déjà prévu).
+2. **Analyse / vérification** (`analyze_transcription`, spec/17 §3) → **pastille
+   maintenue sur la note brute** (« Je vérifie… ») **et** une **invite visible** vers
+   `/resolve` quand des clarifications sont prêtes (`clarifications-ready`) — ne pas
+   lancer l'analyse « en silence ». C'est le point manquant aujourd'hui.
+3. **Ingestion / finalisation** (`finalize_ingestion` : compte-rendu + tâches) →
+   la pastille **passe sur le compte-rendu** en cours de rédaction (« Je cogite… » →
+   « Je note les tâches… »), plus sur la note brute.
+
+**Événements à câbler** : l'analyse augmentée doit émettre de quoi positionner la
+cible (début d'analyse → note brute ; `clarifications-ready` → invite ; début de
+finalisation → compte-rendu). Aujourd'hui `alfredStatusStore` n'est nourri que par
+transcription/ingestion/contexte — il manque la **phase d'analyse** (spec/17).
+
 ## Page Alfred (`/`) — layout 2 colonnes — ✅ fait
 
 `Dashboard.tsx` — plus de trois blocs empilés, `/ai-actions` a disparu comme

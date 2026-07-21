@@ -38,7 +38,7 @@ S'ajoutent deux gains **indépendants du contexte** : la **qualité de décodage
   Régénérée : à l'onboarding, quand la note de contexte change (débouncé), via un
   bouton manuel.
 - **Forme** : **liste de mots / noms uniquement**, PAS de définitions (Whisper est
-  acoustique, pas sémantique). Enrobée dans une courte phrase FR pour le style. Ex. :
+  acoustique, pas sémantique). Enrobée dans une courte phrase pour le style. Ex. :
   `Transcription en français. Termes et noms propres : Ulysse Carpentier, Alfred,
   Tauri, Coolify, AlfredIA, Do Now.`
 - **Budget** : ~**224 tokens** (moitié de `n_text_ctx` = 448 ; tronqué au-delà).
@@ -46,8 +46,19 @@ S'ajoutent deux gains **indépendants du contexte** : la **qualité de décodage
   transcrits **en premier** (la fin saute si troncature).
 - **Injection** : `initial_prompt` = glossaire dans `run_whisper` (spec/04), sur une
   **passe unique** de tout le WAV (pas de chunking en v1 — voir Hors v1).
-- ⚠️ **Multilingue** : un glossaire FR peut pousser Whisper à croire que l'audio est
-  français. Pour un enregistrement EN, forcer `language: en` (ou adapter le prompt).
+- ⚠️ **Multilingue — BUG confirmé au test (📝 à corriger).** Une réunion **en
+  anglais** est sortie **transcrite en français**. Cause : la phrase d'enrobage du
+  glossaire est **codée « Transcription en français… »** → `initial_prompt` FR **biaise
+  Whisper** vers le français (et fausse l'auto-détection de langue). Correctifs :
+  - **La phrase d'enrobage doit être dans la langue cible**, pas figée en FR :
+    piloter par `language_hint` / `app_language` (« Transcription in English. Terms
+    and proper nouns: … » en EN). Les noms propres eux-mêmes restent inchangés.
+  - **Forcer `language`** quand elle est connue (`language_hint` = `en`) plutôt que
+    `auto`, pour éviter une auto-détection faussée par le prompt.
+  - **Défaut sûr** : si `app_language = en` et `language_hint` non défini, viser EN
+    (au lieu du FR implicite d'aujourd'hui).
+  Le compte-rendu FR qui a suivi est un **second problème** (prompt d'ingestion FR,
+  spec/05) — les deux se cumulent.
 
 ## §2 — Qualité de décodage (beam + seuils)
 

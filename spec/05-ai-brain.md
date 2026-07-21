@@ -106,6 +106,13 @@ même note sert de source au **glossaire Whisper** (spec/17).
 **Événement** : `ingestion_completed { ai_mode }` (metrics, spec/15) + `notes-updated`
 (+ `todos-updated` pour la partie SQLite, transitoire).
 
+**Archivage de la transcription (📝 à faire, feedback tests, spec/07)** : une fois
+l'ingestion **réussie** (compte-rendu produit), la note **brute de transcription**
+(`alfred-raw/`, celle du `recording_id`) passe **`status: archived`** — elle a rempli
+son rôle, on la sort de la navigation (masquée par défaut, spec/07). Le compte-rendu
+reste `active`. À faire seulement si le **compte-rendu** est demandé (`summary`) ;
+tâches seules ne suffisent pas à « clore » la transcription.
+
 ### Sortie découplée compte-rendu / tâches — ✅ fait (feedback tests, spec/03)
 
 Le panneau de revue post-enregistrement (spec/03) laisse l'utilisateur **choisir**

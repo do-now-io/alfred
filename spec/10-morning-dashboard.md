@@ -28,7 +28,9 @@ Topbar **sans barre de recherche**.
   **Fusion faite** (✅, débloquée par l'historique de chat) : « Alfred » a pris
   la place d'« Aujourd'hui » sur `/` — `/ai-actions` a disparu comme route à
   part (nav, route, écran `AIActions.tsx` retirés). Voir §Page Alfred cible.
-- Section **« Récents »** (5 notes récemment modifiées — inchangé).
+- Section **« Récents »** (5 notes récemment modifiées). 📝 **Masquer les notes
+  archivées** (`status: archived`, feedback tests, spec/07) — une transcription
+  archivée après ingestion ne doit plus apparaître dans les Récents.
 - ✅ **Retirés** : `/meetings`, `/calendar` (routes mortes, aucun lien nav ne les
   atteignait déjà — supprimées avec `Placeholder.tsx`). Pas de « Actions IA »
   distinct trouvé dans le code actuel (le nav « Alfred » d'aujourd'hui est déjà le
@@ -123,9 +125,11 @@ route à part (nav, route, écran `AIActions.tsx` retirés) :
      `BriefingContent`, wikilinks cliquables) + « Généré le {date} » + bouton
      **régénérer**. Auto-génération au premier chargement du jour si rien en
      cache. État vide : message d'accueil.
-  3. **Tâches** — bloc **dépliable** (`TasksSection`) : sections Prioritaire /
-     En cours / À faire (regroupées depuis `Todo.md` par les en-têtes `## `,
-     spec/06), cases à cocher, lien « voir toutes les tâches » → `/tasks`.
+  3. **Tâches** — bloc **dépliable** (`TasksSection`) : sections **À faire /
+     En cours** (📝 plus de « Prioritaire », feedback tests ; `Fait`/`Archivé` non
+     montrés ici), regroupées depuis `Todo.md` par les en-têtes `## ` (spec/06),
+     cases à cocher (cocher ⇒ passe en `Fait`), lien « voir toutes les tâches »
+     → `/tasks`.
 
 L'ancien **teaser de chat** (`ChatTeaser`, champ + exemples qui renvoyait vers
 `/ai-actions`) est retiré — redondant, la conversation complète est maintenant

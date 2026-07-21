@@ -21,26 +21,41 @@ SQLite → à refondre pour lire/écrire le fichier. Pas de migration de donnée
 ## Format du fichier
 
 Compatible Obsidian (cases à cocher standard), regroupé par sections qui
-correspondent à l'accueil, **sans frontmatter** :
+correspondent aux colonnes du Kanban, **sans frontmatter** :
 
 ```markdown
-## Prioritaire
-- [ ] Rappeler le client Acme — @Jean — 📅 2026-07-10
+## À faire
+- [ ] Relire le contrat — !haute
 
 ## En cours
 - [ ] Préparer la démo
 
-## À faire
-- [ ] Relire le contrat
+## Fait
+- [x] Rappeler le client Acme — @Jean — 📅 2026-07-10
 
 ## Archivé
 - [ ] Ancienne tâche mise de côté
 ```
 
-- `[x]` = tâche **faite** (reste en place, cochée).
-- Responsable (`@Prénom`) et échéance (`📅 YYYY-MM-DD`) optionnels.
-- Les tâches **extraites par l'IA** arrivent dans `## À faire` ; c'est
-  l'utilisateur qui les remonte en « En cours » / « Prioritaire ».
+> **Sections v1 (📝 à faire, feedback tests) : `À faire` → `En cours` → `Fait` →
+> `Archivé`.** La section **`Prioritaire` est retirée** ; la nouvelle section
+> **`Fait`** matérialise le statut « done ». Ordre = ordre des colonnes Kanban.
+
+- **`[x]` ⇔ section `Fait`** : une tâche cochée **vit dans `## Fait`**. Cocher une
+  tâche la **déplace** vers `Fait` ; la décocher la renvoie vers `## À faire`.
+  (Fini le « `[x]` reste en place » — cocher et « colonne Fait » sont **une seule et
+  même notion**.)
+- **Priorité** : uniquement le champ inline **`!haute` / `!moyenne` / `!basse`**
+  (plus de colonne dédiée). Sert au **tri** (voir Kanban) et au filtre.
+- Responsable (`@Prénom`), échéance (`📅 YYYY-MM-DD`), projet (`+Projet`),
+  estimation (`⏱`) optionnels.
+- Les tâches **extraites par l'IA** arrivent dans `## À faire` ; l'utilisateur les
+  fait avancer vers `En cours` puis `Fait`.
+
+> **Migration des fichiers existants** : `## Prioritaire` → fusionner dans
+> `## À faire` (les tâches y gardent leur `!priorité` si posée) ; les tâches `[x]`
+> qui traînaient **cochées dans d'autres sections** → déplacer vers `## Fait`
+> (celles déjà dans `## Archivé` **restent** archivées). Idempotent.
 
 ## Provenance
 
@@ -57,14 +72,18 @@ on ne ré-ajoute pas une tâche déjà présente. *(L'ancienne dédup SQLite par
 
 ## Cycle de vie
 
-- Cocher `[x]` = **fait** (la ligne reste en place, cochée).
-- **Archiver** (ex-« ignorer ») : la tâche est **déplacée** vers la section
-  `## Archivé` en bas du fichier — **rien n'est supprimé**.
+- **Avancement** : `À faire` → `En cours` → `Fait` (glisser-déposer Kanban ou
+  `move_todo`). **Cocher `[x]` = passer en `Fait`** (déplacement, pas juste un
+  marqueur en place) ; **décocher** = renvoyer en `À faire`.
+- **Archiver** (ex-« ignorer ») : la tâche est **déplacée** vers `## Archivé` en
+  bas du fichier — **rien n'est supprimé**. `Archivé` reste distinct de `Fait`
+  (une tâche abandonnée ou rangée, cochée ou non).
 
 ## Affichage
 
-- **Onglet Tâches** : ~~liste éditable~~ → **refonte en tableau Kanban** (ci-dessous).
-- **Accueil « Alfred »** : bloc dépliable Prioritaire / En cours / À faire (spec 10).
+- **Onglet Tâches** : **tableau Kanban** (ci-dessous) + bascule vue Markdown.
+- **Accueil « Alfred »** : bloc dépliable — sections **À faire / En cours** (spec 10 ;
+  plus de « Prioritaire »).
 
 ## Refonte Kanban de la page Tâches — ✅ fait (feedback tests + demande utilisateurs)
 
@@ -81,19 +100,24 @@ La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
 **tableau Kanban** (demande explicite d'utilisateurs). La source de vérité **reste
 `Todo.md`** — le Kanban est une **vue** par-dessus, pas un nouveau stockage.
 
-- **Colonnes = sections du fichier** : **Prioritaire · En cours · À faire ·
-  Archivé** (Archivé repliable/masquable par défaut). Aucune nouvelle sémantique :
-  une colonne = une section `##`.
+- **Colonnes = sections du fichier** — 📝 **nouvel ordre (feedback tests)** :
+  **À faire · En cours · Fait · Archivé** (Archivé repliable/masquable par défaut).
+  **`Prioritaire` retirée** ; **`Fait` ajoutée** (statut « done »). Une colonne =
+  une section `##`.
 - **Glisser-déposer** une carte d'une colonne à l'autre = **déplacer la tâche entre
-  sections** (réécrit `Todo.md` en conservant `@responsable` / `📅 échéance` / l'état
-  coché). Réordonner dans une colonne = ordre des lignes dans la section.
-  → **Nouvelle commande `move_todo(id, section, position?)`** (les commandes
-  actuelles ne savent que cocher / archiver / éditer, pas déplacer vers une section
-  arbitraire).
+  sections** (réécrit `Todo.md` en conservant `@responsable` / `📅 échéance` /
+  `+Projet` / `!priorité`). Réordonner dans une colonne = ordre des lignes.
+  **Déposer dans `Fait` coche la tâche (`[x]`)** ; l'en sortir la décoche —
+  cohérent avec « `[x]` ⇔ `Fait` » (§Format). → commande `move_todo(id, section,
+  position?)` (existe).
+- **Tri par priorité dans chaque colonne** (📝 feedback tests) : à l'affichage,
+  ordonner les cartes d'une colonne par `!priorité` (**haute** en haut, puis
+  moyenne, basse, sans priorité). Le tri est **visuel** ; l'ordre dans le fichier
+  reste la source (pas de réécriture forcée juste pour trier).
 - **Carte de tâche lisible** : titre + **puce responsable** (`@Prénom`, avec
   couleur/initiales) + **badge d'échéance** (`📅`, **coloré selon la proximité** :
-  en retard / aujourd'hui / à venir) + case à cocher (fait). Case cochée = carte
-  estompée / barrée, reste dans sa colonne. Le **markdown inline** du titre est
+  en retard / aujourd'hui / à venir) + case à cocher (**cochée ⇒ la carte est en
+  colonne `Fait`**, estompée / barrée). Le **markdown inline** du titre est
   rendu, pas affiché brut (`**gras**`, `*italique*`, `` `code` ``, `~~barré~~`,
   wikilinks sans crochets) — helper partagé `utils/inlineMd` (aussi utilisé par
   le bloc tâches de l'accueil) ; la recherche texte matche le titre **sans** les
@@ -115,9 +139,9 @@ La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
 
 **Décisions tranchées** (2e passe, ci-dessous) :
 - **Projet sur une tâche** : oui, marqueur `+Projet` (façon `@responsable`).
-- **Priorité** : champ dédié `!haute`/`!moyenne`/`!basse`, en plus de la colonne
-  « Prioritaire » (les deux coexistent — la colonne reste le tri principal, le champ
-  sert au filtre/affichage).
+- **Priorité** : champ inline `!haute`/`!moyenne`/`!basse` — **seul** vecteur de
+  priorité depuis le retrait de la colonne « Prioritaire » (feedback tests) ; sert au
+  **filtre** et au **tri intra-colonne** (haute en haut).
 - **Réordonnancement fin** : l'ordre des lignes dans le fichier suffit (pas d'index
   explicite) — `move_todo(id, section, position?)`.
 
@@ -134,8 +158,8 @@ Le Kanban est enrichi sans jeter la lecture Markdown.
 - **Sélecteur Kanban / Markdown** en tête de la page Tâches. Les deux affichent le
   **même `Todo.md`** (source de vérité unique, la même liste `Todo[]` récupérée par
   `get_all_todos` alimente les deux rendus — pas un second parseur).
-- **Vue Markdown** = la lecture en lignes, avec **sections repliables** (Prioritaire /
-  En cours / À faire / Archivé, Archivé replié par défaut). C'est la vue « document ».
+- **Vue Markdown** = la lecture en lignes, avec **sections repliables** (À faire /
+  En cours / Fait / Archivé, Archivé replié par défaut). C'est la vue « document ».
 - **Vue Kanban** = colonnes.
 
 ### Fiche tâche (ouvrable depuis le Kanban ET la vue Markdown) — ✅ fait
@@ -186,9 +210,12 @@ estimate})` (fiche tâche). `update_todo_block(id, notes[], description[])` (sou
 ## Commandes Tauri — ✅ refondues vers le fichier
 
 `get_todos` (non cochées hors Archivé), `create_todo` (ajout dédupliqué dans
-`## À faire`), `complete_todo(id, checked?)` (coche/décoche **en place**),
-`dismiss_todo` (déplace vers `## Archivé`), `update_todo` (réécrit
-titre/@responsable/📅échéance en gardant place et état) — toutes sur `Todo.md`.
+`## À faire`), `complete_todo(id, checked?)` — 📝 **à ajuster (feedback tests)** :
+cocher **déplace vers `## Fait`**, décocher renvoie vers `## À faire` (n'est plus un
+coche « en place ») ; `dismiss_todo` (déplace vers `## Archivé`), `move_todo(id,
+section, position?)` (déplacement Kanban ; déposer dans `Fait` coche, en sortir
+décoche), `update_todo` (réécrit titre/@responsable/📅échéance en gardant place et
+état) — toutes sur `Todo.md`.
 `get_todo_file()` retourne le chemin du fichier. `id` = titre normalisé.
 Note : l'écran Tâches et le bloc Accueil éditent déjà le fichier directement
 (NoteEditor / update_note_file) — ces commandes servent l'IA (brief, briefing

@@ -27,6 +27,10 @@ pub struct IngestTask {
     pub titre: String,
     pub responsable: Option<String>,
     pub echeance: Option<String>,
+    /// Projet du compte-rendu source (spec/06) : posé en marqueur `+Projet`
+    /// sur la ligne, pour que le filtre projet du Kanban couvre les tâches
+    /// extraites par l'ingestion sans tagage manuel.
+    pub project: Option<String>,
 }
 
 /// The full set of fields a task LINE can carry (spec/06 2e passe). Sub-bullets
@@ -56,6 +60,7 @@ impl From<&IngestTask> for TaskFields {
             titre: t.titre.clone(),
             responsable: t.responsable.clone(),
             echeance: t.echeance.clone(),
+            project: t.project.clone(),
             ..Default::default()
         }
     }
@@ -631,6 +636,7 @@ mod tests {
 
     fn task(titre: &str, responsable: Option<&str>, echeance: Option<&str>) -> IngestTask {
         IngestTask {
+            project: None,
             titre: titre.to_string(),
             responsable: responsable.map(|s| s.to_string()),
             echeance: echeance.map(|s| s.to_string()),
@@ -656,6 +662,22 @@ mod tests {
         );
         assert_eq!(added, 1);
         assert!(out.contains("- [ ] Envoyer le rapport — [[Réunion Flexiflit — migration GKE]] (2026-07-01)"));
+    }
+
+    #[test]
+    fn stamps_project_on_ingested_tasks() {
+        let ingested = IngestTask {
+            titre: "Envoyer le rapport".into(),
+            responsable: Some("Jean".into()),
+            echeance: None,
+            project: Some("Refonte Site".into()),
+        };
+        let (out, added) = merge_tasks(None, &[ingested], Some(("Réunion kickoff", "2026-07-21")));
+        assert_eq!(added, 1);
+        assert!(out.contains("- [ ] Envoyer le rapport — @Jean — +Refonte Site — [[Réunion kickoff]] (2026-07-21)"));
+        // Round-trip : la ligne écrite doit se relire avec le même projet.
+        let (_, fields) = parse_line("- [ ] Envoyer le rapport — @Jean — +Refonte Site — [[Réunion kickoff]] (2026-07-21)").unwrap();
+        assert_eq!(fields.project.as_deref(), Some("Refonte Site"));
     }
 
     #[test]

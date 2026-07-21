@@ -60,7 +60,12 @@ correspondent aux colonnes du Kanban, **sans frontmatter** :
 ## Provenance
 
 - **Extraction IA** (depuis une transcription, spec 05) : ajoute les tâches
-  détectées au fichier, en rappelant le prénom du responsable quand c'est possible.
+  détectées au fichier, en rappelant le prénom du responsable quand c'est
+  possible, **et le projet de la réunion en marqueur `+Projet`** (le premier
+  projet identifié par l'ingestion — celui du frontmatter du compte-rendu —
+  quand la réunion en touche plusieurs, la ligne ne portant qu'un marqueur).
+  Les tâches extraites sont ainsi filtrables par projet dans le Kanban sans
+  tagage manuel.
 - **Création manuelle** depuis l'UI (onglet Tâches / accueil).
 - **Édition directe** du fichier dans Obsidian — Alfred relit le fichier.
 

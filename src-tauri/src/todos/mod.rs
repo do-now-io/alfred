@@ -145,6 +145,9 @@ pub async fn create_todo(input: &CreateTodoInput, db: &SqlitePool, vault_root: O
         titre: title.to_string(),
         responsable: input.responsable.clone().filter(|s| !s.trim().is_empty()),
         echeance: input.echeance.clone().filter(|s| !s.trim().is_empty()),
+        // Ajout rapide : pas de projet à la création — posable ensuite via la
+        // fiche tâche (`update_todo_fields`).
+        project: None,
     };
     todo_md::append_tasks(root, &rel, std::slice::from_ref(&task), None).await?;
 

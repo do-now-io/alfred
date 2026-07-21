@@ -375,6 +375,15 @@ async fn run_ingestion_core(
         if tasks && !output.taches.is_empty() {
             emit_status("running", "tasks", None);
             let todo_rel_path = crate::todos::todo_file_path(db).await;
+            // Projet principal de la réunion (spec/06) : posé en `+Projet` sur
+            // chaque tâche extraite — la ligne ne porte qu'un marqueur, on
+            // prend le premier projet identifié quand il y en a plusieurs.
+            let main_project = output
+                .project
+                .iter()
+                .map(|p| p.trim())
+                .find(|p| !p.is_empty())
+                .map(str::to_string);
             let tasks: Vec<IngestTask> = output
                 .taches
                 .iter()
@@ -382,6 +391,7 @@ async fn run_ingestion_core(
                     titre: t.titre.clone(),
                     responsable: t.responsable.clone(),
                     echeance: t.echeance.clone(),
+                    project: main_project.clone(),
                 })
                 .collect();
             // Provenance (spec/05/06 « fiche tâche ») : wikilink + date sur la

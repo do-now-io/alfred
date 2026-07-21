@@ -1291,6 +1291,31 @@ async fn seed_starter_content(
     Ok(())
 }
 
+/// Reste-t-il du contenu de démarrage à supprimer (spec/13/10) ? Vérifié en
+/// direct (pas un simple drapeau) — piloté par le bandeau one-shot sur la
+/// page Alfred.
+#[tauri::command]
+async fn has_starter_content(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    Ok(seed::has_starter_content(&state.db, vault_root.as_deref()).await)
+}
+
+/// Suppression one-shot du contenu de démarrage marqué (spec/13/10) — tâches
+/// checklist, notes de démo, conversation d'exemple. Ne touche à rien d'autre.
+#[tauri::command]
+async fn delete_starter_content(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    seed::delete_starter_content(&state.db, vault_root.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("notes-updated", serde_json::json!({}));
+    let _ = app.emit("todos-updated", serde_json::json!({}));
+    Ok(())
+}
+
 #[tauri::command]
 async fn pick_vault_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
@@ -1657,6 +1682,8 @@ pub fn run() {
             set_vault_path,
             pick_vault_folder,
             seed_starter_content,
+            has_starter_content,
+            delete_starter_content,
             open_context_note,
             generate_glossary_from_context,
             analyze_transcription,

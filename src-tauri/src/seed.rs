@@ -13,6 +13,15 @@ use sqlx::SqlitePool;
 use std::path::Path;
 
 const SEED_FLAG: &str = "starter_content_seeded";
+/// Config key holding the id of the demo chat conversation (spec/13), so
+/// `delete_starter_content` can drop exactly that one via
+/// `chat_history::delete_conversation` without any language-dependent matching.
+const SEED_CHAT_CONV_KEY: &str = "starter_content_chat_conversation_id";
+/// Raw frontmatter marker on demo notes (spec/13) — written directly into the
+/// file (not through `NoteMetadata`, to avoid widening that struct for a
+/// throwaway flag); the parser's unknown-key catch-all just ignores it, and
+/// `delete_starter_content` scans for it as plain text.
+const SEED_NOTE_MARKER: &str = "alfred_seed: true";
 
 /// Contenu de démarrage par langue (spec/13/21) — le squelette de Todo.md
 /// (`merge_tasks`) reste écrit avec les en-têtes FR internes quel que soit
@@ -64,6 +73,36 @@ const SEED_EN: SeedContent = SeedContent {
 
 fn seed_content(lang: &str) -> &'static SeedContent {
     if lang == "en" { &SEED_EN } else { &SEED_FR }
+}
+
+/// Titles of every seeded demo task, in **both** languages — a Todo.md file
+/// keeps whichever language it was written in regardless of the current
+/// `app_language`, so matching against just one language would miss the
+/// other after a language switch.
+fn seed_task_titles() -> Vec<&'static str> {
+    SEED_FR.tasks.iter().chain(SEED_EN.tasks.iter()).map(|(_, title, _, _)| *title).collect()
+}
+
+/// Demo notes still carrying the `alfred_seed` marker, under `folder`.
+async fn find_seed_marked_notes(folder: std::path::PathBuf) -> Vec<std::path::PathBuf> {
+    tokio::task::spawn_blocking(move || {
+        walkdir::WalkDir::new(&folder)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_type().is_file()
+                    && e.path().extension().map(|x| x == "md").unwrap_or(false)
+            })
+            .filter(|e| {
+                std::fs::read_to_string(e.path())
+                    .map(|c| c.contains(SEED_NOTE_MARKER))
+                    .unwrap_or(false)
+            })
+            .map(|e| e.path().to_path_buf())
+            .collect()
+    })
+    .await
+    .unwrap_or_default()
 }
 
 /// Rend une ligne de tâche au format de `Todo.md` (spec/06).
@@ -164,14 +203,26 @@ pub async fn seed_starter_content(db: &SqlitePool, vault_root: Option<&Path>) ->
                 participants,
                 vec!["Projet Horloge (exemple)".to_string()],
             );
-            if let Err(e) = crate::notes::vault::create_intelligence_note(&folder, title, metadata, body).await {
-                eprintln!("[seed] demo note '{}' failed: {}", title, e);
+            match crate::notes::vault::create_intelligence_note(&folder, title, metadata, body).await {
+                Ok(note) => {
+                    // Marque le fichier `alfred_seed: true` (frontmatter brut,
+                    // ignoré par le parser) pour un ciblage sûr par
+                    // `delete_starter_content`, même si la note est déplacée
+                    // ou renommée.
+                    if let Ok(raw) = tokio::fs::read_to_string(&note.path).await {
+                        let marked = raw.replacen("---\n\n", &format!("{}\n---\n\n", SEED_NOTE_MARKER), 1);
+                        let _ = tokio::fs::write(&note.path, marked).await;
+                    }
+                }
+                Err(e) => eprintln!("[seed] demo note '{}' failed: {}", title, e),
             }
         }
     }
 
     // 3. Chat — une fausse conversation passée dans l'historique (spec/07b/13).
-    if let Err(e) = crate::ai::chat_history::record_exchange(
+    //    L'id est retenu en config : cible exacte pour `delete_starter_content`,
+    //    indépendante de la langue dans laquelle la conversation a été semée.
+    match crate::ai::chat_history::record_exchange(
         db,
         None,
         seed.demo_chat_question,
@@ -180,7 +231,14 @@ pub async fn seed_starter_content(db: &SqlitePool, vault_root: Option<&Path>) ->
     )
     .await
     {
-        eprintln!("[seed] demo chat conversation failed: {}", e);
+        Ok(conv_id) => {
+            let _ = sqlx::query("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)")
+                .bind(SEED_CHAT_CONV_KEY)
+                .bind(conv_id)
+                .execute(db)
+                .await;
+        }
+        Err(e) => eprintln!("[seed] demo chat conversation failed: {}", e),
     }
 
     sqlx::query("INSERT OR REPLACE INTO config (key, value) VALUES (?, 'true')")
@@ -188,5 +246,104 @@ pub async fn seed_starter_content(db: &SqlitePool, vault_root: Option<&Path>) ->
         .execute(db)
         .await?;
     eprintln!("[seed] starter content seeded");
+    Ok(())
+}
+
+/// Reste-t-il du contenu de démarrage (spec/13) ? Vérifié **en direct** sur les
+/// 3 sources (tâches / notes / chat) plutôt que via un drapeau figé au semis :
+/// couvre aussi bien le clic sur « Supprimer » que la suppression manuelle
+/// (note effacée à la main, tâche supprimée dans `Todo.md`…).
+pub async fn has_starter_content(db: &SqlitePool, vault_root: Option<&Path>) -> bool {
+    let Some(vault_root) = vault_root else { return false };
+
+    let todo_rel = crate::todos::todo_file_path(db).await;
+    if let Ok(content) = tokio::fs::read_to_string(vault_root.join(&todo_rel)).await {
+        let titles = seed_task_titles();
+        if content
+            .lines()
+            .any(|l| l.trim_start().starts_with("- [") && titles.iter().any(|t| l.contains(*t)))
+        {
+            return true;
+        }
+    }
+
+    let folder = vault_root.join(crate::ai::intelligence_folder(db).await);
+    if !find_seed_marked_notes(folder).await.is_empty() {
+        return true;
+    }
+
+    let chat_id: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = ?")
+        .bind(SEED_CHAT_CONV_KEY)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+    if let Some(id) = chat_id {
+        let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM chat_conversations WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten();
+        if exists.is_some() {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Supprime **uniquement** le contenu de démarrage marqué (spec/13) : les
+/// lignes de tâches semées dans `Todo.md`, les notes de démo (frontmatter
+/// `alfred_seed: true`), la conversation de démo. Ne touche à rien d'autre.
+/// Bouton one-shot côté UI — la commande elle-même reste sans effet si rien
+/// n'est (plus) marqué, donc rejouable sans risque.
+pub async fn delete_starter_content(db: &SqlitePool, vault_root: Option<&Path>) -> Result<()> {
+    let Some(vault_root) = vault_root else { return Ok(()) };
+
+    // 1. Tâches — retire toute ligne de case à cocher dont le texte contient
+    //    un des titres semés (les deux langues : le fichier garde la langue
+    //    dans laquelle il a été écrit, indépendamment de `app_language`
+    //    aujourd'hui).
+    {
+        let todo_rel = crate::todos::todo_file_path(db).await;
+        let path = vault_root.join(&todo_rel);
+        if let Ok(content) = tokio::fs::read_to_string(&path).await {
+            let titles = seed_task_titles();
+            let filtered: String = content
+                .lines()
+                .filter(|l| {
+                    let is_task = l.trim_start().starts_with("- [");
+                    !(is_task && titles.iter().any(|t| l.contains(*t)))
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            if filtered != content {
+                tokio::fs::write(&path, filtered).await?;
+            }
+        }
+    }
+
+    // 2. Notes — supprime tout fichier marqué `alfred_seed: true`.
+    {
+        let folder = vault_root.join(crate::ai::intelligence_folder(db).await);
+        for path in find_seed_marked_notes(folder).await {
+            let _ = tokio::fs::remove_file(&path).await;
+        }
+    }
+
+    // 3. Chat — supprime la conversation de démo, si elle existe encore.
+    {
+        let chat_id: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = ?")
+            .bind(SEED_CHAT_CONV_KEY)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten();
+        if let Some(id) = chat_id {
+            let _ = crate::ai::chat_history::delete_conversation(db, &id).await;
+        }
+    }
+
     Ok(())
 }

@@ -242,25 +242,28 @@ l'utilisateur **supprime quand il veut**.
 > utilisateur qui passe la visite arrive quand même sur des pages non vides). Le
 > semis est donc rattaché à l'**onboarding**, pas à la visite elle-même.
 
-#### Suppression en un clic du contenu de démarrage — 📝 à faire (feedback tests)
+#### Suppression en un clic du contenu de démarrage — ✅ fait
 
 Une fois que l'utilisateur a **joué** avec les données de démo, il doit pouvoir
 **tout supprimer d'un coup**. Bouton **one-shot** :
 
-- **Emplacement** : dans la **page Alfred** (spec/10) — ex. bandeau discret
+- **Emplacement** : dans la **page Alfred** (spec/10) — bandeau discret
   *« Ces données sont des exemples — [Supprimer les données de démo] »*.
 - **Action** : commande **`delete_starter_content()`** qui retire **uniquement** le
   contenu semé — les tâches checklist de `Todo.md`, les 2 notes de démo, la fausse
   conversation de chat. **Ne touche à rien d'autre** (contenu réel de l'utilisateur).
-- **Ciblage sûr** : marquer le contenu semé pour le retrouver sans ambiguïté même
-  s'il a été déplacé/édité — frontmatter **`alfred_seed: true`** sur les notes de démo,
-  marqueur discret sur les lignes de tâches semées, drapeau sur la conversation de
-  chat de démo. La suppression ne cible **que** les éléments portant ce marqueur.
-- **One-shot** : le bouton n'apparaît que si du contenu de démo est **encore présent**
-  (drapeau de config, p. ex. `starter_content_present`, posé au semis). Après
-  suppression → drapeau à `false` → **le bouton disparaît définitivement** (et ne
-  revient pas, cohérent avec « ne jamais re-semer »). S'il ne reste plus de contenu
-  marqué (l'utilisateur a tout supprimé à la main), le bouton disparaît aussi.
+- **Ciblage sûr** : frontmatter **`alfred_seed: true`** (texte brut, hors du schéma
+  `NoteMetadata`) sur les notes de démo — robuste au déplacement/renommage. Pour les
+  tâches, **pas de marqueur visible sur la ligne** (aurait fuité dans l'affichage,
+  `parseTasks` n'a pas de mécanisme pour le masquer comme il le fait pour ⭐) :
+  on matche plutôt les titres exacts semés, dans les **deux langues** (le fichier
+  garde la langue dans laquelle il a été écrit). Pour le chat, l'id de la
+  conversation de démo est retenu en config (`starter_content_chat_conversation_id`)
+  et supprimé via `chat_history::delete_conversation`.
+- **One-shot** : `has_starter_content()` fait une **vérification en direct** des 3
+  sources plutôt que de dépendre d'un drapeau figé au semis — couvre nativement le
+  cas « l'utilisateur a tout supprimé à la main » sans logique séparée. Le bandeau
+  réévalue sur les événements `notes-updated` / `todos-updated`.
 
 ### Nouvel événement backend
 
@@ -339,8 +342,9 @@ générique déconnecté.
 spec/03) · **`discard_recording`** (✅ — bouton « Recommencer ») ·
 **`process_recording`** (✅ — bouton « Continuer », spec/03) ·
 **`seed_starter_content`** (✅ — contenu de démarrage, flag
-`starter_content_seeded`) · **`delete_starter_content`** (📝 à faire — suppression
-one-shot du contenu de démo marqué `alfred_seed`, bouton page Alfred) ·
+`starter_content_seeded`) · **`has_starter_content`** / **`delete_starter_content`**
+(✅ — bandeau + suppression one-shot du contenu de démo marqué `alfred_seed`,
+page Alfred) ·
 `build_context_from_transcription` (route
 « mode contexte » → structure `Contexte Alfred.md` +
 `generate_glossary_from_context`, spec/17) · `read_recording_wav` (réécoute dans

@@ -393,6 +393,59 @@ function BriefCard() {
   );
 }
 
+// ─── Bandeau « données de démo » — one-shot (spec/13/10) ───────────────────────
+// Visible tant que du contenu de démarrage marqué subsiste (vérifié en direct
+// côté backend, pas un simple drapeau) ; disparaît définitivement après clic —
+// ou tout seul si l'utilisateur a déjà tout supprimé à la main.
+
+function DemoContentBanner() {
+  const t = useT();
+  const [present, setPresent] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const check = useCallback(() => {
+    invoke<boolean>("has_starter_content").then(setPresent).catch(() => setPresent(false));
+  }, []);
+
+  useEffect(() => {
+    check();
+    const unsubs: Array<() => void> = [];
+    listen("notes-updated", () => check()).then(fn => unsubs.push(fn));
+    listen("todos-updated", () => check()).then(fn => unsubs.push(fn));
+    return () => unsubs.forEach(fn => fn());
+  }, [check]);
+
+  if (!present) return null;
+
+  const handleDelete = () => {
+    setDeleting(true);
+    invoke("delete_starter_content")
+      .then(() => setPresent(false))
+      .catch(() => setDeleting(false));
+  };
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12,
+      padding: "8px 24px", borderBottom: "1px solid var(--border)",
+      background: "var(--dark-card)", fontSize: 12.5, color: "var(--text-muted)",
+    }}>
+      <span>{t("dashboard.demoBanner.message")}</span>
+      <button
+        onClick={handleDelete}
+        disabled={deleting}
+        style={{
+          marginLeft: "auto", background: "none", border: "1px solid var(--border)",
+          borderRadius: 6, padding: "3px 10px", cursor: deleting ? "not-allowed" : "pointer",
+          fontSize: 12, color: "var(--text-secondary)",
+        }}
+      >
+        {deleting ? t("dashboard.demoBanner.deleting") : t("dashboard.demoBanner.delete")}
+      </button>
+    </div>
+  );
+}
+
 // ─── Dashboard — fusion Alfred/Aujourd'hui, layout 2 colonnes (spec/10 cible) ──
 // Gauche : conversation Alfred (ChatPanel, avec son propre historique) — la
 // route `/ai-actions` disparaît, la page "/" EST la conversation. Droite :
@@ -401,15 +454,18 @@ function BriefCard() {
 
 export default function Dashboard() {
   return (
-    <div style={{ height: "100%", display: "flex", overflow: "hidden" }}>
-      <div style={{ flex: "1.3 1 0%", minWidth: 0, borderRight: "1px solid var(--border)", overflow: "hidden" }}>
-        <ChatPanel />
-      </div>
-      <div style={{ flex: "1 1 0%", minWidth: 340, maxWidth: 480, overflowY: "auto" }}>
-        <div style={{ padding: "24px 24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
-          <HeroCard />
-          <BriefCard />
-          <TasksSection />
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <DemoContentBanner />
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <div style={{ flex: "1.3 1 0%", minWidth: 0, borderRight: "1px solid var(--border)", overflow: "hidden" }}>
+          <ChatPanel />
+        </div>
+        <div style={{ flex: "1 1 0%", minWidth: 340, maxWidth: 480, overflowY: "auto" }}>
+          <div style={{ padding: "24px 24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+            <HeroCard />
+            <BriefCard />
+            <TasksSection />
+          </div>
         </div>
       </div>
     </div>

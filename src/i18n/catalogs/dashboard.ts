@@ -27,6 +27,11 @@ export default {
       generatedOn: "Généré le {date}",
       empty: "Enregistrez ou écrivez quelque chose, et je vous préparerai un point chaque jour.",
     },
+    demoBanner: {
+      message: "Ces données sont des exemples",
+      delete: "Supprimer les données de démo",
+      deleting: "Suppression…",
+    },
   },
   en: {
     heroCard: {
@@ -54,6 +59,11 @@ export default {
       preparing: "Preparing your brief…",
       generatedOn: "Generated on {date}",
       empty: "Record or write something, and I'll prepare a briefing for you every day.",
+    },
+    demoBanner: {
+      message: "This data is example content",
+      delete: "Delete the demo data",
+      deleting: "Deleting…",
     },
   },
 };

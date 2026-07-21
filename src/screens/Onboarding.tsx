@@ -3,10 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   MdMic, MdAutoAwesome, MdCheckCircle, MdFolderOpen, MdVpnKey,
-  MdArrowBack, MdArrowForward, MdHourglassEmpty, MdWarning,
+  MdArrowBack, MdArrowForward, MdHourglassEmpty, MdWarning, MdDownload,
 } from "react-icons/md";
 import { useNotesStore } from "../store/notesStore";
 import AlfredAvatar from "../components/AlfredAvatar";
+import WhisperModelPicker from "../components/WhisperModelPicker";
 
 // ─── Shared bits ────────────────────────────────────────────────────────────
 
@@ -246,6 +247,10 @@ type Step = { name: string; node: React.ReactNode; skippable?: boolean };
 export default function Onboarding({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
   const [finishing, setFinishing] = useState(false);
+  // Téléchargement de modèle en cours (étape whisper_model, spec/13) : bloque
+  // « Suivant » sur cette étape seulement — « Passer » reste possible et le
+  // téléchargement continue en arrière-plan (événements par nom de modèle).
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   const steps: Step[] = [
     {
@@ -264,8 +269,29 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <Panel
           icon={<IconCircle><MdMic /></IconCircle>}
           title="Parlez, je transcris"
-          text="Lancez un enregistrement et parlez naturellement — réunion, note vocale, brainstorm. Je transcris en local (Whisper, déjà installé, ça marche hors ligne dès le premier lancement) et je continue même si vous changez de vue."
+          text="Lancez un enregistrement et parlez naturellement — réunion, note vocale, brainstorm. Je transcris en local avec Whisper — ça marche hors ligne, on installe le modèle à l'étape suivante — et je continue même si vous changez de vue."
         />
+      ),
+    },
+    {
+      name: "whisper_model",
+      skippable: true,
+      node: (
+        <Panel
+          icon={<IconCircle><MdDownload /></IconCircle>}
+          title="Choisissez votre modèle de transcription"
+          text="Whisper tourne entièrement sur votre machine : vos audios ne quittent jamais votre ordinateur. Le modèle Small est largement suffisant pour un usage quotidien — c'est celui que je vous recommande. Si votre machine est puissante, Medium ou Large v3 Turbo offrent une transcription encore plus fidèle, au prix d'un téléchargement et d'un traitement plus lourds."
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ maxHeight: "min(300px, 38vh)", overflowY: "auto" }}>
+              <WhisperModelPicker onBusyChange={setDownloadBusy} />
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Sans modèle, la transcription ne fonctionnera pas. Vous pourrez changer de
+              modèle ou en télécharger d'autres à tout moment dans Réglages → Transcription.
+            </div>
+          </div>
+        </Panel>
       ),
     },
     {
@@ -332,6 +358,9 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   const total = steps.length;
   const isLast = step === total - 1;
   const current = steps[step];
+  // « Suivant » gelé pendant un téléchargement, uniquement sur l'étape modèle
+  // (« Passer » reste actif — spec/13).
+  const nextDisabled = finishing || (downloadBusy && current.name === "whisper_model");
 
   // Entonnoir d'onboarding (metrics, spec/15 §D) : un event par étape vue —
   // permet de voir où les gens décrochent, en comparant au max `step` atteint
@@ -414,7 +443,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                 Passer
               </button>
             )}
-            <button onClick={next} disabled={finishing} style={primaryBtn(finishing)}>
+            <button onClick={next} disabled={nextDisabled} style={primaryBtn(nextDisabled)}>
               {isLast ? "Commencer" : <>Suivant <MdArrowForward size={16} /></>}
             </button>
           </div>

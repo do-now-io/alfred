@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { MdMoveToInbox, MdAutorenew, MdCheck, MdErrorOutline, MdStickyNote2, MdFolderSpecial, MdCreateNewFolder } from "react-icons/md";
+import { MdMoveToInbox, MdAutorenew, MdCheck, MdErrorOutline, MdStickyNote2, MdFolderSpecial, MdCreateNewFolder, MdArchive, MdUnarchive } from "react-icons/md";
 import type { VaultNode } from "../../bindings/VaultNode";
 import type { ProjectNote } from "../../bindings/ProjectNote";
 import type { NoteFile } from "../../bindings/NoteFile";
@@ -38,6 +38,10 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
   const [ingest, setIngest] = useState<IngestState>("idle");
   const [ingestError, setIngestError] = useState<string | null>(null);
   const [view, setView] = useState<"folders" | "projects">("folders");
+  // Masque les notes `status: archived` par défaut (spec/07 — archivage auto
+  // des transcriptions après ingestion) ; le bouton « Afficher les archives »
+  // les révèle (estompées, badge), sans jamais rien retirer du disque.
+  const [showArchived, setShowArchived] = useState(false);
   const [projectNotes, setProjectNotes] = useState<ProjectNote[]>([]);
   const [rootDragOver, setRootDragOver] = useState(false);
   // Vue Projets (feedback tests) : la transcription appariée est repliée par
@@ -143,6 +147,19 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
     } catch (e) {
       console.error("[notes] drop project failed:", e);
     }
+  };
+
+  // Filtre récursif : retire les fichiers `status: archived` (les dossiers
+  // restent, même vidés de tout leur contenu par le filtre) — n'a d'effet que
+  // si `showArchived` est faux.
+  const filterArchived = (node: VaultNode): VaultNode => {
+    if (!node.is_dir) return node;
+    return {
+      ...node,
+      children: node.children
+        .filter((c) => showArchived || c.is_dir || c.status !== "archived")
+        .map(filterArchived),
+    };
   };
 
   const handleCreate = async () => {
@@ -279,6 +296,21 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
               {icon} {label}
             </button>
           ))}
+          {view === "folders" && (
+            <button
+              onClick={() => setShowArchived((v) => !v)}
+              title={showArchived ? t("notes.fileTree.hideArchived") : t("notes.fileTree.showArchived")}
+              style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                background: showArchived ? "var(--active-bg)" : "transparent",
+                color: showArchived ? "var(--accent)" : "var(--text-secondary)",
+                border: "1px solid var(--border)", borderRadius: 6,
+                padding: "4px 7px", cursor: "pointer", fontSize: 13, flexShrink: 0,
+              }}
+            >
+              {showArchived ? <MdUnarchive size={14} /> : <MdArchive size={14} />}
+            </button>
+          )}
         </div>
       )}
 
@@ -312,7 +344,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
           </div>
         )}
 
-        {vaultPath && view === "folders" && tree && tree.children.map(node => (
+        {vaultPath && view === "folders" && tree && filterArchived(tree).children.map(node => (
           <FileTreeNode
             key={node.path}
             node={node}

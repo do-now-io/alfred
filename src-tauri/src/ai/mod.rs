@@ -365,7 +365,16 @@ async fn run_ingestion_core(
                 }
             }
             match crate::notes::vault::create_intelligence_note(&folder, &report_title, metadata, &body).await {
-                Ok(_) => eprintln!("[ingestion] compte-rendu created: {}", report_title),
+                Ok(_) => {
+                    eprintln!("[ingestion] compte-rendu created: {}", report_title);
+                    // Archivage de la transcription brute (spec/05/07) : le
+                    // compte-rendu a rempli son rôle, seulement quand un
+                    // `recording_id` existe (pas d'appel manuel/texte libre).
+                    if let Some(recording_id) = recording_id {
+                        let recording_folder = crate::transcription::recording_folder(db).await;
+                        crate::notes::vault::archive_raw_note_by_recording_id(vault_root, &recording_folder, recording_id).await;
+                    }
+                }
                 Err(e) => eprintln!("[ingestion] failed to write compte-rendu: {}", e),
             }
         }

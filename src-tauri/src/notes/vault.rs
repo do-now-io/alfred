@@ -14,6 +14,9 @@ pub struct VaultNode {
     pub path: String,
     pub is_dir: bool,
     pub children: Vec<VaultNode>,
+    /// Frontmatter `status` (spec/07) — `None` for directories. Drives the
+    /// default hide + dimmed/badge display of archived notes in the tree.
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, TS)]
@@ -41,6 +44,10 @@ pub struct RecentNote {
     pub recording_id: Option<String>,
 }
 
+/// Raw frontmatter `status` value that hides a note from the tree/Récents by
+/// default (spec/07 — archivage auto de la transcription après ingestion).
+pub const STATUS_ARCHIVED: &str = "archived";
+
 // ─── Tree ─────────────────────────────────────────────────────────────────────
 
 pub fn get_vault_tree(root: &Path) -> Result<VaultNode> {
@@ -57,11 +64,19 @@ fn build_node(path: &Path, root: &Path) -> VaultNode {
         .unwrap_or_else(|| path.to_string_lossy().to_string());
 
     if path.is_file() {
+        // Lu pour le seul champ `status` (spec/07 — masquage des archivées) ;
+        // coût acceptable pour les petits vaults visés (~10 users), même
+        // pattern déjà utilisé par `list_recent_notes`/`list_notes_with_project`.
+        let status = std::fs::read_to_string(path).ok().map(|raw| {
+            let stem = stem(&name);
+            frontmatter::parse(&raw, &stem).0.status
+        });
         return VaultNode {
             name: stem(&name),
             path: path.to_string_lossy().to_string(),
             is_dir: false,
             children: vec![],
+            status,
         };
     }
 
@@ -104,6 +119,7 @@ fn build_node(path: &Path, root: &Path) -> VaultNode {
         path: path.to_string_lossy().to_string(),
         is_dir: true,
         children: dirs,
+        status: None,
     }
 }
 
@@ -117,7 +133,9 @@ fn stem(filename: &str) -> String {
 
 // ─── Recently modified ─────────────────────────────────────────────────────────
 
-/// The `limit` most recently *modified* `.md` notes in the vault.
+/// The `limit` most recently *modified* `.md` notes in the vault, excluding
+/// archived ones (`status: archived`, spec/07) — a raw transcription archived
+/// right after ingestion must not clutter Récents.
 ///
 /// Ordering is by filesystem mtime, which advances when a file is written
 /// (saved/edited) but never when it is merely read — so opening a note to view
@@ -127,8 +145,11 @@ pub fn list_recent_notes(root: &Path, limit: usize) -> Result<Vec<RecentNote>> {
         return Err(anyhow!("Vault folder does not exist: {:?}", root));
     }
 
-    // First pass: collect (path, mtime) for every note without reading contents.
-    let mut entries: Vec<(PathBuf, SystemTime)> = WalkDir::new(root)
+    // Archived notes must be filtered out BEFORE truncating to `limit` (else a
+    // recently-archived transcription could crowd out a real recent note), so
+    // frontmatter has to be read for every candidate up front, not just the
+    // mtime-sorted survivors — fine for the small vaults of ~10 users.
+    let mut entries: Vec<(PathBuf, SystemTime, frontmatter::NoteMetadata)> = WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
@@ -142,7 +163,15 @@ pub fn list_recent_notes(root: &Path, limit: usize) -> Result<Vec<RecentNote>> {
         })
         .filter_map(|e| {
             let modified = e.metadata().ok()?.modified().ok()?;
-            Some((e.path().to_path_buf(), modified))
+            let path = e.path().to_path_buf();
+            let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            let meta = std::fs::read_to_string(&path)
+                .map(|raw| frontmatter::parse(&raw, &stem).0)
+                .unwrap_or_else(|_| frontmatter::NoteMetadata::new(&stem));
+            if meta.status == STATUS_ARCHIVED {
+                return None;
+            }
+            Some((path, modified, meta))
         })
         .collect();
 
@@ -150,21 +179,13 @@ pub fn list_recent_notes(root: &Path, limit: usize) -> Result<Vec<RecentNote>> {
     entries.sort_by(|a, b| b.1.cmp(&a.1));
     entries.truncate(limit);
 
-    // Second pass: read only the survivors to resolve their frontmatter titles.
     let recents = entries
         .into_iter()
-        .map(|(path, modified)| {
+        .map(|(path, modified, meta)| {
             let modified = modified
                 .duration_since(UNIX_EPOCH)
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
-            let stem = path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let meta = std::fs::read_to_string(&path)
-                .map(|raw| frontmatter::parse(&raw, &stem).0)
-                .unwrap_or_else(|_| frontmatter::NoteMetadata::new(&stem));
             RecentNote {
                 path: path.to_string_lossy().to_string(),
                 title: meta.title,
@@ -353,6 +374,43 @@ pub async fn update_note_file(
     tokio::fs::write(path, content).await
         .map_err(|e| anyhow!("Cannot write {:?}: {}", path, e))?;
     get_note_file(path).await
+}
+
+/// Archive la note brute de transcription (`recording_folder`) liée à
+/// `recording_id`, une fois son compte-rendu écrit (spec/05/07) — `status:
+/// archived`, rien n'est supprimé, le WAV reste réécoutable. Best-effort et
+/// silencieux : une erreur ici ne doit jamais faire échouer l'ingestion, qui
+/// a déjà réussi son travail principal (compte-rendu + tâches).
+pub async fn archive_raw_note_by_recording_id(vault_root: &Path, recording_folder: &str, recording_id: &str) {
+    let folder = vault_root.join(recording_folder);
+    let found = WalkDir::new(&folder)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file() && e.path().extension().map(|x| x == "md").unwrap_or(false))
+        .find_map(|e| {
+            let path = e.path();
+            let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            let raw = std::fs::read_to_string(path).ok()?;
+            let meta = frontmatter::parse(&raw, &stem).0;
+            (meta.recording_id.as_deref() == Some(recording_id)).then(|| path.to_path_buf())
+        });
+
+    let Some(path) = found else {
+        eprintln!("[ingestion] raw note for recording_id={} not found, skipping archive", recording_id);
+        return;
+    };
+
+    match get_note_file(&path).await {
+        Ok(note) if note.metadata.status == STATUS_ARCHIVED => {} // already archived, nothing to do
+        Ok(note) => {
+            let mut metadata = note.metadata;
+            metadata.status = STATUS_ARCHIVED.to_string();
+            if let Err(e) = update_note_file(&path, metadata, &note.body).await {
+                eprintln!("[ingestion] failed to archive raw note {:?}: {}", path, e);
+            }
+        }
+        Err(e) => eprintln!("[ingestion] failed to read raw note {:?} for archiving: {}", path, e),
+    }
 }
 
 pub async fn rename_note_file(old_path: &Path, new_name: &str) -> Result<NoteFile> {

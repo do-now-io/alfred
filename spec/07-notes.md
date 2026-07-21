@@ -145,25 +145,31 @@ dans le volet **Récents** (gauche), où seul le nom (souvent une date) s'affich
 
 (Design conservé de l'ancienne spec ; restylage avec spec 10.)
 
-### Archivage des notes & « Afficher les archives » — 📝 à faire (feedback tests)
+### Archivage des notes & « Afficher les archives » — ✅ fait
 
 Une **note de transcription brute** (`alfred-raw/`) n'a d'intérêt que le temps d'en
 tirer un compte-rendu. On l'**archive automatiquement** une fois l'intelligence
 faite, pour ne pas encombrer la navigation :
 
-- **Archivage auto de la transcription** : après la **vérification/correction**
-  (`/resolve`, spec/17) puis l'**ingestion** (compte-rendu + tâches écrits,
-  `finalize_ingestion`, spec/05), la note **brute de transcription** passe
-  **`status: archived`** (frontmatter). Le **compte-rendu** (`alfred-intelligence/`),
-  lui, **reste `active`**. Le WAV reste dans `alfred-raw/` (ré-écoute / ré-ingestion,
-  spec/04). Rien n'est supprimé — juste un changement de statut.
+- **Archivage auto de la transcription** : dès que le **compte-rendu** est écrit
+  dans `run_ingestion_core` (spec/05) — donc après la vérification/correction
+  éventuelle (`/resolve`, spec/17) puisque c'est elle qui débouche sur l'ingestion
+  finale (`finalize_ingestion`) — la note **brute de transcription** (retrouvée
+  par `recording_id` sous `alfred-raw/`, `vault::archive_raw_note_by_recording_id`)
+  passe **`status: archived`** (frontmatter). Le **compte-rendu**
+  (`alfred-intelligence/`), lui, **reste `active`**. Le WAV reste dans
+  `alfred-raw/` (ré-écoute / ré-ingestion, spec/04). Rien n'est supprimé — juste
+  un changement de statut. Best-effort : une erreur ici ne fait jamais échouer
+  l'ingestion (déjà réussie sur son travail principal).
 - **Masquage par défaut** : les notes `status: archived` sont **masquées** de
-  **l'arbre Notes** *et* des **Récents** (spec/10) — elles ne polluent plus la
-  navigation.
-- **Bouton « Afficher les archives »** (page Notes) : **toggle** qui révèle les
-  notes archivées (dans l'arbre) ; re-cliqué, les remasque. État visuel « archivé »
-  distinct (estompé / badge). L'utilisateur peut **désarchiver** une note (repasser
-  `active`) depuis Properties (champ `status` existant) ou un menu.
+  **l'arbre Notes** (`VaultNode.status`, filtré côté front) *et* des **Récents**
+  (spec/10 — filtrées côté backend, `list_recent_notes`, avant la troncature au
+  nombre affiché) — elles ne polluent plus la navigation.
+- **Bouton « Afficher les archives »** (page Notes, vue Dossiers) : **toggle**
+  qui révèle les notes archivées (dans l'arbre) ; re-cliqué, les remasque. État
+  visuel « archivé » distinct (estompé + badge). L'utilisateur peut
+  **désarchiver** une note (repasser `active`) depuis Properties (champ `status`
+  existant, déjà fonctionnel).
 
 > **Cohérence** : l'archivage étant un simple `status` frontmatter (déjà dans
 > `NoteMetadata`), il reste **compatible Obsidian** et réversible.

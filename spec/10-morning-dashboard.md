@@ -28,9 +28,11 @@ Topbar **sans barre de recherche**.
   **Fusion faite** (✅, débloquée par l'historique de chat) : « Alfred » a pris
   la place d'« Aujourd'hui » sur `/` — `/ai-actions` a disparu comme route à
   part (nav, route, écran `AIActions.tsx` retirés). Voir §Page Alfred cible.
-- Section **« Récents »** (5 notes récemment modifiées). 📝 **Masquer les notes
-  archivées** (`status: archived`, feedback tests, spec/07) — une transcription
-  archivée après ingestion ne doit plus apparaître dans les Récents.
+- Section **« Récents »** (5 notes récemment modifiées). ✅ **Masque les notes
+  archivées** (`status: archived`, feedback tests, spec/07) — filtré côté backend
+  (`list_recent_notes`) avant la troncature aux 5 affichées, donc une
+  transcription archivée après ingestion ne prend jamais la place d'une note
+  réellement récente.
 - ✅ **Retirés** : `/meetings`, `/calendar` (routes mortes, aucun lien nav ne les
   atteignait déjà — supprimées avec `Placeholder.tsx`). Pas de « Actions IA »
   distinct trouvé dans le code actuel (le nav « Alfred » d'aujourd'hui est déjà le

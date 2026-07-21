@@ -34,6 +34,7 @@ export default function FileTreeNode({
 
   const isExpanded = expandedPaths.has(node.path);
   const isSelected = !node.is_dir && node.path === selectedPath;
+  const isArchived = node.status === "archived";
   const indent = depth * 16;
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -151,6 +152,7 @@ export default function FileTreeNode({
           borderRadius: 4,
           userSelect: "none",
           overflow: "hidden", whiteSpace: "nowrap",
+          opacity: isArchived ? 0.55 : 1,
         }}
         onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "var(--bg)"; }}
         onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
@@ -158,6 +160,14 @@ export default function FileTreeNode({
         {/* Icône de type à l'œil (spec/07) — dérivée du dossier / nom de fichier. */}
         <NoteTypeIcon path={node.path} size={13} />
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.name}</span>
+        {isArchived && (
+          <span style={{
+            fontSize: 10, color: "var(--text-muted)", border: "1px solid var(--border)",
+            borderRadius: 8, padding: "0 5px", flexShrink: 0, marginLeft: "auto",
+          }}>
+            {t("notes.fileTree.archivedBadge")}
+          </span>
+        )}
       </div>
 
       {contextMenu && (

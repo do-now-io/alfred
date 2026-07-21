@@ -100,8 +100,13 @@ La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
   marqueurs.
 - **Ajout rapide par colonne** (« + » en tête de colonne → `create_todo` dans la
   section correspondante) + **compteur** par colonne.
-- **Filtres** (à confirmer) : par **responsable**, par **échéance** (en retard /
-  cette semaine), éventuellement par **projet** (voir ci-dessous).
+- **Filtres** — ✅ faits : par **responsable**, par **échéance** (en retard /
+  cette semaine) et par **projet**. La liste du filtre projet (et de
+  l'autocomplétion de la fiche tâche) = **union** des projets du vault
+  (`list_projects`, spec/07 — frontmatter des notes) et des marqueurs `+Projet`
+  déjà posés sur des tâches : le filtre est visible dès que le vault connaît
+  des projets, même si aucune tâche n'est encore taguée (avant, liste dérivée
+  des seules tâches → filtre invisible tant que rien n'était tagué).
 - **Recherche texte** — ✅ fait : champ « Rechercher… » à côté des filtres ;
   masque en direct les cartes dont ni le titre ni le responsable ne matchent
   (insensible à la casse et aux accents), toutes colonnes confondues. Se cumule

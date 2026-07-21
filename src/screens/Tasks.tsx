@@ -136,17 +136,26 @@ export default function Tasks() {
     }
   }, []);
 
+  // Projets connus du vault (spec/07 `list_projects`) : alimente le filtre
+  // projet et l'autocomplétion de la fiche, même quand aucune tâche n'est
+  // encore taguée `+Projet`. Un échec laisse juste la liste vide.
+  const [vaultProjects, setVaultProjects] = useState<string[]>([]);
+  const loadVaultProjects = useCallback(() => {
+    invoke<string[]>("list_projects").then(setVaultProjects).catch(() => {});
+  }, []);
+
   useEffect(() => { fetchVaultPath(); }, [fetchVaultPath]);
   useEffect(() => {
     invoke<string>("get_todo_file").then(setTodoRel).catch(() => {});
   }, []);
   useEffect(() => {
     load();
+    loadVaultProjects();
     const unsubs: Array<() => void> = [];
     listen("todos-updated", () => load()).then((fn) => unsubs.push(fn));
-    listen("notes-updated", () => load()).then((fn) => unsubs.push(fn));
+    listen("notes-updated", () => { load(); loadVaultProjects(); }).then((fn) => unsubs.push(fn));
     return () => unsubs.forEach((fn) => fn());
-  }, [load]);
+  }, [load, loadVaultProjects]);
 
   const owners = useMemo(() => {
     const set = new Set<string>();
@@ -155,10 +164,10 @@ export default function Tasks() {
   }, [todos]);
 
   const projects = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(vaultProjects);
     for (const t of todos) if (t.project) set.add(t.project);
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [todos]);
+  }, [todos, vaultProjects]);
 
   const openTask = useMemo(() => todos.find((t) => t.id === openTaskId) ?? null, [todos, openTaskId]);
 

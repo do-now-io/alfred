@@ -275,6 +275,7 @@ function AiAccessSection() {
   const [subStatus, setSubStatus] = useState<"unknown" | "none" | "active" | "error">("unknown");
   const [subscribing, setSubscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [managing, setManaging] = useState(false);
 
   const refreshSub = useCallback(() => {
     invoke<string | null>("get_secret", { account: "alfredia_token" }).then((t) => {
@@ -319,6 +320,18 @@ function AiAccessSection() {
     }
   };
 
+  const handleManage = async () => {
+    setError(null);
+    setManaging(true);
+    try {
+      await invoke("manage_alfredia_subscription");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setManaging(false);
+    }
+  };
+
   const radio = (value: string, label: string) => (
     <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, color: "var(--text-primary)", cursor: "pointer" }}>
       <input type="radio" name="ai_mode" checked={mode === value} onChange={() => changeMode(value)} />
@@ -346,7 +359,26 @@ function AiAccessSection() {
       {mode === "alfredia" && (
         <SettingRow label={t("settings.aiAccessSection.subscriptionLabel")}>
           {subStatus === "active" ? (
-            <span style={{ fontSize: 13, color: "#34C759" }}>✓ {t("settings.aiAccessSection.active")}</span>
+            <>
+              <span style={{ fontSize: 13, color: "#34C759" }}>✓ {t("settings.aiAccessSection.active")}</span>
+              <button
+                onClick={handleManage}
+                disabled={managing}
+                title={t("settings.aiAccessSection.manageHelp")}
+                style={{
+                  marginLeft: 10,
+                  background: "transparent",
+                  color: "var(--text-secondary)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  padding: "4px 10px",
+                  cursor: managing ? "not-allowed" : "pointer",
+                  fontSize: 12.5,
+                }}
+              >
+                {managing ? t("settings.aiAccessSection.manageOpening") : t("settings.aiAccessSection.manage")}
+              </button>
+            </>
           ) : (
             <>
               {subStatus === "error" && (

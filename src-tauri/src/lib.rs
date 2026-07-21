@@ -641,6 +641,15 @@ async fn subscribe_alfredia(
         .map_err(|e| e.to_string())
 }
 
+/// Ouvre le portail de gestion d'abonnement Stripe (spec/15/11) — gérer les
+/// moyens de paiement, changer de formule, ou **annuler**.
+#[tauri::command]
+async fn manage_alfredia_subscription(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    subscription::open_billing_portal(&state.http_client)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Answers a question over the vault AND records the exchange in the chat
 /// history (spec/10) — creating a new conversation when `conversation_id` is
 /// absent. Persistence is best-effort: a history write failure never loses the
@@ -1651,6 +1660,7 @@ pub fn run() {
             get_daily_brief,
             submit_feedback,
             subscribe_alfredia,
+            manage_alfredia_subscription,
             // Todos
             get_todos,
             get_all_todos,

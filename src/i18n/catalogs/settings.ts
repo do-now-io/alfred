@@ -37,6 +37,9 @@ export default {
       subscribeTrial: "Commencer l'essai gratuit — 14 jours",
       trialThenYearly: "Essai gratuit puis annuel",
       thenPrice: "Puis 20 €/mois (ou en annuel), sans engagement — annulable à tout moment.",
+      manage: "Gérer l'abonnement",
+      manageOpening: "Ouverture…",
+      manageHelp: "Ouvre le portail Stripe — moyen de paiement, formule, ou annulation",
     },
     transcriptionSection: {
       language: "Langue",
@@ -134,6 +137,9 @@ export default {
       subscribeTrial: "Start the free trial — 14 days",
       trialThenYearly: "Free trial then yearly",
       thenPrice: "Then €20/month (or yearly), no commitment — cancel anytime.",
+      manage: "Manage subscription",
+      manageOpening: "Opening…",
+      manageHelp: "Opens the Stripe portal — payment method, plan, or cancellation",
     },
     transcriptionSection: {
       language: "Language",

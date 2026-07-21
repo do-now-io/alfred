@@ -45,6 +45,34 @@ pub async fn subscribe(plan: &str, db: &SqlitePool, app: &tauri::AppHandle) -> R
     Ok(())
 }
 
+/// Ask the backend for a Stripe Billing Portal session and open it in the
+/// user's default browser (spec/15/11) — the desktop app never sees Stripe
+/// customer/subscription ids, so this always goes through the backend.
+pub async fn open_billing_portal(http: &reqwest::Client) -> Result<()> {
+    let token = keychain::get_secret("alfredia_token")?
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| anyhow!("Aucun abonnement AlfredIA configuré"))?;
+
+    let resp = http
+        .post(format!("{BACKEND_BASE}/subscription/portal"))
+        .header("authorization", format!("Bearer {token}"))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        return Err(anyhow!("Impossible d'ouvrir la gestion de l'abonnement. Réessaie plus tard."));
+    }
+
+    let body: serde_json::Value = resp.json().await?;
+    let url = body
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("Réponse invalide du serveur"))?;
+
+    tauri_plugin_opener::open_url(url, None::<String>)?;
+    Ok(())
+}
+
 /// Accept loopback connections until one carries `GET /callback?token=…`.
 /// Browsers also probe `/favicon.ico` etc. — answer 404 and keep listening.
 async fn wait_for_token(listener: &TcpListener) -> Result<String> {

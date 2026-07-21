@@ -33,10 +33,12 @@ d'une note (Properties, spec/07). Édité ici.
 - *Clé perso* : saisir `claude_api_key` + **Tester** (`test_api_key`).
 - *AlfredIA* : bouton **Commencer l'essai gratuit — 14 jours** (loopback,
   spec/15) ; une fois le token reçu, statut affiché **« ✓ Activé »** (✅ fait,
-  léger). **Pas fait** : distinguer essai/actif et afficher les **jours
-  restants** — nécessite un endpoint de statut détaillé côté backend
-  (`GET /subscription/status`, pas encore construit — cf. spec/15). Gérer
-  l'abonnement (portail Stripe) = plus tard.
+  léger), avec bouton **« Gérer l'abonnement »** à côté — ouvre le **portail
+  Stripe** (hébergé, hors app) dans le navigateur par défaut : moyen de
+  paiement, changement de formule, **annulation** (✅ fait — spec/15
+  `POST /subscription/portal`). **Pas fait** : distinguer essai/actif et
+  afficher les **jours restants** — nécessiterait un endpoint de statut
+  détaillé côté backend (`GET /subscription/status`, pas construit).
 - Basculer de mode **à tout moment**.
 
 **Transcription** : **gestionnaire de modèles Whisper** — composant partagé
@@ -81,5 +83,6 @@ de l'app est `com.alfred.app` → aligné (spec/12).
 
 ## Hors v1 / plus tard
 
-Gestion Vapi / Places / Google, intervalle de sync calendrier, portail de gestion
-d'abonnement Stripe, éditeur de prompt d'ingestion API.
+Gestion Vapi / Places / Google, intervalle de sync calendrier, éditeur de prompt
+d'ingestion API. *(Le portail de gestion d'abonnement Stripe est fait — voir
+§Accès IA ci-dessus.)*

@@ -19,6 +19,9 @@ pub struct AppState {
     pub dictation_stop_flag: Arc<AtomicBool>,
     pub dictation_handle: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
     pub transcription_tx: mpsc::Sender<TranscriptionJob>,
+    /// Téléchargements de modèles Whisper en cours (spec/04) : clé = nom du
+    /// modèle, valeur = drapeau d'annulation. Présence = garde anti-doublon.
+    pub downloads: crate::transcription::DownloadRegistry,
     pub http_client: reqwest::Client,
     pub resource_dir: Option<std::path::PathBuf>,
     pub vault_path: Arc<StdMutex<Option<std::path::PathBuf>>>,

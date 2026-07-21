@@ -3,12 +3,46 @@ use chrono::Timelike;
 use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
 use tauri::Emitter;
 use tokio::sync::mpsc;
+use ts_rs::TS;
 use uuid::Uuid;
+
+/// Catalogue des modèles proposés (spec/04) — source de vérité unique. Les noms
+/// s'insèrent tels quels dans `ggml-{name}.bin` (fichiers Hugging Face
+/// ggerganov/whisper.cpp) ; `size_mb` ne sert qu'à l'affichage.
+pub struct WhisperModelDef {
+    pub name: &'static str,
+    pub size_mb: u64,
+    pub recommended: bool,
+}
+
+pub const WHISPER_MODELS: &[WhisperModelDef] = &[
+    WhisperModelDef { name: "tiny", size_mb: 75, recommended: false },
+    WhisperModelDef { name: "base", size_mb: 142, recommended: false },
+    WhisperModelDef { name: "small", size_mb: 466, recommended: true },
+    WhisperModelDef { name: "medium", size_mb: 1530, recommended: false },
+    WhisperModelDef { name: "large-v3-turbo", size_mb: 1620, recommended: false },
+];
+
+/// Téléchargements en cours : clé = nom du modèle (garde anti-doublon),
+/// valeur = drapeau d'annulation vérifié à chaque chunk (spec/04).
+pub type DownloadRegistry = Arc<StdMutex<HashMap<String, Arc<AtomicBool>>>>;
+
+#[derive(Debug, Serialize, Clone, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct WhisperModelInfo {
+    pub name: String,
+    pub size_mb: u64,
+    pub recommended: bool,
+    /// "downloaded" | "downloading" | "missing"
+    pub status: String,
+    pub active: bool,
+}
 
 /// Émet `transcription-progress { recording_id, percent }` (spec/04, feedback
 /// tests) — débounce **sur changement d'entier** (0..100), pas sur un minuteur :
@@ -143,8 +177,23 @@ pub async fn enqueue_job(
 pub async fn run_transcription_worker(mut rx: mpsc::Receiver<TranscriptionJob>) {
     while let Some(job) = rx.recv().await {
         let model_size = job.model_size.clone();
+        let recording_id = job.recording_id.clone();
+        let app_handle = job.app_handle.clone();
+        let data_dir = job.data_dir.clone();
+        let resource_dir = job.resource_dir.clone();
         if let Err(e) = process_job(job).await {
             eprintln!("Transcription error: {}", e);
+            // L'échec doit être visible côté UI (bannière App.tsx, spec/04) —
+            // pas seulement en stderr/metrics. `model_missing` permet à la
+            // bannière de proposer « Ouvrir les Réglages » sur le cas typique :
+            // onboarding passé sans téléchargement de modèle.
+            let model_missing =
+                resolve_model_path_parts(&model_size, &data_dir, resource_dir.as_deref()).is_err();
+            let _ = app_handle.emit("transcription-failed", serde_json::json!({
+                "recording_id": recording_id,
+                "message": e.to_string(),
+                "model_missing": model_missing,
+            }));
             // Message tronqué par prudence (anonyme, spec/15 §D) — les erreurs
             // observées ici sont de courts messages internes whisper.cpp, mais
             // on borne quand même la taille au cas où.
@@ -179,9 +228,12 @@ fn resolve_model_path_parts(model_size: &str, data_dir: &std::path::Path, resour
         return Ok(user_path);
     }
 
+    // Message utilisateur (bannière transcription-failed, erreur de dictée) :
+    // en français, actionnable — le cas typique est l'onboarding passé sans
+    // téléchargement (spec/04).
     Err(anyhow!(
-        "Model '{}' not found. Bundle it in the app or download it from Settings.",
-        filename
+        "Modèle Whisper « {} » introuvable — téléchargez-le dans Réglages → Transcription.",
+        model_size
     ))
 }
 
@@ -761,18 +813,55 @@ fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>> {
     Ok(output)
 }
 
+/// Retire le modèle du registre de téléchargements quoi qu'il arrive (succès,
+/// erreur, annulation) — sans quoi un échec laisserait le modèle bloqué en
+/// statut « downloading » et la garde anti-doublon refuserait tout retry.
+struct DownloadRegistration {
+    downloads: DownloadRegistry,
+    model: String,
+}
+
+impl Drop for DownloadRegistration {
+    fn drop(&mut self) {
+        self.downloads.lock().unwrap().remove(&self.model);
+    }
+}
+
 pub async fn download_model(
     size: &str,
     data_dir: &PathBuf,
     app_handle: &tauri::AppHandle,
+    downloads: &DownloadRegistry,
 ) -> Result<()> {
+    if !WHISPER_MODELS.iter().any(|m| m.name == size) {
+        return Err(anyhow!("Modèle inconnu : {}", size));
+    }
+
     let model_dir = data_dir.join("models");
     tokio::fs::create_dir_all(&model_dir).await?;
 
     let model_path = model_dir.join(format!("ggml-{}.bin", size));
     if model_path.exists() {
+        // Rien à faire, mais on émet quand même la fin pour que l'UI converge.
+        let _ = app_handle.emit("download-complete", serde_json::json!({ "model": size }));
         return Ok(());
     }
+
+    // Garde anti-doublon + drapeau d'annulation (spec/04).
+    let cancel_flag = {
+        let mut reg = downloads.lock().unwrap();
+        if reg.contains_key(size) {
+            return Err(anyhow!("Téléchargement de « {} » déjà en cours", size));
+        }
+        let flag = Arc::new(AtomicBool::new(false));
+        reg.insert(size.to_string(), flag.clone());
+        flag
+    };
+    let _registration = DownloadRegistration {
+        downloads: downloads.clone(),
+        model: size.to_string(),
+    };
+    crate::metrics::send("model_download_started", serde_json::json!({ "model": size }));
 
     let url = format!(
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{}.bin",
@@ -784,27 +873,34 @@ pub async fn download_model(
     // then treat as complete.
     let part_path = model_dir.join(format!("ggml-{}.bin.part", size));
 
-    let client = reqwest::Client::new();
-    let mut resp = client.get(&url).send().await?.error_for_status()?;
-
-    let total = resp.content_length().unwrap_or(0);
-    let mut downloaded: u64 = 0;
-    let mut file = tokio::fs::File::create(&part_path).await?;
-
     let download_result: Result<()> = async {
+        let client = reqwest::Client::new();
+        let mut resp = client.get(&url).send().await?.error_for_status()?;
+
+        let total = resp.content_length().unwrap_or(0);
+        let mut downloaded: u64 = 0;
+        let mut last_percent: i64 = -1;
+        let mut file = tokio::fs::File::create(&part_path).await?;
+
         while let Some(chunk) = resp.chunk().await? {
+            if cancel_flag.load(Ordering::Relaxed) {
+                return Err(anyhow!("Téléchargement annulé"));
+            }
             tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
             downloaded += chunk.len() as u64;
-            let percent = if total > 0 {
-                (downloaded * 100 / total) as f64
-            } else {
-                0.0
-            };
-            let _ = app_handle.emit("download-progress", serde_json::json!({
-                "percent": percent,
-                "bytes_downloaded": downloaded,
-                "total_bytes": total
-            }));
+            // Débounce sur changement d'entier (même logique que la
+            // progression de transcription) : 100 événements max au lieu
+            // d'un par chunk sur 1,5 Go.
+            let percent = if total > 0 { (downloaded * 100 / total) as i64 } else { 0 };
+            if percent != last_percent {
+                last_percent = percent;
+                let _ = app_handle.emit("download-progress", serde_json::json!({
+                    "model": size,
+                    "percent": percent,
+                    "bytes_downloaded": downloaded,
+                    "total_bytes": total
+                }));
+            }
         }
         Ok(())
     }
@@ -812,11 +908,94 @@ pub async fn download_model(
 
     if let Err(e) = download_result {
         let _ = tokio::fs::remove_file(&part_path).await;
+        let cancelled = cancel_flag.load(Ordering::Relaxed);
+        let _ = app_handle.emit("download-error", serde_json::json!({
+            "model": size,
+            "message": e.to_string(),
+            "cancelled": cancelled,
+        }));
+        let msg: String = e.to_string().chars().take(200).collect();
+        crate::metrics::send(
+            "model_download_failed",
+            serde_json::json!({ "model": size, "cancelled": cancelled, "error": msg }),
+        );
         return Err(e);
     }
 
     tokio::fs::rename(&part_path, &model_path).await?;
+    let _ = app_handle.emit("download-complete", serde_json::json!({ "model": size }));
+    crate::metrics::send("model_download_completed", serde_json::json!({ "model": size }));
     Ok(())
+}
+
+/// Demande l'annulation d'un téléchargement en cours (no-op sinon). La boucle
+/// de `download_model` vérifie le drapeau à chaque chunk et supprime le `.part`.
+pub fn cancel_model_download(size: &str, downloads: &DownloadRegistry) {
+    if let Some(flag) = downloads.lock().unwrap().get(size) {
+        flag.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Supprime un modèle téléchargé ($APP_DATA_DIR/models uniquement — jamais le
+/// dossier Resources). Refusé sur le modèle actif ou en cours de téléchargement.
+pub async fn delete_whisper_model(
+    size: &str,
+    db: &SqlitePool,
+    data_dir: &std::path::Path,
+    downloads: &DownloadRegistry,
+) -> Result<()> {
+    if !WHISPER_MODELS.iter().any(|m| m.name == size) {
+        return Err(anyhow!("Modèle inconnu : {}", size));
+    }
+    let active = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'whisper_model'")
+        .fetch_optional(db).await?
+        .unwrap_or_else(|| "small".to_string());
+    if active == size {
+        return Err(anyhow!("Impossible de supprimer le modèle actif"));
+    }
+    if downloads.lock().unwrap().contains_key(size) {
+        return Err(anyhow!("Téléchargement en cours — annulez-le d'abord"));
+    }
+    let path = data_dir.join("models").join(format!("ggml-{}.bin", size));
+    if path.exists() {
+        tokio::fs::remove_file(&path).await?;
+    }
+    Ok(())
+}
+
+/// Catalogue + état sur disque, pour le `WhisperModelPicker` (onboarding +
+/// Réglages, spec/04). Un modèle bundlé côté Resources (confort dev) est vu
+/// « downloaded » ; les `.part` orphelins sont ignorés (→ « missing »).
+pub async fn list_whisper_models(
+    db: &SqlitePool,
+    data_dir: &std::path::Path,
+    resource_dir: Option<&std::path::Path>,
+    downloads: &DownloadRegistry,
+) -> Result<Vec<WhisperModelInfo>> {
+    let active = sqlx::query_scalar!("SELECT value FROM config WHERE key = 'whisper_model'")
+        .fetch_optional(db).await?
+        .unwrap_or_else(|| "small".to_string());
+    let downloading: Vec<String> = downloads.lock().unwrap().keys().cloned().collect();
+
+    Ok(WHISPER_MODELS
+        .iter()
+        .map(|m| {
+            let status = if downloading.iter().any(|d| d == m.name) {
+                "downloading"
+            } else if resolve_model_path_parts(m.name, data_dir, resource_dir).is_ok() {
+                "downloaded"
+            } else {
+                "missing"
+            };
+            WhisperModelInfo {
+                name: m.name.to_string(),
+                size_mb: m.size_mb,
+                recommended: m.recommended,
+                status: status.to_string(),
+                active: m.name == active,
+            }
+        })
+        .collect())
 }
 
 pub async fn get_transcription(recording_id: &str, db: &SqlitePool) -> Result<Option<serde_json::Value>> {

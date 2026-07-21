@@ -507,9 +507,43 @@ async fn import_audio_file(
 async fn download_model(
     size: String,
     app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    transcription::download_model(&size, &data_dir, &app)
+    transcription::download_model(&size, &data_dir, &app, &state.downloads)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_whisper_models(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<transcription::WhisperModelInfo>, String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    transcription::list_whisper_models(
+        &state.db,
+        &data_dir,
+        state.resource_dir.as_deref(),
+        &state.downloads,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn cancel_model_download(size: String, state: tauri::State<'_, AppState>) {
+    transcription::cancel_model_download(&size, &state.downloads);
+}
+
+#[tauri::command]
+async fn delete_whisper_model(
+    size: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    transcription::delete_whisper_model(&size, &state.db, &data_dir, &state.downloads)
         .await
         .map_err(|e| e.to_string())
 }
@@ -1524,6 +1558,7 @@ pub fn run() {
                 dictation_stop_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 dictation_handle: Arc::new(Mutex::new(None)),
                 transcription_tx,
+                downloads: Arc::new(StdMutex::new(std::collections::HashMap::new())),
                 http_client: http_client.clone(),
                 resource_dir,
                 vault_path: Arc::new(StdMutex::new(vault_path.clone())),
@@ -1577,6 +1612,9 @@ pub fn run() {
             cancel_dictation,
             // Transcription
             download_model,
+            list_whisper_models,
+            cancel_model_download,
+            delete_whisper_model,
             get_transcription,
             // AI
             test_api_key,

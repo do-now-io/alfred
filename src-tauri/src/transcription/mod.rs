@@ -21,6 +21,26 @@ pub struct WhisperModelDef {
     pub recommended: bool,
 }
 
+/// Résout la langue à passer à Whisper depuis `language_hint` (spec/17 — bug
+/// confirmé « transcription EN sortie en FR ») : si explicite, on la **force**
+/// telle quelle plutôt que `auto` — un `initial_prompt` (glossaire) écrit dans
+/// une langue peut biaiser l'auto-détection Whisper vers cette langue même sur
+/// un audio différent. Si `auto` (aucun réglage explicite), défaut sûr : viser
+/// l'anglais quand l'app est configurée en anglais, plutôt que de laisser une
+/// auto-détection implicitement tirée vers le français par l'enrobage du
+/// glossaire (qui reste, lui, dans la langue du contexte — voir `ai::mod`).
+async fn resolve_whisper_language(db: &SqlitePool, lang_hint: &str) -> Option<String> {
+    if lang_hint != "auto" {
+        return Some(lang_hint.to_string());
+    }
+    let app_language: Option<String> = sqlx::query_scalar("SELECT value FROM config WHERE key = 'app_language'")
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+    if app_language.as_deref() == Some("en") { Some("en".to_string()) } else { None }
+}
+
 pub const WHISPER_MODELS: &[WhisperModelDef] = &[
     WhisperModelDef { name: "tiny", size_mb: 75, recommended: false },
     WhisperModelDef { name: "base", size_mb: 142, recommended: false },
@@ -153,11 +173,12 @@ pub async fn enqueue_job(
         .flatten()
         .unwrap_or_else(|| "meeting".to_string());
 
+    let language = resolve_whisper_language(&db, &lang).await;
     let job = TranscriptionJob {
         recording_id,
         file_path,
         model_size: model,
-        language: if lang == "auto" { None } else { Some(lang) },
+        language,
         threads,
         initial_prompt: glossary,
         purpose,
@@ -264,7 +285,7 @@ pub async fn transcribe_wav_text(
 
     let model_path = resolve_model_path_parts(&model, data_dir, resource_dir)?;
     let wav = wav_path.to_path_buf();
-    let language = if lang == "auto" { None } else { Some(lang) };
+    let language = resolve_whisper_language(db, &lang).await;
 
     let (text, _segments, _detected) = tokio::task::spawn_blocking(move || {
         // Dictée éphémère (spec/07b) : pas de recording_id, pas d'UI à mettre à

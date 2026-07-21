@@ -27,12 +27,13 @@ propres et termes métier. C'est aussi la **source du glossaire Whisper** (spec/
 - **UI** : ligne « Contexte interne » dans Settings (section Notes) → commande
   `open_context_note` (crée si absente) puis ouverture dans `/notes`.
 
-### Titres localisés selon `app_language` — 📝 à faire (feedback tests EN, spec/21)
+### Titres localisés selon `app_language` — ✅ fait (feedback tests EN, spec/21)
 
 Constat test : en anglais, le corps du contexte est bien en anglais **mais les titres
-restent en français** (`## Mon entreprise`…). Les titres du template **et** ceux écrits
-par `build_context_from_transcription` (spec/13, tool `submit_context`) sont **codés
-en français**. Il faut les **localiser selon `app_language`** :
+restaient en français** (`## Mon entreprise`…). Les titres du template **et** ceux écrits
+par `build_context_from_transcription` (spec/13, tool `submit_context`) étaient **codés
+en français**. Corrigé — **localisés selon `app_language`** (`notes/context.rs`,
+`ContextTitles`/`titles(lang)`) :
 
 | Clé interne (stable) | FR | EN |
 |---|---|---|
@@ -43,10 +44,14 @@ en français**. Il faut les **localiser selon `app_language`** :
 
 - La note (`Contexte Alfred.md`) garde un **nom de fichier stable** (pas de renommage
   par langue) ; seuls les **titres de sections** sont localisés.
-- **Piège (spec/21)** : ces titres sont **relus/écrits** par l'IA et par
-  `write_spoken_context` (append sous « Appris à l'oral »/« Learned by voice »). Le
-  code doit repérer une section par sa **clé interne** (matcher FR **ou** EN), pas par
-  le libellé exact, pour rester robuste si l'utilisateur change de langue après coup.
+- **Piège (spec/21) — traité.** Ces titres sont **relus/écrits** par l'IA et par
+  `write_spoken_context` (append sous « Appris à l'oral »/« Learned by voice »).
+  `context_has_content` compare contre l'union des deux gabarits (FR **et** EN) ;
+  `has_learned_heading` reconnaît `## Appris automatiquement` **ou**
+  `## Automatically learned` — une section existante est retrouvée quelle que
+  soit la langue dans laquelle elle a été écrite, jamais par le libellé exact
+  seul. Un changement de langue en cours de route laisse la note dans un mélange
+  FR/EN assumé (rien n'est réécrit silencieusement).
 - Titre `# Contexte Alfred` / `# Alfred context` : localisé aussi.
 
 ### Écriture par la voix (`write_spoken_context`) — remplacement, pas empilement

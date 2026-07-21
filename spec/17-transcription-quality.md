@@ -46,19 +46,23 @@ S'ajoutent deux gains **indépendants du contexte** : la **qualité de décodage
   transcrits **en premier** (la fin saute si troncature).
 - **Injection** : `initial_prompt` = glossaire dans `run_whisper` (spec/04), sur une
   **passe unique** de tout le WAV (pas de chunking en v1 — voir Hors v1).
-- ⚠️ **Multilingue — BUG confirmé au test (📝 à corriger).** Une réunion **en
-  anglais** est sortie **transcrite en français**. Cause : la phrase d'enrobage du
-  glossaire est **codée « Transcription en français… »** → `initial_prompt` FR **biaise
-  Whisper** vers le français (et fausse l'auto-détection de langue). Correctifs :
-  - **La phrase d'enrobage doit être dans la langue cible**, pas figée en FR :
-    piloter par `language_hint` / `app_language` (« Transcription in English. Terms
-    and proper nouns: … » en EN). Les noms propres eux-mêmes restent inchangés.
-  - **Forcer `language`** quand elle est connue (`language_hint` = `en`) plutôt que
-    `auto`, pour éviter une auto-détection faussée par le prompt.
-  - **Défaut sûr** : si `app_language = en` et `language_hint` non défini, viser EN
-    (au lieu du FR implicite d'aujourd'hui).
-  Le compte-rendu FR qui a suivi est un **second problème** (prompt d'ingestion FR,
-  spec/05) — les deux se cumulent.
+- ⚠️ **Multilingue — BUG confirmé au test, ✅ corrigé.** Une réunion **en
+  anglais** était sortie **transcrite en français**. Cause : la phrase d'enrobage du
+  glossaire était **codée « Transcription en français… »** (l'exemple donné à
+  Claude dans `GLOSSARY_SYSTEM`, pas un texte figé côté Rust) → `initial_prompt`
+  FR **biaisait Whisper** vers le français (et faussait l'auto-détection de
+  langue). Correctifs appliqués :
+  - **La phrase d'enrobage suit la langue cible** : `GLOSSARY_SYSTEM` donne
+    désormais les deux exemples de forme (FR **et** EN) et prévient explicitement
+    de ne pas copier le FR par défaut ; `language_instruction(db)` (spec/05) reste
+    appendue pour le repli. Les noms propres eux-mêmes restent inchangés.
+  - **`language` forcée** quand elle est connue (`language_hint` ≠ `auto`) plutôt que
+    `auto`, pour éviter une auto-détection faussée par le prompt
+    (`resolve_whisper_language`, `transcription/mod.rs`).
+  - **Défaut sûr** : si `app_language = en` et `language_hint` non défini (`auto`),
+    vise EN (au lieu du FR implicite d'avant) — même fonction.
+  Le compte-rendu FR qui suivait était un **second problème**, corrigé en parallèle
+  (prompt d'ingestion, spec/05) — les deux se cumulaient.
 
 ## §2 — Qualité de décodage (beam + seuils)
 

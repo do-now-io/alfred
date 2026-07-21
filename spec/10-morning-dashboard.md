@@ -110,25 +110,30 @@ recordingId? }` — alimentée par les mêmes événements (`recording-status-ch
 en résolvant le `recording_id` → chemin de note dès qu'elle existe. Le point ambre
 et le clic lisent cette cible.
 
-### Pastille pendant analyse/correction puis ingestion — 📝 à compléter (feedback tests)
+### Pastille pendant analyse/correction puis ingestion — ✅ fait (feedback tests)
 
-Constat test : après la transcription, **Alfred a lancé l'analyse (vérification/
+Constat test : après la transcription, **Alfred lançait l'analyse (vérification/
 correction) sans rien montrer** — pas de pastille, pas d'invite `/resolve` visible.
-La cible « où Alfred travaille » doit couvrir **toutes** les phases, dans l'ordre :
+La cible « où Alfred travaille » couvre maintenant **toutes** les phases, dans l'ordre :
 
 1. **Transcription** → pastille sur la **note brute** (déjà prévu).
 2. **Analyse / vérification** (`analyze_transcription`, spec/17 §3) → **pastille
-   maintenue sur la note brute** (« Je vérifie… ») **et** une **invite visible** vers
-   `/resolve` quand des clarifications sont prêtes (`clarifications-ready`) — ne pas
-   lancer l'analyse « en silence ». C'est le point manquant aujourd'hui.
+   maintenue sur la note brute**, état `verifying` (« Je vérifie… », distinct de
+   `analyzing`/« Je cogite… » qui reste celui de l'ingestion finale) — émis par
+   `run_ingestion_for_recording` juste avant `call_analyze` (`ingestion-status-
+   changed { phase: "verifying" }`) — **et** une **invite visible** vers `/resolve`
+   quand des clarifications sont prêtes : `clarifications-ready` fait passer l'état
+   à `reviewing` (« Un point à vérifier ») avec `targetRoute: "/resolve"` — cliquer
+   la pastille y navigue, au lieu de retomber silencieusement au repos.
 3. **Ingestion / finalisation** (`finalize_ingestion` : compte-rendu + tâches) →
-   la pastille **passe sur le compte-rendu** en cours de rédaction (« Je cogite… » →
-   « Je note les tâches… »), plus sur la note brute.
+   la pastille **passe sur le compte-rendu** dès qu'il est écrit (`report_path`
+   ajouté à l'émission `ingestion-status-changed { phase: "summary" }`), en cours
+   de rédaction (« Je cogite… » → « Je note les tâches… »), plus sur la note brute.
 
-**Événements à câbler** : l'analyse augmentée doit émettre de quoi positionner la
-cible (début d'analyse → note brute ; `clarifications-ready` → invite ; début de
-finalisation → compte-rendu). Aujourd'hui `alfredStatusStore` n'est nourri que par
-transcription/ingestion/contexte — il manque la **phase d'analyse** (spec/17).
+**Événements câblés** : `alfredStatusStore` (`AlfredState`) gagne `verifying` et
+`reviewing` ; `App.tsx` étend son listener `ingestion-status-changed` (phase
+`verifying` → cible inchangée ; `report_path` → nouvelle cible) et son listener
+`clarifications-ready` (état + `targetRoute` au lieu d'un retour à `idle`).
 
 ## Page Alfred (`/`) — layout 2 colonnes — ✅ fait
 

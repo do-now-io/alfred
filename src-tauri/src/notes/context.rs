@@ -14,19 +14,73 @@ pub const DEFAULT_CONTEXT_NOTE: &str = "Contexte Alfred.md";
 /// of context is plenty to cover names/teams/vocabulary (spec/16).
 const MAX_CONTEXT_CHARS: usize = 4_000;
 
-const CONTEXT_TEMPLATE: &str = r#"# Contexte Alfred
+/// Titres localisés selon `app_language` (spec/16/21). Le **nom de fichier**
+/// de la note reste stable quelle que soit la langue (`DEFAULT_CONTEXT_NOTE`)
+/// — seuls les titres à l'intérieur du corps suivent la langue courante. Une
+/// section existante est reconnue par sa position/son contenu, jamais par le
+/// libellé exact seul : `context_has_content`/`has_learned_heading` matchent
+/// les DEUX langues, pour rester robustes si l'utilisateur change de langue
+/// après coup (le fichier garde alors un mélange FR/EN, ce qui est voulu —
+/// on ne réécrit jamais silencieusement les titres existants).
+pub(crate) struct ContextTitles {
+    pub doc_title: &'static str,
+    pub intro: &'static str,
+    pub company: &'static str,
+    pub team: &'static str,
+    pub vocab: &'static str,
+    pub projects: &'static str,
+    /// spec/17 §4 — section auto-alimentée après ingestion.
+    pub learned_auto: &'static str,
+    /// spec/13 — préfixe de l'en-tête daté ajouté par la visite guidée.
+    pub learned_voice: &'static str,
+}
 
-Décris ici ton environnement de travail : Alfred s'en sert pour corriger les
-noms propres et le vocabulaire dans les transcriptions et les comptes-rendus.
+const TITLES_FR: ContextTitles = ContextTitles {
+    doc_title: "Contexte Alfred",
+    intro: "Décris ici ton environnement de travail : Alfred s'en sert pour corriger les\nnoms propres et le vocabulaire dans les transcriptions et les comptes-rendus.",
+    company: "Mon entreprise",
+    team: "Équipe (prénoms & rôles)",
+    vocab: "Vocabulaire maison & noms propres",
+    projects: "Projets en cours",
+    learned_auto: "Appris automatiquement",
+    learned_voice: "Appris à l'oral",
+};
 
-## Mon entreprise
+const TITLES_EN: ContextTitles = ContextTitles {
+    doc_title: "Alfred context",
+    intro: "Describe your work environment here: Alfred uses it to correct proper\nnouns and vocabulary in transcriptions and summaries.",
+    company: "My company",
+    team: "Team (names & roles)",
+    vocab: "House vocabulary & proper nouns",
+    projects: "Current projects",
+    learned_auto: "Automatically learned",
+    learned_voice: "Learned by voice",
+};
 
-## Équipe (prénoms & rôles)
+pub(crate) fn titles(lang: &str) -> &'static ContextTitles {
+    if lang == "en" { &TITLES_EN } else { &TITLES_FR }
+}
 
-## Vocabulaire maison & noms propres
+async fn lang(db: &SqlitePool) -> String {
+    crate::ai::app_language(db).await
+}
 
-## Projets en cours
-"#;
+fn context_template(lang: &str) -> String {
+    let t = titles(lang);
+    format!(
+        "# {}\n\n{}\n\n## {}\n\n## {}\n\n## {}\n\n## {}\n",
+        t.doc_title, t.intro, t.company, t.team, t.vocab, t.projects
+    )
+}
+
+/// Reconnaît `## Appris automatiquement` **ou** `## Automatically learned` —
+/// peu importe dans quelle langue la note a été écrite (spec/16 « piège »).
+fn has_learned_heading(body: &str) -> bool {
+    body.lines().any(|l| {
+        let t = l.trim();
+        t == format!("## {}", TITLES_FR.learned_auto) || t == format!("## {}", TITLES_EN.learned_auto)
+    })
+}
 
 /// Vault-relative path of the context note (config `context_note_path`,
 /// default in code — same pattern as `recording_folder`).
@@ -43,7 +97,8 @@ pub async fn context_note_path(db: &SqlitePool) -> String {
         .unwrap_or_else(|| DEFAULT_CONTEXT_NOTE.to_string())
 }
 
-/// Lazily create the context note with its template. Never overwrites.
+/// Lazily create the context note with its template, localisé selon
+/// `app_language` (spec/16/21). Never overwrites.
 pub async fn ensure_context_note(vault_root: &Path, db: &SqlitePool) -> Result<PathBuf> {
     let path = vault_root.join(context_note_path(db).await);
     if !path.exists() {
@@ -51,26 +106,29 @@ pub async fn ensure_context_note(vault_root: &Path, db: &SqlitePool) -> Result<P
             tokio::fs::create_dir_all(parent).await?;
         }
         let metadata = super::NoteMetadata::new("Contexte Alfred");
-        let content = super::frontmatter::serialize(&metadata, CONTEXT_TEMPLATE);
+        let content = super::frontmatter::serialize(&metadata, &context_template(&lang(db).await));
         tokio::fs::write(&path, content).await?;
     }
     Ok(path)
 }
 
-/// Heading under which post-ingestion learned facts are auto-written (spec/17 §4).
-const LEARNED_HEADING: &str = "## Appris automatiquement";
-
 /// Does the context note carry real user/AI content beyond the empty template?
-/// Headings, blank lines and EVERY line of the template (intro paragraph
-/// included) don't count — the untouched template must never take the append
-/// path (spec/16 bug « blocs vides » : l'intro fait deux lignes, filtrer sur
-/// « Décris ici » ne couvrait que la première).
+/// Headings, blank lines and EVERY line of the template **in either language**
+/// (intro paragraph included) don't count — the untouched template must never
+/// take the append path (spec/16 bug « blocs vides » : l'intro fait deux
+/// lignes, filtrer sur « Décris ici » ne couvrait que la première ; matcher
+/// les deux langues couvre le cas d'un changement de langue de l'app après la
+/// création de la note, spec/21).
 fn context_has_content(body: &str) -> bool {
-    let template_lines: std::collections::HashSet<&str> = CONTEXT_TEMPLATE
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .collect();
+    let mut template_lines: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for l in ["fr", "en"] {
+        for line in context_template(l).lines() {
+            let t = line.trim();
+            if !t.is_empty() {
+                template_lines.insert(t.to_string());
+            }
+        }
+    }
     body.lines().any(|l| {
         let t = l.trim();
         !t.is_empty() && !t.starts_with('#') && !template_lines.contains(t)
@@ -99,7 +157,8 @@ pub async fn write_spoken_context(vault_root: &Path, db: &SqlitePool, structured
             .skip_while(|l| l.trim().starts_with("# ") || l.trim().is_empty())
             .collect::<Vec<_>>()
             .join("\n");
-        format!("{}\n\n## Appris à l'oral ({})\n\n{}\n", body.trim_end(), date, sections.trim())
+        let heading = titles(&lang(db).await).learned_voice;
+        format!("{}\n\n## {} ({})\n\n{}\n", body.trim_end(), heading, date, sections.trim())
     } else {
         format!("{}\n", structured_body.trim())
     };
@@ -154,15 +213,19 @@ pub async fn append_learned_facts(
     }
 
     let mut new_body = body.trim_end().to_string();
-    if body.contains(LEARNED_HEADING) {
+    if has_learned_heading(&body) {
         // Append right after the existing section's last bullet. Simplest robust
-        // approach: rebuild by inserting the new bullets just after the heading.
+        // approach: rebuild by inserting the new bullets just after the heading —
+        // whichever language it's ACTUALLY written in (spec/16 « piège »), never
+        // forced to the current `app_language`.
         let mut out = String::new();
         let mut inserted = false;
         for line in new_body.lines() {
             out.push_str(line);
             out.push('\n');
-            if !inserted && line.trim() == LEARNED_HEADING {
+            let t = line.trim();
+            let is_heading = t == format!("## {}", TITLES_FR.learned_auto) || t == format!("## {}", TITLES_EN.learned_auto);
+            if !inserted && is_heading {
                 for f in &to_add {
                     out.push_str(&format!("- {}\n", f));
                 }
@@ -171,7 +234,8 @@ pub async fn append_learned_facts(
         }
         new_body = out.trim_end().to_string();
     } else {
-        new_body.push_str(&format!("\n\n{}\n", LEARNED_HEADING));
+        let heading = format!("## {}", titles(&lang(db).await).learned_auto);
+        new_body.push_str(&format!("\n\n{}\n", heading));
         for f in &to_add {
             new_body.push_str(&format!("- {}\n", f));
         }
@@ -190,20 +254,38 @@ mod tests {
     #[test]
     fn untouched_template_has_no_content() {
         // The full template — intro paragraph (2 lines!) + empty headings —
-        // must NOT count as user content (spec/16 bug « blocs vides »).
-        assert!(!context_has_content(CONTEXT_TEMPLATE));
+        // must NOT count as user content (spec/16 bug « blocs vides »), in
+        // EITHER language (spec/21).
+        assert!(!context_has_content(&context_template("fr")));
+        assert!(!context_has_content(&context_template("en")));
     }
 
     #[test]
     fn empty_or_headings_only_has_no_content() {
         assert!(!context_has_content(""));
         assert!(!context_has_content("# Contexte Alfred\n\n## Mon entreprise\n"));
+        assert!(!context_has_content("# Alfred context\n\n## My company\n"));
     }
 
     #[test]
     fn real_user_line_counts_as_content() {
-        let body = format!("{}\nJe travaille chez Do-Now.\n", CONTEXT_TEMPLATE);
+        let body = format!("{}\nJe travaille chez Do-Now.\n", context_template("fr"));
         assert!(context_has_content(&body));
+    }
+
+    #[test]
+    fn learned_heading_recognized_in_either_language() {
+        assert!(has_learned_heading("## Appris automatiquement\n- fact"));
+        assert!(has_learned_heading("## Automatically learned\n- fact"));
+        assert!(!has_learned_heading("## Something else"));
+    }
+
+    #[test]
+    fn titles_localized_and_stable_filename() {
+        assert_eq!(titles("fr").company, "Mon entreprise");
+        assert_eq!(titles("en").company, "My company");
+        // Le nom de fichier ne dépend jamais de la langue (spec/16).
+        assert_eq!(DEFAULT_CONTEXT_NOTE, "Contexte Alfred.md");
     }
 }
 

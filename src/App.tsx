@@ -417,11 +417,21 @@ function AppInner() {
       });
     }).then(fn => unsubs.push(fn));
 
-    // Phases d'ingestion (spec/05/10) : `analyzing`/`summary` → « Je cogite… »,
+    // Phases d'ingestion (spec/05/10) : `verifying` (analyse pré-clarifications,
+    // spec/17 §3) → « Je vérifie… », `analyzing`/`summary` → « Je cogite… »,
     // `tasks` → « Je note les tâches… » (5ᵉ label), `done`/`error` → repos.
-    listen<{ status: string; phase?: string; message?: string }>("ingestion-status-changed", (e) => {
+    // `report_path` (posé dès que le compte-rendu est écrit) déplace la cible
+    // — et donc le point ambre — de la note brute vers le compte-rendu.
+    listen<{ status: string; phase?: string; message?: string; report_path?: string; recording_id?: string }>("ingestion-status-changed", (e) => {
       if (e.payload.status === "running") {
+        if (e.payload.phase === "verifying") {
+          setAlfredState("verifying"); // cible inchangée : reste la note brute
+          return;
+        }
         setAlfredState(e.payload.phase === "tasks" ? "tasking" : "thinking");
+        if (e.payload.report_path) {
+          setAlfredTarget({ targetPath: e.payload.report_path, recordingId: e.payload.recording_id });
+        }
         return;
       }
       setAlfredState("idle");
@@ -442,7 +452,10 @@ function AppInner() {
     listen<{ recording_id: string; note_title: string; text: string; clarifications: Clarifications; summary?: boolean; tasks?: boolean }>(
       "clarifications-ready",
       (e) => {
-        setAlfredState("idle");
+        // Invite visible (spec/10/17 §3) plutôt qu'un retour silencieux au
+        // repos : la pastille reste active et cliquable vers /resolve.
+        setAlfredState("reviewing");
+        setAlfredTarget({ targetRoute: "/resolve", recordingId: e.payload.recording_id });
         setResolveSession({
           mode: "meeting",
           recordingId: e.payload.recording_id,

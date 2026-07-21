@@ -30,13 +30,21 @@ pub struct AiAccess {
 /// (transcription/question) — Claude infère très bien ça seul depuis le
 /// texte — et ne se rabat sur `app_language` (config, défaut `fr`) qu'en cas
 /// d'ambiguïté (transcription trop courte, multilingue, etc.).
-async fn language_instruction(db: &SqlitePool) -> String {
-    let app_language: String = sqlx::query_scalar("SELECT value FROM config WHERE key = 'app_language'")
+/// `app_language` config value, defaulting to `"fr"` — the app's UI language,
+/// reused as a fallback default wherever content produced by our own Rust
+/// code (not Claude) needs a language, distinct from the language of the
+/// content itself (spec/21).
+pub async fn app_language(db: &SqlitePool) -> String {
+    sqlx::query_scalar("SELECT value FROM config WHERE key = 'app_language'")
         .fetch_optional(db)
         .await
         .ok()
         .flatten()
-        .unwrap_or_else(|| "fr".to_string());
+        .unwrap_or_else(|| "fr".to_string())
+}
+
+async fn language_instruction(db: &SqlitePool) -> String {
+    let app_language = app_language(db).await;
     let fallback = if app_language == "en" { "English" } else { "French" };
     format!(
         "- Langue de la réponse : écris dans la MÊME langue que le texte fourni (transcription ou question) ; si cette langue est ambiguë ou indéterminable, réponds en {}.",
@@ -359,14 +367,27 @@ async fn run_ingestion_core(
             let metadata = crate::notes::NoteMetadata::for_meeting_report(&report_title, recording_id, output.participants.clone(), project);
             let mut body = output.resume.clone();
             if !output.points_cles.is_empty() {
-                body.push_str("\n\n## Points clés\n");
+                // Titre généré par NOTRE code (pas par Claude) — localisé selon
+                // `app_language` (spec/05/21), indépendamment de la langue dans
+                // laquelle Claude a rédigé le corps du compte-rendu.
+                let heading = if app_language(db).await == "en" { "Key points" } else { "Points clés" };
+                body.push_str(&format!("\n\n## {}\n", heading));
                 for p in &output.points_cles {
                     body.push_str(&format!("- {}\n", p));
                 }
             }
             match crate::notes::vault::create_intelligence_note(&folder, &report_title, metadata, &body).await {
-                Ok(_) => {
+                Ok(ref note) => {
                     eprintln!("[ingestion] compte-rendu created: {}", report_title);
+                    // Pastille (spec/10, feedback tests) : déplace la cible —
+                    // et donc le point ambre — de la note brute vers le
+                    // compte-rendu maintenant qu'il existe. Émission dédiée
+                    // (plutôt qu'étendre `emit_status`) : c'est le seul point
+                    // du pipeline où le chemin du compte-rendu est connu.
+                    let _ = app_handle.emit(
+                        "ingestion-status-changed",
+                        json!({ "status": "running", "phase": "summary", "recording_id": recording_id, "message": None::<String>, "report_path": note.path }),
+                    );
                     // Archivage de la transcription brute (spec/05/07) : le
                     // compte-rendu a rempli son rôle, seulement quand un
                     // `recording_id` existe (pas d'appel manuel/texte libre).
@@ -451,6 +472,18 @@ pub async fn run_ingestion_for_recording(
     // perd jamais le compte-rendu pour une panne de l'analyse, mais ce repli
     // reste une résilience d'erreur, pas un raccourci produit : il saute la
     // vérification uniquement quand celle-ci n'a pas pu avoir lieu.
+    //
+    // Pastille (spec/10, feedback tests) : cette analyse tournait jusqu'ici en
+    // silence — aucun statut émis entre `transcription-complete` et
+    // `clarifications-ready`. `phase: "verifying"` distingue ce moment de
+    // celui, plus tardif, de `run_ingestion_core` (même mot « analyzing » pour
+    // une étape différente — la relecture post-correction). La cible reste la
+    // note brute (déjà posée par `transcription-complete`), inchangée ici.
+    let _ = app_handle.emit(
+        "ingestion-status-changed",
+        json!({ "status": "running", "phase": "verifying", "recording_id": recording_id, "message": None::<String> }),
+    );
+
     let context = match vault_root {
         Some(root) => crate::notes::context::read_context(root, db).await,
         None => None,
@@ -913,7 +946,7 @@ Soumets le glossaire via l'outil `submit_glossary`. Règles STRICTES :
 - Une liste PLATE de noms propres et termes uniquement : prénoms/noms de personnes, entreprises, clients, projets (noms de code), outils, sigles, jargon maison. AUCUNE définition, AUCUNE explication, AUCune phrase (Whisper est acoustique, pas sémantique). Ex. « Kubernetes, Grafana, ArgoCD, Terraform », pas « Kube = Kubernetes ».
 - Ordonne les termes du plus important / le plus susceptible d'être mal transcrit au moins important (la fin peut être tronquée).
 - Budget : environ 60 à 90 termes maximum (~200 tokens). Reste concis.
-- Enrobe la liste dans une courte phrase, dans la langue principale du contexte (repli donné ci-dessous si indéterminable), sur ce modèle : « Transcription en français. Termes et noms propres : <liste séparée par des virgules>. »
+- Enrobe la liste dans une courte phrase, DANS LA LANGUE PRINCIPALE DU CONTEXTE (repli donné ci-dessous si indéterminable) — n'écris PAS systématiquement en français, la langue de la phrase doit suivre celle du contexte. Exemples de forme, à adapter à la langue réelle (ne recopie pas l'exemple FR par défaut) : FR « Transcription en français. Termes et noms propres : <liste séparée par des virgules>. » ; EN « Transcription in English. Terms and proper nouns: <comma-separated list>. »
 - Si le contexte ne contient aucun nom propre / terme exploitable, renvoie une chaîne vide."#;
 
 fn glossary_tool() -> serde_json::Value {
@@ -1132,17 +1165,20 @@ async fn build_context_inner(
         .map_err(|e| anyhow!("Invalid submit_context input: {} — {:?}", e, block["input"]))?;
 
     // Assemble the body using the same headings as the context-note template
-    // (spec/16) so glossary derivation and manual editing stay consistent.
+    // (spec/16) so glossary derivation and manual editing stay consistent —
+    // localisés selon `app_language` (spec/16/21), pas codés en dur en français.
+    let titles = crate::notes::context::titles(&app_language(db).await);
     let section = |title: &str, content: &str| {
         let c = content.trim();
         format!("## {}\n\n{}\n", title, c)
     };
     let body = format!(
-        "# Contexte Alfred\n\n{}\n{}\n{}\n{}",
-        section("Mon entreprise", &sections.entreprise),
-        section("Équipe (prénoms & rôles)", &sections.equipe),
-        section("Vocabulaire maison & noms propres", &sections.vocabulaire),
-        section("Projets en cours", &sections.projets),
+        "# {}\n\n{}\n{}\n{}\n{}",
+        titles.doc_title,
+        section(titles.company, &sections.entreprise),
+        section(titles.team, &sections.equipe),
+        section(titles.vocab, &sections.vocabulaire),
+        section(titles.projects, &sections.projets),
     );
 
     let filled = [&sections.entreprise, &sections.equipe, &sections.vocabulaire, &sections.projets]

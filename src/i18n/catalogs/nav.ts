@@ -18,8 +18,10 @@ export default {
       idle: "À votre service",
       recording: "Tout ouïe…",
       transcribing: "Je prends note…",
+      verifying: "Je vérifie…",
       thinking: "Je cogite…",
       tasking: "Je note les tâches…",
+      reviewing: "Un point à vérifier",
     },
     recents: {
       title: "Récents",
@@ -57,8 +59,10 @@ export default {
       idle: "At your service",
       recording: "All ears…",
       transcribing: "Taking notes…",
+      verifying: "Checking…",
       thinking: "Thinking it over…",
       tasking: "Noting the tasks…",
+      reviewing: "Something to review",
     },
     recents: {
       title: "Recent",

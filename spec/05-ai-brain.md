@@ -203,6 +203,17 @@ synthèse hebdo).
 - **Cache** : texte + date stockés en config (`daily_brief`, `daily_brief_last_run`).
   Affichage du texte mis en cache + « Généré le {date} ».
 
+**Bug — brief en français sur une app EN (✅ corrigé, feedback tests).** Constat :
+sans tâche ni note notable, le brief sortait en français même avec `app_language =
+en`. Cause : le **contenu** envoyé à Claude (`## Tâches en cours` / `Aucune tâche en
+attente.` / `## Notes récentes` / `Aucune note récente.` / `Vault non configuré.`)
+était **codé en dur en français** — `language_instruction` dit à Claude d'écrire
+dans la langue **du contenu fourni**, et dans ce cas précis, tout le contenu fourni
+n'était QUE ce texte d'échafaudage français, sans aucun vrai texte utilisateur pour
+indiquer une autre langue. Corrigé : ces libellés suivent désormais `app_language`
+(`generate_daily_brief`, `ai/mod.rs`) — cohérent avec la règle spec/21 « à défaut,
+`app_language` ».
+
 ---
 
 ## Commandes Tauri (v1)

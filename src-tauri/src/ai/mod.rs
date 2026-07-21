@@ -1204,9 +1204,18 @@ const DAILY_BRIEF_SYSTEM: &str = r#"Tu es Alfred, un assistant personnel. À par
 pub async fn generate_daily_brief(db: &SqlitePool, vault_root: Option<&Path>) -> Result<String> {
     let access = resolve_access(db).await?;
 
+    // Ce texte est le CONTENU envoyé à Claude, et `language_instruction` lui dit
+    // d'écrire dans la langue du contenu fourni — un repli codé en dur en
+    // français faisait donc lire du français à Claude même quand il n'y avait
+    // ni tâche ni note (bug constaté : brief FR sur une app/config EN, aucune
+    // vraie tâche/note pour indiquer une langue). Localisé selon `app_language`
+    // (spec/05/21) pour rester cohérent dans ce cas-là.
+    let en = app_language(db).await == "en";
+    let due_label = if en { " (due {})" } else { " (échéance {})" };
+
     let todos = crate::todos::get_todos(db, vault_root).await.unwrap_or_default();
     let todos_text = if todos.is_empty() {
-        "Aucune tâche en attente.".to_string()
+        if en { "No tasks pending.".to_string() } else { "Aucune tâche en attente.".to_string() }
     } else {
         todos
             .iter()
@@ -1215,7 +1224,7 @@ pub async fn generate_daily_brief(db: &SqlitePool, vault_root: Option<&Path>) ->
                 format!(
                     "- {}{}",
                     t.title,
-                    t.echeance.as_deref().map(|d| format!(" (échéance {})", d)).unwrap_or_default()
+                    t.echeance.as_deref().map(|d| due_label.replace("{}", d)).unwrap_or_default()
                 )
             })
             .collect::<Vec<_>>()
@@ -1229,15 +1238,16 @@ pub async fn generate_daily_brief(db: &SqlitePool, vault_root: Option<&Path>) ->
                 .await?
                 .unwrap_or_default();
             if recents.is_empty() {
-                "Aucune note récente.".to_string()
+                if en { "No recent notes.".to_string() } else { "Aucune note récente.".to_string() }
             } else {
                 recents.iter().map(|r| format!("- {}", r.title)).collect::<Vec<_>>().join("\n")
             }
         }
-        None => "Vault non configuré.".to_string(),
+        None => if en { "Vault not configured.".to_string() } else { "Vault non configuré.".to_string() },
     };
 
-    let prompt = format!("## Tâches en cours\n{}\n\n## Notes récentes\n{}", todos_text, recents_text);
+    let (tasks_heading, notes_heading) = if en { ("Current tasks", "Recent notes") } else { ("Tâches en cours", "Notes récentes") };
+    let prompt = format!("## {}\n{}\n\n## {}\n{}", tasks_heading, todos_text, notes_heading, recents_text);
 
     let client = reqwest::Client::new();
     let system_text = format!("{}\n{}", DAILY_BRIEF_SYSTEM, language_instruction(db).await);

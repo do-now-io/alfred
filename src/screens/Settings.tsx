@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { MdDownload } from "react-icons/md";
 import { useNotesStore } from "../store/notesStore";
 import { useTourStore } from "../store/tourStore";
 import { useProfileStore } from "../store/profileStore";
+import WhisperModelPicker from "../components/WhisperModelPicker";
 import type { NoteFile } from "../bindings/NoteFile";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -397,35 +397,18 @@ function AiAccessSection() {
 
 export default function Settings() {
   const navigate = useNavigate();
-  const [whisperModel, setWhisperModel] = useState("small");
   const [languageHint, setLanguageHint] = useState("auto");
   const [recordingSource, setRecordingSource] = useState("mixed");
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
   useEffect(() => {
-    invoke<string | null>("get_config", { key: "whisper_model" }).then((v) => v && setWhisperModel(v));
     invoke<string | null>("get_config", { key: "language_hint" }).then((v) => v && setLanguageHint(v));
     invoke<string | null>("get_config", { key: "recording_source" }).then((v) => v && setRecordingSource(v));
     invoke<boolean>("get_launch_at_login").catch(() => false).then((v) => setLaunchAtLogin(v));
-
-    const unsubs: (() => void)[] = [];
-    listen<{ percent: number }>("download-progress", (e) => {
-      setDownloadProgress(e.payload.percent);
-      if (e.payload.percent >= 100) setTimeout(() => setDownloadProgress(null), 2000);
-    }).then((fn) => unsubs.push(fn));
-
-    return () => unsubs.forEach((fn) => fn());
   }, []);
 
   const setConfig = async (key: string, value: string) => {
     await invoke("set_config", { key, value });
-  };
-
-  const handleWhisperModelChange = async (model: string) => {
-    setWhisperModel(model);
-    await setConfig("whisper_model", model);
-    try { await invoke("download_model", { size: model }); } catch {}
   };
 
   const handleLaunchAtLoginChange = async (enabled: boolean) => {
@@ -448,23 +431,12 @@ export default function Settings() {
       </Section>
 
       <Section title="Transcription">
-        <SettingRow label="Modèle Whisper">
-          <select
-            className="alfred-select"
-            value={whisperModel}
-            onChange={(e) => handleWhisperModelChange(e.target.value)}
-          >
-            <option value="tiny">Tiny (75 MB, rapide)</option>
-            <option value="base">Base (142 MB)</option>
-            <option value="small">Small (466 MB, recommandé)</option>
-            <option value="medium">Medium (1.5 GB, précis)</option>
-          </select>
-          {downloadProgress !== null && (
-            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-              <MdDownload style={{ verticalAlign: "middle", marginRight: 2 }} /> {Math.round(downloadProgress)}%
-            </span>
-          )}
-        </SettingRow>
+        {/* Gestionnaire de modèles Whisper (spec/04/11) — même composant que
+            l'étape d'onboarding. « Utiliser » n'existe que sur un modèle
+            téléchargé : on ne peut plus activer un modèle absent du disque. */}
+        <div style={{ marginBottom: 14 }}>
+          <WhisperModelPicker />
+        </div>
         <SettingRow label="Langue">
           <select
             className="alfred-select"

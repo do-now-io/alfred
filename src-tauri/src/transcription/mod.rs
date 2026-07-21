@@ -17,7 +17,7 @@ use uuid::Uuid;
 /// ggerganov/whisper.cpp) ; `size_mb` ne sert qu'à l'affichage.
 pub struct WhisperModelDef {
     pub name: &'static str,
-    pub size_mb: u64,
+    pub size_mb: u32,
     pub recommended: bool,
 }
 
@@ -37,7 +37,7 @@ pub type DownloadRegistry = Arc<StdMutex<HashMap<String, Arc<AtomicBool>>>>;
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct WhisperModelInfo {
     pub name: String,
-    pub size_mb: u64,
+    pub size_mb: u32,
     pub recommended: bool,
     /// "downloaded" | "downloading" | "missing"
     pub status: String,

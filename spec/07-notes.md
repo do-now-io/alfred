@@ -150,6 +150,21 @@ dans le volet **Récents** (gauche), où seul le nom (souvent une date) s'affich
   bienvenu : un compte-rendu nommé par sujet **ne collisionne plus** avec la
   transcription datée (cf. graphe, spec/07c).
 
+## Indicateur « à vérifier » sur la note — 📝 à faire (feedback tests, spec/17)
+
+Quand une transcription a des **clarifications en attente** (analyse `/resolve` non
+encore validée, spec/17), la note doit le **montrer directement** — pas seulement via
+la pop-up basse (transitoire, perdue si on enchaîne un enregistrement) :
+
+- **Petite icône « à vérifier »** à côté de la transcription concernée dans l'arbre
+  (et Récents). Alimentée par l'état **persistant** des clarifications par
+  `recording_id` (spec/17).
+- **Cliquer la note ouvre `/resolve`** directement avec l'analyse **déjà faite**
+  (persistée) — **pas** de nouvelle ingestion. (Le bouton « Vérifier / corriger »
+  reste pour relancer volontairement une analyse.)
+- L'icône **persiste jusqu'à validation** ; elle disparaît quand l'utilisateur a
+  validé (→ finalisation + archivage de la transcription).
+
 ## UI Notes (3 panneaux)
 
 `[Sidebar] | [Arbre fichiers] | [Contenu]`

@@ -160,29 +160,52 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
 > les faits « appris automatiquement » **polluent la note de contexte EN avec des
 > lignes FR** (§4).
 
-### La finalisation attend la vérification (✅ fait)
+### `/resolve` seulement s'il y a quelque chose à vérifier — 📝 à refaire (feedback tests, **revient sur** l'exigence précédente)
 
-Constat test : après la transcription, **compte-rendu et tâches semblent créés tout
-de suite** — comme si la finalisation ne passait pas par la vérification. C'est le
-raccourci « si Claude n'a rien à signaler, l'ingestion enchaîne **automatiquement** »
-qui fait sauter l'étape de contrôle.
+**Décision révisée.** On avait imposé « `/resolve` **toujours** présenté, même sans
+rien à corriger ». Retour d'usage : c'est **une friction inutile** quand Claude n'a
+**rien** à signaler. Nouveau comportement :
 
-**Nouveau comportement voulu : le compte-rendu et les tâches ne sont générés
-qu'APRÈS la vérification/correction**, jamais en même temps que la transcription.
+- **Analyse d'abord.** Après la transcription, on lance l'analyse
+  (`analyze_transcription`).
+  - **Rien à vérifier** (aucun `transcription_fix` / `unclear_sentence` /
+    `unassigned_task` au-dessus du seuil) → **finalisation directe** (compte-rendu +
+    tâches), **sans** afficher `/resolve`, puis étapes suivantes (archivage, etc.).
+    *(Les `context_addition` restent auto-écrits en « Appris automatiquement », §4 —
+    ils ne comptent pas comme « à vérifier ».)*
+  - **Il y a des points à vérifier** → on **n'écrit pas** le compte-rendu tout de
+    suite ; la vérification reste en attente (voir persistance ci-dessous), et la
+    finalisation n'a lieu qu'**au « Valider »** de `/resolve`.
+- Vaut pour réunion **et** contexte (spec/13).
 
-- L'étape **Résolution** (`/resolve`) est **toujours** présentée après la
-  transcription — **même quand il n'y a rien à corriger** : l'utilisateur relit le
-  texte et **Valide** ; c'est **cette validation** qui déclenche `finalize_ingestion`
-  (donc le compte-rendu + les tâches).
-- Sans clarification, l'écran est simplement **plus court** (texte + « Valider »),
-  mais **l'étape reste** — plus d'auto-enchaînement silencieux.
-- Vaut pour un enregistrement de réunion **et** pour le contexte (spec/13, même
-  écran unifié — la « finalisation » du contexte étant
-  `build_context_from_transcription`).
+### La vérification en attente **persiste** et vit **sur la note** — 📝 à faire (feedback tests)
 
-> **Compromis assumé** : cela ajoute un « Valider » à chaque enregistrement (léger
-> quand il n'y a rien à corriger). C'est le prix du contrôle demandé — l'utilisateur
-> veut décider avant que le compte-rendu/les tâches partent.
+Constat test : la vérification n'est proposée que par une **pop-up basse
+transitoire** (« N points à vérifier »), **non persistée** (`resolveStore` en mémoire,
+spec/17 historique). Si on **enchaîne un 2ᵉ enregistrement** sans avoir vérifié le
+1ᵉʳ, la pop-up **disparaît / est écrasée** → la vérification est perdue. Or l'analyse
+a un coût (appel Claude) : on ne veut pas la refaire.
+
+- **Persister les clarifications par `recording_id`** (pas une session unique en
+  mémoire) : elles survivent à la navigation, à un **nouvel enregistrement**, et à un
+  redémarrage. **Plusieurs vérifications en attente coexistent** (file), chacune
+  rattachée à sa note.
+- **Indicateur « à vérifier » SUR la note** (spec/07) : une **petite icône de
+  vérification** à côté de la transcription concernée dans l'arbre Notes. **Cliquer la
+  note ouvre directement `/resolve`** avec l'analyse **persistée** — **sans** repasser
+  par le bouton « Vérifier / corriger » qui **relance une analyse** (`analyze_transcription`).
+  Le bouton « Vérifier / corriger » reste pour **re-vérifier volontairement** (nouvelle
+  analyse) ; le chemin normal réutilise l'analyse déjà faite.
+- **La vue reste tant que non vérifiée** : l'indicateur (et la pop-up de rappel, si
+  conservée) **persiste jusqu'à ce que l'utilisateur ait validé** cette
+  transcription — jamais effacé par un enregistrement suivant.
+- Après **Valider** → finalisation (compte-rendu + tâches), l'entrée « à vérifier »
+  disparaît, et la transcription est archivée (spec/07).
+
+> **Implémentation** : stocker les clarifications (JSON) par `recording_id` — table
+> SQLite dédiée ou marqueur/fichier associé — plutôt que le `resolveStore` volatil.
+> L'événement `clarifications-ready` alimente ce store persistant ; l'UI (icône note,
+> pop-up) le lit ; `/resolve` peut être rouvert à tout moment depuis la note.
 
 ## §4 — Enrichissement du contexte & onboarding
 

@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   MdCheckBox, MdFolderOff, MdAdd, MdExpandMore, MdExpandLess, MdViewList,
 } from "react-icons/md";
+import SearchableSelect from "../components/SearchableSelect";
 import ShareButton from "../components/ShareButton";
 import TaskSheet from "../components/tasks/TaskSheet";
 import { useNotesStore } from "../store/notesStore";
@@ -12,6 +13,7 @@ import { useProfileStore, isSelf } from "../store/profileStore";
 import { useToastStore } from "../store/toastStore";
 import { useInternalLink } from "../utils/useInternalLink";
 import { renderInlineMd, stripInlineMd } from "../utils/inlineMd";
+import { normalizeSearch } from "../utils/text";
 import type { Todo } from "../bindings/Todo";
 import { useT, useI18nStore } from "../i18n";
 import { TODO_SECTION_LABELS, TODO_SECTION_KEYS, normalizeSectionHeading, type TodoSectionKey } from "../i18n/todoSections";
@@ -32,10 +34,10 @@ import { TODO_SECTION_LABELS, TODO_SECTION_KEYS, normalizeSectionHeading, type T
 // celle dans laquelle le vault a été écrit.
 const COLUMNS: TodoSectionKey[] = TODO_SECTION_KEYS;
 
-/** Comparaison insensible à la casse et aux accents (« reunion » matche « Réunion »).
- *  Le range ci-dessous couvre le bloc Unicode "Combining Diacritical Marks"
- *  (U+0300–U+036F) — les marques d'accent isolées par `normalize("NFD")`. */
-const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+// Valeur sentinelle du filtre réunion pour « tâches sans provenance » — le
+// caractère de contrôle ne peut pas apparaître dans un titre de note, donc
+// aucune collision possible avec une vraie réunion.
+const NO_MEETING_VALUE = "\u0000no-meeting";
 
 const CHIP_COLORS = [
   { bg: "#EDE9FE", text: "#6D28D9" },
@@ -118,11 +120,11 @@ export default function Tasks() {
   const [error, setError] = useState<string | null>(null);
   const [todoRel, setTodoRel] = useState<string>("");
   const [archiveOpen, setArchiveOpen] = useState(false);
-  // Filtres (spec/06) : recherche texte + responsable + échéance + projet.
+  // Filtres (spec/06) : recherche texte + responsable + échéance + réunion.
   const [textFilter, setTextFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState<string>("");
   const [dueFilter, setDueFilter] = useState<"" | "late" | "week">("");
-  const [projectFilter, setProjectFilter] = useState<string>("");
+  const [meetingFilter, setMeetingFilter] = useState<string>("");
   const [priorityFilter, setPriorityFilter] = useState<string>("");
   // Drag en cours + cible de dépôt (colonne, index d'insertion).
   const [drag, setDrag] = useState<DragInfo | null>(null);
@@ -153,9 +155,9 @@ export default function Tasks() {
     }
   }, []);
 
-  // Projets connus du vault (spec/07 `list_projects`) : alimente le filtre
-  // projet et l'autocomplétion de la fiche, même quand aucune tâche n'est
-  // encore taguée `+Projet`. Un échec laisse juste la liste vide.
+  // Projets connus du vault (spec/07 `list_projects`) : alimente
+  // l'autocomplétion du champ Projet de la fiche tâche, même quand aucune
+  // tâche n'est encore taguée `+Projet`. Un échec laisse juste la liste vide.
   const [vaultProjects, setVaultProjects] = useState<string[]>([]);
   const loadVaultProjects = useCallback(() => {
     invoke<string[]>("list_projects").then(setVaultProjects).catch(() => {});
@@ -190,7 +192,7 @@ export default function Tasks() {
     setTextFilter("");
     setOwnerFilter("");
     setDueFilter("");
-    setProjectFilter("");
+    setMeetingFilter("");
     setPriorityFilter("");
     if (normalizeSectionHeading(task.section) === "archived") setArchiveOpen(true);
     setHighlightedId(task.id);
@@ -213,17 +215,56 @@ export default function Tasks() {
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [todos, vaultProjects]);
 
+  // Réunions d'origine (spec/06, filtre réunion) : dérivées de la provenance
+  // `[[…]]` posée par l'ingestion (`source_note`/`source_date`) — une entrée
+  // par note source, datée de sa provenance la plus récente, les plus
+  // récentes en premier (`YYYY-MM-DD` trie lexicographiquement), sans date en
+  // dernier.
+  const meetings = useMemo(() => {
+    const byNote = new Map<string, string>();
+    for (const td of todos) {
+      if (!td.source_note) continue;
+      const d = td.source_date ?? "";
+      const prev = byNote.get(td.source_note);
+      if (prev === undefined || d > prev) byNote.set(td.source_note, d);
+    }
+    return [...byNote.entries()]
+      .sort((a, b) => b[1].localeCompare(a[1]) || a[0].localeCompare(b[0]))
+      .map(([note, date]) => ({ value: note, label: note, detail: date || undefined }));
+  }, [todos]);
+
+  // Entrée « Sans réunion » seulement s'il y a réellement des tâches sans
+  // provenance à isoler (et des réunions, sinon le filtre est masqué).
+  const meetingOptions = useMemo(() => {
+    if (meetings.length > 0 && todos.some((td) => !td.source_note)) {
+      return [...meetings, { value: NO_MEETING_VALUE, label: t("tasks.filters.noMeeting") }];
+    }
+    return meetings;
+  }, [meetings, todos, t]);
+
+  // Si la réunion filtrée disparaît (note renommée, tâches supprimées,
+  // rechargement), on relâche le filtre plutôt que d'afficher un tableau
+  // vide sans explication.
+  useEffect(() => {
+    if (!loaded || !meetingFilter || meetingFilter === NO_MEETING_VALUE) return;
+    if (!meetings.some((m) => m.value === meetingFilter)) setMeetingFilter("");
+  }, [loaded, meetings, meetingFilter]);
+
   const openTask = useMemo(() => todos.find((t) => t.id === openTaskId) ?? null, [todos, openTaskId]);
 
   const visible = useCallback((t: Todo) => {
     if (textFilter.trim()) {
-      const q = norm(textFilter.trim());
+      const q = normalizeSearch(textFilter.trim());
       // Titre comparé marqueurs markdown retirés (« rapport mensuel » doit
       // matcher « **Rapport** mensuel »).
-      if (!norm(stripInlineMd(t.title)).includes(q) && !(t.responsable && norm(t.responsable).includes(q))) return false;
+      if (!normalizeSearch(stripInlineMd(t.title)).includes(q) && !(t.responsable && normalizeSearch(t.responsable).includes(q))) return false;
     }
     if (ownerFilter && t.responsable !== ownerFilter) return false;
-    if (projectFilter && t.project !== projectFilter) return false;
+    if (meetingFilter) {
+      if (meetingFilter === NO_MEETING_VALUE) {
+        if (t.source_note) return false;
+      } else if (t.source_note !== meetingFilter) return false;
+    }
     if (priorityFilter && t.priority !== priorityFilter) return false;
     if (dueFilter) {
       const k = dueKind(t.echeance);
@@ -231,7 +272,7 @@ export default function Tasks() {
       if (dueFilter === "week" && k !== "today" && k !== "soon" && k !== "late") return false;
     }
     return true;
-  }, [textFilter, ownerFilter, dueFilter, projectFilter, priorityFilter]);
+  }, [textFilter, ownerFilter, dueFilter, meetingFilter, priorityFilter]);
 
   const byColumn = useMemo(() => {
     const map = new Map<TodoSectionKey, Todo[]>(COLUMNS.map((c) => [c, []]));
@@ -363,16 +404,17 @@ export default function Tasks() {
               <option value="">{t("tasks.filters.allOwners")}</option>
               {owners.map((o) => <option key={o} value={o}>@{o}</option>)}
             </select>
-            {projects.length > 0 && (
-              <select
-                className="alfred-select"
-                value={projectFilter}
-                onChange={(e) => setProjectFilter(e.target.value)}
-                title={t("tasks.filters.projectTitle")}
-              >
-                <option value="">{t("tasks.filters.allProjects")}</option>
-                {projects.map((p) => <option key={p} value={p}>+{p}</option>)}
-              </select>
+            {meetings.length > 0 && (
+              <SearchableSelect
+                options={meetingOptions}
+                value={meetingFilter}
+                onChange={setMeetingFilter}
+                placeholder={t("tasks.filters.allMeetings")}
+                searchPlaceholder={t("tasks.filters.meetingSearchPlaceholder")}
+                emptyLabel={t("tasks.filters.noResults")}
+                title={t("tasks.filters.meetingTitle")}
+                clearTitle={t("tasks.filters.clearMeeting")}
+              />
             )}
             <select
               className="alfred-select"

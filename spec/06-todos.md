@@ -155,12 +155,18 @@ La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
 - **Ajout rapide par colonne** (« + » en tête de colonne → `create_todo` dans la
   section correspondante) + **compteur** par colonne.
 - **Filtres** — ✅ faits : par **responsable**, par **échéance** (en retard /
-  cette semaine) et par **projet**. La liste du filtre projet (et de
-  l'autocomplétion de la fiche tâche) = **union** des projets du vault
-  (`list_projects`, spec/07 — frontmatter des notes) et des marqueurs `+Projet`
-  déjà posés sur des tâches : le filtre est visible dès que le vault connaît
-  des projets, même si aucune tâche n'est encore taguée (avant, liste dérivée
-  des seules tâches → filtre invisible tant que rien n'était tagué).
+  cette semaine) et par **réunion d'origine**. Le filtre réunion (feedback
+  tests — **remplace** l'ancien filtre projet, jugé peu utile : le bon axe de
+  tri est la note d'où vient la tâche) est une **combobox avec recherche**
+  (composant `SearchableSelect`, insensible casse/accents, navigable au
+  clavier) : sa liste = les notes sources référencées par la **provenance**
+  `[[…]]` des tâches (champ `source_note`, posé par l'ingestion), triées par
+  date de provenance décroissante (date affichée en second texte), avec une
+  entrée « Sans réunion » pour isoler les tâches sans provenance (présente
+  seulement s'il y en a). Masqué tant qu'aucune tâche n'a de provenance ; si
+  la réunion filtrée disparaît (note renommée, tâches supprimées), le filtre
+  se relâche tout seul. `list_projects` (spec/07) ne sert plus qu'à
+  l'autocomplétion du champ Projet de la fiche tâche.
 - **Recherche texte** — ✅ fait : champ « Rechercher… » à côté des filtres ;
   masque en direct les cartes dont ni le titre ni le responsable ne matchent
   (insensible à la casse et aux accents), toutes colonnes confondues. Se cumule

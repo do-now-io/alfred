@@ -173,11 +173,20 @@ faite, pour ne pas encombrer la navigation :
   `alfred-raw/` (ré-écoute / ré-ingestion, spec/04). Rien n'est supprimé — juste
   un changement de statut. Best-effort : une erreur ici ne fait jamais échouer
   l'ingestion (déjà réussie sur son travail principal).
+- **Cas du CONTEXTE — 📝 à faire (feedback tests)** : la transcription brute d'un
+  enregistrement **de contexte** (visite guidée / « recréer mon contexte », spec/13,
+  `purpose: "context"`) n'est **jamais archivée** aujourd'hui — l'archivage n'est
+  branché que sur `run_ingestion_core` (compte-rendu), or le contexte passe par
+  `build_context_from_transcription` (pas de compte-rendu). Résultat : la note
+  d'enregistrement du contexte **reste visible** alors que les autres transcriptions
+  disparaissent. → **Archiver aussi la note brute de contexte** une fois
+  `build_context_from_transcription` **réussi** (même `archive_raw_note_by_recording_id`).
+  La note `Contexte Alfred.md` elle-même reste évidemment `active`.
 - **Masquage par défaut** : les notes `status: archived` sont **masquées** de
   **l'arbre Notes** (`VaultNode.status`, filtré côté front) *et* des **Récents**
   (spec/10 — filtrées côté backend, `list_recent_notes`, avant la troncature au
   nombre affiché) — elles ne polluent plus la navigation.
-- **Bouton « Afficher les archives »** (page Notes, vue Dossiers) : **toggle**
+- **Bouton « Afficher les archives »** (page Notes) : **toggle**
   qui révèle les notes archivées (dans l'arbre) ; re-cliqué, les remasque. État
   visuel « archivé » distinct (estompé + badge). L'utilisateur peut
   **désarchiver** une note (repasser `active`) depuis Properties (champ `status`
@@ -185,6 +194,23 @@ faite, pour ne pas encombrer la navigation :
 
 > **Cohérence** : l'archivage étant un simple `status` frontmatter (déjà dans
 > `NoteMetadata`), il reste **compatible Obsidian** et réversible.
+
+#### Corrections UI (📝 à faire, feedback tests)
+
+1. **Le toggle « archives » ne doit pas être un 3ᵉ bouton du sélecteur de vue.**
+   Aujourd'hui il est collé à **Folders / Projects** (une 3ᵉ case dans le même
+   segmented control) — ce n'est **pas le bon endroit** (ça mélange « choix de vue »
+   et « filtre »). Le sélecteur ne garde que **Folders** et **Projects** ; déplacer
+   le **« Afficher les archives »** ailleurs (ex. discret en **pied de l'arbre**, ou
+   petite action d'en-tête à part) — mais **présent et identique dans les DEUX vues**.
+2. **UI identique Folders ↔ Projects.** Le toggle et son comportement doivent être
+   les **mêmes** quelle que soit la vue.
+3. **La vue Projects doit AUSSI masquer les archivées par défaut.** Bug : le filtre
+   `showArchived` n'est appliqué qu'à la vue **Folders** (`filterArchived(tree)`) ;
+   la vue **Projects** (`projectGroups`) affiche les archivées **en permanence**.
+   Appliquer le **même filtre** aux groupes de projets — masquées par défaut,
+   révélées seulement quand le toggle est **on** (et la transcription archivée d'une
+   paire ne s'affiche que si le toggle est on).
 
 ### Tags — liste des existants + autocomplétion — ✅ fait (feedback tests)
 

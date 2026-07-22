@@ -310,8 +310,12 @@ de `transcription-complete` :
   3. Émet `context-status-changed { status, recording_id, sections_filled,
      glossary_terms }`.
 - **Note de réunion** : en mode contexte, **pas** de compte-rendu dans
-  `alfred-intelligence/`, **pas** de tâches. Le WAV + la note brute de transcription
-  restent dans `alfred-raw/` (ré-écoute / refaire), cohérent spec/04.
+  `alfred-intelligence/`, **pas** de tâches. Le WAV reste dans `alfred-raw/`
+  (ré-écoute / refaire), cohérent spec/04. **La note brute de transcription du
+  contexte est archivée** (`status: archived`) une fois `build_context_from_transcription`
+  réussi — comme les transcriptions de réunion après ingestion (📝 à faire, feedback
+  tests, spec/07) : sinon elle reste seule visible dans Notes alors que toutes les
+  autres transcriptions disparaissent.
 - **Hors visite guidée** : le même `build_context_from_transcription` est
   réutilisable par un futur bouton « (Re)créer mon contexte à la voix » (Réglages).
 

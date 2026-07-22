@@ -142,12 +142,17 @@ fn stem(filename: &str) -> String {
 
 /// The `limit` most recently *modified* `.md` notes in the vault, excluding
 /// archived ones (`status: archived`, spec/07) — a raw transcription archived
-/// right after ingestion must not clutter Récents.
+/// right after ingestion must not clutter Récents. `exclude_path` (spec/07/16,
+/// feedback tests) additionally drops `Contexte Alfred.md` : ingestion (with
+/// or without clarifications) auto-writes accepted `context_additions` there
+/// almost every time (`finalize_ingestion`), which bumped its mtime ahead of
+/// the compte-rendu that had just been written — a note the user "should
+/// basically never open" was crowding out the one they actually want to see.
 ///
 /// Ordering is by filesystem mtime, which advances when a file is written
 /// (saved/edited) but never when it is merely read — so opening a note to view
 /// it does not bump it up this list.
-pub fn list_recent_notes(root: &Path, limit: usize) -> Result<Vec<RecentNote>> {
+pub fn list_recent_notes(root: &Path, limit: usize, exclude_path: Option<&Path>) -> Result<Vec<RecentNote>> {
     if !root.exists() {
         return Err(anyhow!("Vault folder does not exist: {:?}", root));
     }
@@ -167,6 +172,7 @@ pub fn list_recent_notes(root: &Path, limit: usize) -> Result<Vec<RecentNote>> {
                     .path()
                     .components()
                     .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+                && exclude_path.map(|ex| e.path() != ex).unwrap_or(true)
         })
         .filter_map(|e| {
             let modified = e.metadata().ok()?.modified().ok()?;

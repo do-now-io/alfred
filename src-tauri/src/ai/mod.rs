@@ -1351,8 +1351,11 @@ pub async fn generate_daily_brief(db: &SqlitePool, vault_root: Option<&Path>) ->
 
     let recents_text = match vault_root {
         Some(root) => {
+            // Exclut `Contexte Alfred.md` (spec/07/16, feedback tests) — pas une
+            // note d'activité, son inclusion dans le brief serait du bruit.
+            let context_path = root.join(crate::notes::context::context_note_path(db).await);
             let root = root.to_path_buf();
-            let recents = tokio::task::spawn_blocking(move || crate::notes::vault::list_recent_notes(&root, 5))
+            let recents = tokio::task::spawn_blocking(move || crate::notes::vault::list_recent_notes(&root, 5, Some(&context_path)))
                 .await?
                 .unwrap_or_default();
             if recents.is_empty() {

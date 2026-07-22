@@ -140,6 +140,14 @@ dans le volet **Récents** (gauche), où seul le nom (souvent une date) s'affich
   - note libre → `MdStickyNote2`.
 - **Récents plus lisibles** : icône de type + **nom** + **date/heure** en secondaire
   (pour distinguer deux enregistrements) plutôt que le seul nom.
+- **`Contexte Alfred.md` exclue des Récents — ✅ corrigé (feedback tests, spec/16)** :
+  `finalize_ingestion` auto-écrit les `context_additions` acceptés dans cette
+  note quasiment à chaque ingestion (avec ou sans clarifications), avançant sa
+  mtime presque systématiquement — elle passait donc TOUJOURS devant le
+  compte-rendu qu'on venait réellement de produire, alors que c'est une note
+  qu'on « ne devrait quasiment jamais rouvrir ». `list_recent_notes` gagne un
+  paramètre `exclude_path` (résolu via `context_note_path`), appliqué par
+  `get_recent_notes` (Récents) **et** `generate_daily_brief` (spec/05).
 - **Nommage : sujet après ingestion, plus la date** — une fois l'intelligence faite,
   le **compte-rendu est nommé par un sujet court** (nom de réunion / description),
   **pas** par la date. L'IA fournit ce titre : ajouter un champ **`titre`** (sujet

@@ -1,0 +1,12 @@
+-- spec/03/11 (feedback tests) : le défaut `mixed` (micro + système) n'a JAMAIS
+-- réellement pris effet — migration 001 insère littéralement
+-- `('recording_source', 'mic_only')` au tout premier lancement, donc
+-- `get_config` ne renvoie jamais NULL pour cette clé et le repli `?? "mixed"`
+-- côté front (recordingStore.ts) n'était jamais atteint, sur AUCUNE install
+-- (neuve ou ancienne). On ne peut pas modifier la migration 001 déjà appliquée
+-- (checksum sqlx) : on corrige donc la valeur ici. Ne touche que la valeur
+-- encore égale à l'ancien défaut — un utilisateur qui aurait explicitement
+-- choisi `mic_only` dans les Réglages n'est, dans les faits, pas
+-- distinguable de ce cas au niveau des données ; acceptable pour une v1 en
+-- test (~10 utilisateurs), à rebasculer manuellement si besoin.
+UPDATE config SET value = 'mixed' WHERE key = 'recording_source' AND value = 'mic_only';

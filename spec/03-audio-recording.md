@@ -20,12 +20,22 @@ transcription au `stop`.
 (La table `recordings.source` accepte les trois valeurs. Sur macOS,
 `start_recording` refuse `system_only`/`mixed` avec un message clair.)
 
-**Défaut = `mixed` (✅ fait).** La source par défaut est **`mixed`** (micro +
-système) — on capte l'interlocuteur (visio, appel) sans réglage. Config
-`recording_source` (défaut `mixed` si absente en base), modifiable dans les
-Réglages (spec/11). Les points de départ sans source explicite (logo, carte
-d'accueil, page de guidage) appellent `startRecording()` sans argument, qui lit
-cette config côté frontend **au lieu de** `"mic_only"` codé en dur.
+**Défaut = `mixed` (✅ fait, corrigé 2e passe — feedback tests).** La source par
+défaut est **`mixed`** (micro + système) — on capte l'interlocuteur (visio,
+appel) sans réglage. Config `recording_source` (défaut `mixed` si absente en
+base), modifiable dans les Réglages (spec/11). Les points de départ sans
+source explicite (logo, carte d'accueil, page de guidage) appellent
+`startRecording()` sans argument, qui lit cette config côté frontend **au lieu
+de** `"mic_only"` codé en dur.
+
+> **Bug corrigé** : le défaut n'avait en réalité JAMAIS pris effet. La
+> migration `001_initial.sql` insère littéralement `('recording_source',
+> 'mic_only')` au tout premier lancement — `get_config` ne renvoyait donc
+> jamais `NULL` pour cette clé, et le repli `?? "mixed"` côté front
+> (`recordingStore.ts`) n'était atteint sur AUCUNE install, neuve ou ancienne.
+> On ne peut pas modifier une migration déjà appliquée (checksum sqlx) :
+> `014_recording_source_mixed_default.sql` corrige la valeur en base pour les
+> lignes encore à `mic_only`.
 
 **Repli gracieux (✅ fait)** : sur une plateforme où `mixed`/`system_only` n'est
 pas dispo (macOS tant que le helper Swift n'est pas fait), `start_recording`

@@ -141,3 +141,19 @@ undo explicite ; historique d'actions ; permissions par domaine paramétrables.
   littéral absolu sans vérifier qu'il restait dans le coffre. Corrigé en
   réutilisant `agent_actions::resolve_note_path` (confinement vault) pour la
   lecture aussi, pas seulement pour les nouveaux outils d'écriture.
+- **Bug corrigé (feedback tests) — noms de colonnes de tâches cités en
+  français dans une réponse anglaise.** Les 4 sections de `Todo.md` (À
+  faire/En cours/Fait/Archivé) restent stockées en **français dans le fichier
+  quelle que soit `app_language`** — limitation technique connue et **délibérément
+  non traitée** par spec/21 (« sélection de langue pour de nouvelles sections
+  laissée en FR uniquement »). Alfred lisait ce libellé brut (via `search_notes`/
+  `read_note` sur `Todo.md`) et le recopiait tel quel dans une réponse par
+  ailleurs en anglais (« moved to the "Fait" column »). Pas une réécriture du
+  stockage (hors périmètre, cf. spec/21) : `chat_system(lang)` porte désormais
+  une consigne explicite — traduire ces 4 libellés dans la langue de la
+  réponse, ne jamais citer le mot brut du fichier.
+  > **Résidu non traité** : les requêtes `search_notes` que Claude choisit
+  > restent parfois en français (visibles dans le fil de progression du chat,
+  > `chat-progress`) quand elles portent sur du contenu Todo.md/notes
+  > effectivement écrit en français — même cause racine, pas indépendamment
+  > corrigeable sans traduire le stockage lui-même.

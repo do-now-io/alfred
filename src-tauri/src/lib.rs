@@ -1017,7 +1017,13 @@ async fn get_recent_notes(
 ) -> Result<Vec<notes::RecentNote>, String> {
     let root = get_vault_root(&state)?;
     let limit = limit.unwrap_or(5);
-    tokio::task::spawn_blocking(move || notes::vault::list_recent_notes(&root, limit))
+    // Exclut `Contexte Alfred.md` (spec/07/16, feedback tests) : sa mtime
+    // avance presque à chaque ingestion (context_additions auto-écrits par
+    // `finalize_ingestion`), la faisant systématiquement passer devant le
+    // compte-rendu qu'on vient réellement de produire — une note que
+    // l'utilisateur « ne devrait quasiment jamais ouvrir ».
+    let context_path = root.join(notes::context::context_note_path(&state.db).await);
+    tokio::task::spawn_blocking(move || notes::vault::list_recent_notes(&root, limit, Some(&context_path)))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())

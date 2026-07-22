@@ -67,6 +67,7 @@ par nous).
 | 19  | Site web (`alfred.do-now.io`) | 📝 | **Rien n'existe** — le footer des pages partagées (spec 18) pointe déjà vers ce domaine, mais aucun site (landing/marketing) n'est construit ni spécifié. Spec à écrire (contenu, hébergement) avant de coder |
 | 20  | Rendre le projet open source | 📝 | **Pas encore spécifié** — licence, ce qui reste privé (secrets Coolify/Stripe/clés déjà hors repo) vs code publié, dépôt cible. Décisions produit/légales à prendre avant d'écrire la spec |
 | 21  | Internationalisation (FR / EN) | 📝 | **Spec écrite, rien de codé.** Traduction **entière** de l'app en anglais + **choix de la langue à l'installation** (`app_language`, modifiable en Réglages) ; langue des sorties IA ≠ langue UI ; templates/`Todo.md` à découpler du libellé (feedback tests) |
+| 22  | Alfred agentique (actions) | 📝 | **Spec écrite, rien de codé.** Alfred passe de lecture seule à **agent** : créer/éditer/supprimer notes + tâches + contexte + données de démo via le chat (réutilise les commandes existantes). Confirmation **uniquement du destructif** ; Réglages/app hors périmètre v1 (feedback tests) |
 | —   | Ingest « run Claude » (CLI) | ❌ | **Supprimé** — remplacé par l'ingestion API (spec 05) |
 
 ## Deux modes d'accès à l'IA

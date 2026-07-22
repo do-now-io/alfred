@@ -8,7 +8,7 @@
 `[Sidebar 240px] | [Contenu]` — **plus de panneau droit** (calendrier retiré).
 Topbar **sans barre de recherche**.
 
-### Verrouiller le shell — pas d'overscroll global — 📝 à faire (feedback tests)
+### Verrouiller le shell — pas d'overscroll global — ✅ fait (feedback tests)
 
 Constat test : **partout où la vue courante n'a pas son propre scroll**, on peut
 **tirer la page entière dans tous les sens** (rubber-band) → des **marges vides**

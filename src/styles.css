@@ -35,6 +35,18 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
+  /* Verrouille le shell (spec/10, feedback tests) : sans ça, partout où la vue
+     courante n'a pas son propre scroll, on peut tirer la PAGE ENTIÈRE dans la
+     WebView (rubber-band) — marges vides en haut/à gauche, qui reviennent au
+     relâchement. Seuls les panneaux internes (arbre de notes, colonnes Kanban,
+     fil de chat…) doivent scroller, chacun dans son propre `overflow: auto`. */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+#root {
+  position: fixed;
+  inset: 0;
 }
 
 body {

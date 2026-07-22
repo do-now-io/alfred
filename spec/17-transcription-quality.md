@@ -88,6 +88,13 @@ S'ajoutent deux gains **indépendants du contexte** : la **qualité de décodage
   >   `initial_prompt` (ci-dessus). Si elle est en **anglais** mais que la **note de
   >   contexte** est en français → le fautif est **Claude** (`build_context`,
   >   spec/05/13).
+  >
+  > ✅ **TRANCHÉ (capture d'écran `/resolve`, réunion EN)** : la citation d'origine
+  > est **en anglais** (« UAE T1 and UAE T2 were not accessible… ») → **Whisper
+  > transcrit bien en anglais**. Ce sont les **sorties de Claude** qui sont
+  > françaises (reformulation proposée, faits « à retenir »). Donc **le bug de langue
+  > est côté Claude**, pas Whisper (le volet Whisper/`initial_prompt` ci-dessus n'est
+  > pas la cause de ce cas). Voir §3 + spec/05.
 
 ## §2 — Qualité de décodage (beam + seuils)
 
@@ -127,6 +134,21 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
 3. **Finalisation** — `submit_ingestion` sur le texte corrigé + réponses.
 
 **Jamais d'auto-application** d'une correction.
+
+> 🚧 **Langue des propositions — BUG confirmé au test (📝 à corriger).** Sur une
+> réunion **anglaise** (transcription EN vérifiée à l'écran), l'écran `/resolve`
+> affiche des **propositions et faits en français** : `unclear_sentence` proposée
+> (« Il s'agit probablement des environnements UAT1 et UAT2… »), `context_addition`
+> (« Alexandre Chevalier est un contact… », « Un incident a eu lieu un mardi… »). Le
+> prompt d'`analyze_transcription` et les **descriptions de champs** du tool
+> d'analyse sont **en français** → Claude génère ses propositions **en français**
+> quel que soit la langue de la transcription. **Correctif** : ces sorties
+> (`unclear_sentence.proposed`, `transcription_fix.correction`, `context_addition.fact`)
+> doivent être **dans la langue de la transcription** — consigne **explicite et
+> impérative** dérivée de la **langue détectée** (`transcriptions.language`), pas par
+> inférence (même correctif que spec/05 pour l'ingestion/`build_context`). ⚠️ Sinon
+> les faits « appris automatiquement » **polluent la note de contexte EN avec des
+> lignes FR** (§4).
 
 ### La finalisation attend la vérification (✅ fait)
 

@@ -76,6 +76,11 @@ clé de registre Windows) ; **« Revoir l'introduction »** (rejoue l'onboarding
 - `DEFAULT_RECORDING_FOLDER` : `raw/audios` → **`alfred-raw`**.
 - `DEFAULT_TODO_FILE` : `wiki/Todo.md` → **`alfred-intelligence/Todo.md`**.
 
+> ⚠️ **Vestige dans les vaults réutilisés (feedback tests)** : un vault créé par une
+> version antérieure garde un **`raw/`** (`raw/audios/`) — et parfois `wiki/` —
+> orphelins, le code n'y écrivant plus. Prévoir une **migration de nettoyage** qui
+> consolide `raw/` → `alfred-raw/` et supprime le dossier vide (spec/07).
+
 ## Note bug — ✅ fait
 
 Le launch-at-login macOS utilisait le label `io.alfred.app` alors que l'identifiant

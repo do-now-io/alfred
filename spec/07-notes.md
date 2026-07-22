@@ -25,6 +25,18 @@ plus de notes — la table `notes` est **legacy** (migration uniquement).
 - **Note brute d'enregistrement** créée après transcription (spec/04),
   frontmatter `for_recording` + corps `# Transcription`.
 
+> **Dossier `raw/` parasite (📝 à faire — nettoyage vestige, feedback tests).**
+> Constat : un vault peut contenir un **`raw/`** (souvent `raw/audios/`) **en plus**
+> de `alfred-raw/`. Origine : **ancien défaut** du dossier d'enregistrement =
+> `raw/audios` (spec/11, avant `alfred-raw`). Le code **actuel n'y écrit plus rien** ;
+> le `raw/` subsiste uniquement dans les **vaults réutilisés** d'une version
+> antérieure (supprimer l'app ne vide pas le vault). À traiter : **migration
+> unique et idempotente** au scaffolding du vault — si un legacy `raw/`
+> (et `raw/audios/`) existe, **déplacer son contenu** (`.wav` + notes) dans
+> `alfred-raw/` puis **supprimer le dossier vide** `raw/`. Ne rien écraser en cas de
+> collision de nom (suffixer). Idem pour l'ancien `wiki/Todo.md` → `alfred-intelligence/Todo.md`
+> si présent.
+
 - ✅ Défauts alignés : `recording_folder` → `alfred-raw` (spec/11), compte-rendus
   IA → `alfred-intelligence/{titre}.md`, todos → `alfred-intelligence/Todo.md`
   (spec/05, spec/06). Reste : frontmatter riche sur la note brute elle-même

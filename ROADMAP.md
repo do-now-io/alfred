@@ -143,6 +143,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | Désactiver / retirer les modules `auth`, `calendar`, `suggestions`, `phone_calls` (`ingest` CLI déjà supprimé — spec/05) + tables SQLite associées (migration 008) + UI morte (WeekPanel, BookingDemo, BriefingTask, SuggestionCard, PhoneCallModal, stores) + deps orphelines (base64/sha2/hex) + `.env.example` Google | UC |
 | [x] | Retirer les routes `/meetings`, `/calendar` (faites avec la nav Phase C ; `/ai-actions` conservée — écart documenté spec/10) | UC |
 | [x] | Mettre à jour les défauts de dossiers (`alfred-raw` ✅, `alfred-intelligence/Todo.md` ✅) | UC |
+| [ ] | **Nettoyage vestige `raw/` dans le vault (spec/07/11, feedback tests)** : les vaults réutilisés gardent un `raw/` (`raw/audios/`) orphelin de l'ancien défaut `raw/audios` (le code écrit dans `alfred-raw/`). Migration **unique + idempotente** au scaffolding : déplacer le contenu de `raw/` → `alfred-raw/` (suffixer si collision), supprimer le dossier vide ; idem `wiki/Todo.md` legacy si présent | |
 
 ## Phase E — Packaging & distribution
 

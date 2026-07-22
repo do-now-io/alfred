@@ -326,16 +326,18 @@ de `transcription-complete` :
 `alfred-intelligence/Todo.md` (avec les sections Prioritaire / En cours / À faire /
 Archivé). Idempotent.
 
-## Écran de fin — 📝 à faire
+## Écran de fin — ✅ fait
 
 L'étape de clôture du wizard (`Onboarding.tsx`, « Tout est prêt ! ») et l'étape
-« Vous êtes équipé » de la visite guidée (`GuidedTour.tsx`, case `closing`) sont
-aujourd'hui des panneaux génériques (icône + titre + texte), sans rapport visuel
-avec le reste de l'app. **Reprendre le habillage de la page de guidage
-d'enregistrement** (`/recording`, `RecordingGuide.tsx` — spec/03 : ambiance,
-mise en page) pour que la dernière chose vue à l'onboarding ressemble à ce que
-l'utilisateur retrouvera pour son prochain enregistrement, au lieu d'un écran
-générique déconnecté.
+« Vous êtes équipé » de la visite guidée (`GuidedTour.tsx`, case `closing`)
+étaient des panneaux génériques (icône + titre + texte), sans rapport visuel
+avec le reste de l'app. Les deux affichent désormais un **aperçu de la carte
+« Démarrer l'enregistrement »** de `/recording` (`RecordingGuide.tsx` —
+spec/03) : même bouton accent (icône micro, mêmes rayons/tailles) précédé d'un
+hint (« Voilà ce que vous retrouverez au prochain enregistrement »), dans un
+encart dédié sous le texte de clôture — pour que la dernière chose vue à
+l'onboarding ressemble à ce que l'utilisateur retrouvera pour son prochain
+enregistrement, au lieu d'un écran générique déconnecté.
 
 ## Retiré / déplacé
 

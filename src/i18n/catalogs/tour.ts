@@ -36,6 +36,7 @@ export default {
     closing: {
       title: "Vous êtes équipé",
       text: "Désormais : parlez, je vous écoute, je résume et je retiens. Et je connais votre univers. Le reste, vous le découvrirez en m'utilisant.",
+      previewHint: "Voilà ce que vous retrouverez au prochain enregistrement",
       primary: "Terminer",
     },
     visit: {
@@ -119,6 +120,7 @@ export default {
     closing: {
       title: "You're all set",
       text: "From now on: talk, I'll listen, summarize, and remember. And I know your world. You'll discover the rest as you use me.",
+      previewHint: "Here's what you'll find again for your next recording",
       primary: "Finish",
     },
     visit: {

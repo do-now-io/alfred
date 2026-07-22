@@ -57,6 +57,7 @@ export default {
     ready: {
       title: "Tout est prêt !",
       text: "Vous retrouverez tous ces réglages à tout moment dans Paramètres. Une dernière chose avant de vous lâcher dans l'app…",
+      previewHint: "Voilà ce que vous retrouverez au prochain enregistrement",
     },
   },
   en: {
@@ -116,6 +117,7 @@ export default {
     ready: {
       title: "All set!",
       text: "You'll find all these settings again at any time in Settings. One last thing before I let you loose in the app…",
+      previewHint: "Here's what you'll find again for your next recording",
     },
   },
 };

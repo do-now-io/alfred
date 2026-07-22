@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { MdClose } from "react-icons/md";
+import { MdClose, MdMic } from "react-icons/md";
 import { useTourStore, type TourStep } from "../../store/tourStore";
 import { useRecordingStore, useRecordingElapsed } from "../../store/recordingStore";
 import { useResolveStore } from "../../store/resolveStore";
@@ -353,13 +353,43 @@ export default function GuidedTour() {
 
     case "closing":
       return (
-        <TourModal
-          glow
-          title={t("tour.closing.title")}
-          text={t("tour.closing.text")}
-          primary={t("tour.closing.primary")}
-          onPrimary={finish}
-        />
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 2200,
+          background: "rgba(0,0,0,0.55)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <div className="card" style={{
+            width: "100%", maxWidth: 440, padding: "36px 32px 28px", margin: 16,
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 16,
+            textAlign: "center",
+            boxShadow: `0 0 60px -8px ${ACCENT}, 0 12px 48px rgba(0,0,0,0.3)`,
+          }}>
+            <AlfredAvatar size={56} />
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>
+              {t("tour.closing.title")}
+            </h2>
+            <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.6, color: "var(--text-secondary)" }}>
+              {t("tour.closing.text")}
+            </p>
+            {/* Aperçu de /recording (spec/03) : ce qu'on retrouvera au prochain
+                enregistrement, plutôt qu'un écran générique déconnecté (spec/13). */}
+            <div style={{
+              border: "1px solid var(--border)", borderRadius: 12, padding: "14px 18px",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%",
+            }}>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {t("tour.closing.previewHint")}
+              </div>
+              <div style={{
+                background: ACCENT, color: "#fff", borderRadius: 10, padding: "9px 20px",
+                fontSize: 13.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 8,
+              }}>
+                <MdMic size={16} /> {t("recording.guide.startRecording")}
+              </div>
+            </div>
+            <button onClick={finish} style={primaryBtn()}>{t("tour.closing.primary")}</button>
+          </div>
+        </div>
       );
 
     default: {

@@ -395,10 +395,29 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       name: "ready",
       node: (
         <Panel
-          icon={<IconCircle><MdCheckCircle /></IconCircle>}
+          icon={<AlfredAvatar size={72} variant="full" />}
           title={t("onboarding.ready.title")}
           text={t("onboarding.ready.text")}
-        />
+        >
+          {/* Aperçu de /recording (spec/03) : la dernière chose vue à l'onboarding
+              ressemble à ce qu'on retrouvera au prochain enregistrement, plutôt
+              qu'un écran générique déconnecté (spec/13). */}
+          <div className="card" style={{
+            padding: "16px 20px", display: "flex", flexDirection: "column",
+            alignItems: "center", gap: 10,
+          }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {t("onboarding.ready.previewHint")}
+            </div>
+            <div style={{
+              background: ACCENT, color: "#fff", borderRadius: 10,
+              padding: "10px 24px", fontSize: 14, fontWeight: 600,
+              display: "inline-flex", alignItems: "center", gap: 8,
+            }}>
+              <MdMic size={18} /> {t("recording.guide.startRecording")}
+            </div>
+          </div>
+        </Panel>
       ),
     },
   ];

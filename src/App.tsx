@@ -27,6 +27,7 @@ import RecordingBar from "./components/RecordingBar";
 import { NoteTypeIcon } from "./utils/noteType";
 import NoteContextMenu from "./components/notes/NoteContextMenu";
 import GuidedTour from "./components/tour/GuidedTour";
+import Toast from "./components/Toast";
 import FeedbackWidget from "./components/FeedbackWidget";
 import { t as translate, useI18nStore, useT } from "./i18n";
 
@@ -520,6 +521,7 @@ function AppInner() {
       </div>
       <GuidedTour />
       <ResolveBanner />
+      <Toast />
       {ingestError && (
         <div style={{
           position: "fixed", bottom: 20, right: 20, zIndex: 1500,

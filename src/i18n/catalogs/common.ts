@@ -16,6 +16,7 @@ export default {
     unknownError: "Erreur inconnue",
     yes: "Oui",
     no: "Non",
+    linkNotFound: "Cible introuvable — a-t-elle été renommée ?",
     share: {
       consent: "Partager ?\n\nLe contenu sera envoyé sur mes serveurs et accessible par toute personne disposant du lien. Vous pourrez arrêter le partage à tout moment.",
       failed: "Partage impossible : {error}",
@@ -45,6 +46,7 @@ export default {
     unknownError: "Unknown error",
     yes: "Yes",
     no: "No",
+    linkNotFound: "Target not found — was it renamed?",
     share: {
       consent: "Share?\n\nThe content will be sent to my servers and accessible to anyone with the link. You can stop sharing at any time.",
       failed: "Could not share: {error}",

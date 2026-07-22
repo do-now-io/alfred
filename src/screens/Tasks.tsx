@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -9,6 +9,8 @@ import ShareButton from "../components/ShareButton";
 import TaskSheet from "../components/tasks/TaskSheet";
 import { useNotesStore } from "../store/notesStore";
 import { useProfileStore, isSelf } from "../store/profileStore";
+import { useToastStore } from "../store/toastStore";
+import { useInternalLink } from "../utils/useInternalLink";
 import { renderInlineMd, stripInlineMd } from "../utils/inlineMd";
 import type { Todo } from "../bindings/Todo";
 import { useT, useI18nStore } from "../i18n";
@@ -130,6 +132,14 @@ export default function Tasks() {
   const [addText, setAddText] = useState("");
   // Fiche tâche ouverte (spec/06 2e passe).
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // Lien profond `task:<id>` (spec/23) : `/tasks?focus=<id>` scroll + surligne
+  // brièvement la carte visée (même esprit que `Graph.tsx?focus=`), au lieu
+  // d'ouvrir la fiche (décidé — cf. spec/23).
+  const [searchParams] = useSearchParams();
+  const focusId = searchParams.get("focus");
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const handledFocusRef = useRef<string | null>(null);
+  const showToast = useToastStore((s) => s.show);
 
   const load = useCallback(async () => {
     try {
@@ -163,6 +173,33 @@ export default function Tasks() {
     listen("notes-updated", () => { load(); loadVaultProjects(); }).then((fn) => unsubs.push(fn));
     return () => unsubs.forEach((fn) => fn());
   }, [load, loadVaultProjects]);
+
+  // `/tasks?focus=<id>` (spec/23) : une fois les tâches chargées, cherche la
+  // cible — l'`id` est déjà `normalize_title` côté Rust (ingestion) donc une
+  // égalité stricte suffit, pas besoin de ré-implémenter la normalisation en
+  // JS. Réinitialise les filtres actifs qui la cacheraient, dévoile la colonne
+  // Archivé si besoin, scroll + halo bref (même esprit que `Graph.tsx?focus=`).
+  useEffect(() => {
+    if (!focusId || handledFocusRef.current === focusId || !loaded) return;
+    handledFocusRef.current = focusId;
+    const task = todos.find((x) => x.id === focusId);
+    if (!task) {
+      showToast(t("common.linkNotFound"));
+      return;
+    }
+    setTextFilter("");
+    setOwnerFilter("");
+    setDueFilter("");
+    setProjectFilter("");
+    setPriorityFilter("");
+    if (normalizeSectionHeading(task.section) === "archived") setArchiveOpen(true);
+    setHighlightedId(task.id);
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-task-id="${CSS.escape(task.id)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    const timer = setTimeout(() => setHighlightedId(null), 2500);
+    return () => clearTimeout(timer);
+  }, [focusId, todos, loaded, showToast, t]);
 
   const owners = useMemo(() => {
     const set = new Set<string>();
@@ -467,6 +504,7 @@ export default function Tasks() {
                       key={task.id}
                       task={task}
                       profileName={profileName}
+                      highlighted={task.id === highlightedId}
                       onToggle={() => toggleChecked(task)}
                       onOpen={() => setOpenTaskId(task.id)}
                       onDragStart={() => setDrag({ id: task.id })}
@@ -519,11 +557,13 @@ function viewToggleBtn(active: boolean): React.CSSProperties {
 }
 
 function TaskCard({
-  task, profileName, onToggle, onOpen, onDragStart, onDragEnd, onDropBefore,
+  task, profileName, highlighted, onToggle, onOpen, onDragStart, onDragEnd, onDropBefore,
 }: {
   task: Todo;
   /** Profil local (spec/10/11) — pour afficher « moi » sur ses propres tâches. */
   profileName: string;
+  /** Halo bref après navigation depuis un lien `task:` (spec/23). */
+  highlighted?: boolean;
   onToggle: () => void;
   onOpen: () => void;
   onDragStart: () => void;
@@ -532,6 +572,7 @@ function TaskCard({
   onDropBefore: () => void;
 }) {
   const t = useT();
+  const handleLink = useInternalLink();
   const due = dueKind(task.echeance);
   const dueLabelKey = due ? DUE_LABEL_KEY[due] : "";
   const owner = task.responsable;
@@ -539,16 +580,21 @@ function TaskCard({
   return (
     <div
       draggable
+      data-task-id={task.id}
       onClick={onOpen}
       onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart(); }}
       onDragEnd={onDragEnd}
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDrop={(e) => { e.preventDefault(); e.stopPropagation(); onDropBefore(); }}
       style={{
-        background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10,
+        background: "var(--bg)",
+        border: `1px solid ${highlighted ? "var(--accent)" : "var(--border)"}`,
+        boxShadow: highlighted ? "0 0 0 3px rgba(200,145,74,0.35)" : "none",
+        borderRadius: 10,
         padding: "9px 11px", cursor: "grab",
         opacity: task.checked ? 0.55 : 1,
         display: "flex", flexDirection: "column", gap: 6,
+        transition: "box-shadow 0.4s ease, border-color 0.4s ease",
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -563,7 +609,7 @@ function TaskCard({
           fontSize: 13, lineHeight: 1.45, color: "var(--text-primary)",
           textDecoration: task.checked ? "line-through" : "none",
         }}>
-          {renderInlineMd(task.title)}
+          {renderInlineMd(task.title, handleLink)}
         </span>
       </div>
       {(owner || due || task.project || task.priority || hasBlock) && (

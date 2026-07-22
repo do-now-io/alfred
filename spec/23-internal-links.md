@@ -1,8 +1,10 @@
 # spec/23 — Liens internes & navigation (audit)
 
-> **Statut v1 :** 📝 spec à créer, **rien de codé** (audit + refonte). Constat test :
-> les liens **s'affichent bien** (titres stylés, sans crochets) mais **ne naviguent
-> pas** — clic sans effet entre notes ↔ tâches ↔ transcription.
+> **Statut v1 : ✅ fait.** Gestionnaire de lien unique (`useInternalLink`,
+> `src/utils/useInternalLink.ts`) + schéma `task:` + section « Tâches »
+> cliquable dans le compte-rendu + toast d'échec de résolution. Détail dans
+> chaque section ci-dessous. **Non couvert** (voir fin de fichier) : repli sur
+> le titre frontmatter pour la résolution `wikilink:`, alignement du graphe.
 
 ## Constat (2 chemins, dont un mort)
 
@@ -61,21 +63,61 @@ rien dans `renderInlineMd`). Centraliser :
 - Même handler branché sur la **preview de note** (`react-markdown`), le **brief**,
   et les **sources du chat** (spec/07b) → comportement identique partout.
 
-## Périmètre de l'audit (surfaces à couvrir)
+## Périmètre de l'audit (surfaces à couvrir) — ✅ fait
 
-Vérifier que le clic navigue correctement depuis : **preview de note** (compte-rendu),
-**brief** (accueil), **carte Kanban** + **fiche tâche** + **vue Markdown des tâches**,
-**sources citées du chat**, **Récents**. (Le **graphe** ouvre déjà un nœud → aligner
-sur le même handler si besoin.)
+Le clic navigue correctement depuis : **preview de note** (compte-rendu) et **brief**
+(`BriefingContent`/`onNavigate`), **carte Kanban** + **fiche tâche** + **lignes de
+brief** (`renderInlineMd`/`onNavigate`, `Dashboard.tsx`/`Tasks.tsx`). **Sources citées
+du chat** et **Récents** : déjà corrects avant cette spec (navigation par **chemin
+réel**, pas par résolution de wikilink) — vérifiés, non réécrits. **Le graphe** : déjà
+correct de la même façon (`selectFile(node.path)`) — **non aligné** sur
+`useInternalLink` (pas nécessaire, déjà fonctionnel, cf. `Graph.tsx?focus=<label>`
+dont le pattern a d'ailleurs servi de modèle à `/tasks?focus=<id>` ci-dessous).
 
 ## Robustesse de résolution
 
-- **note/transcription** : nom de fichier **insensible casse/accents**, repli sur le
-  **titre frontmatter** ; gérer le compte-rendu **nommé par sujet** (spec/07) et la
-  **note brute datée** — les deux doivent être atteignables par leur wikilink respectif.
-- **tâche** : titre **normalisé** (minuscule, espaces réduits — même règle que la
-  dédup/identité `Todo.md`, spec/06) ; si la tâche a été cochée/déplacée/archivée,
-  le lien la retrouve quand même (elle existe toujours dans le fichier).
+- **note/transcription** : nom de fichier **insensible casse/accents** — ✅ fait
+  (`findNodeByRef`, `notesStore.ts`). **Repli sur le titre frontmatter — non fait** :
+  `VaultNode` ne porte pas le titre frontmatter (seulement `status`/`recording_id`,
+  spec/07/17) ; l'ajouter demanderait un nouveau champ + une nouvelle lecture par
+  fichier. Gap connu, pas bloquant (la résolution par nom de fichier couvre le cas
+  courant : compte-rendu nommé par sujet et note brute datée sont chacun retrouvés
+  par leur propre nom).
+- **tâche** : titre **normalisé** — ✅ fait, mais **sans réimplémentation JS** de la
+  règle de normalisation (spec/06) : les liens `task:` sont **toujours générés
+  côté Rust** (section « Tâches » du compte-rendu) avec l'identité exacte
+  (`todo_md::normalize_title`) déjà utilisée comme `Todo.id` — une égalité stricte
+  côté front suffit donc, tâche cochée/déplacée/archivée comprise (elle garde son
+  id). Un `task:` tapé à la main avec une casse/normalisation différente de celle du
+  titre réel ne résoudra pas — cas marginal, non couvert.
+
+## Implémentation
+
+- **Gestionnaire unique** : `src/utils/useInternalLink.ts` (hook `useInternalLink`)
+  — `wikilink:<ref>` → `openNoteByRef` → `/notes` ; `task:<ref>` →
+  `/tasks?focus=<ref>` ; `http(s)://` → `plugin-shell` ; sinon → toast.
+- **`task:` scheme** : généré côté Rust (`run_ingestion_core`, section « Tâches »/
+  « Tasks », localisée comme « Points clés ») via `urlencoding::encode(&normalize_title(titre))`
+  — seulement quand les tâches sont réellement écrites (`tasks: true`), pour ne
+  jamais poser un lien mort. Consommé côté front dans `Tasks.tsx` (`?focus=`) :
+  réinitialise les filtres actifs qui cacheraient la carte, dévoile la colonne
+  Archivé si besoin, scroll + halo bref (2,5 s, même pattern que `Graph.tsx?focus=`).
+  Tâche introuvable (supprimée) → toast.
+- **`renderInlineMd`** (`src/utils/inlineMd.tsx`) accepte un 2ᵉ paramètre optionnel
+  `onNavigate` — les `[[wikilinks]]` et `[texte](url)` deviennent des `<button>`
+  cliquables (au lieu des spans morts historiques) ; sans `onNavigate`, rendu
+  inchangé (pas de régression pour un appelant non mis à jour, si un futur ajoute
+  un 3e call site en oubliant de le brancher).
+- **`BriefingContent`** : prop renommée `onWikilink` → `onNavigate` (reçoit le href
+  complet, schéma compris) — le câblage DOM impératif délègue tout, y compris
+  `http(s)`, au handler plutôt que de dupliquer sa propre logique. `urlTransform`
+  whitelist désormais `task:` en plus de `wikilink:` (sinon react-markdown le
+  strippe comme protocole inconnu).
+- **Toast** : `src/store/toastStore.ts` + `src/components/Toast.tsx`, monté une
+  fois dans `App.tsx`. Message unique (pas de file), auto-masqué après 3,5 s.
+- **Consolidation** : les 3 câblages dupliqués (`Dashboard.tsx`/`ChatPanel.tsx`/
+  `TaskSheet.tsx`, chacun avec son propre `openNoteByRef` + `navigate` inline)
+  remplacés par `useInternalLink()`.
 
 ## Hors v1 / plus tard
 

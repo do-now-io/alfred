@@ -6,6 +6,7 @@ import { useNotesStore } from "../../store/notesStore";
 import { useTourTarget } from "../../store/tourStore";
 import BriefingContent from "../BriefingContent";
 import DictationButton from "../DictationButton";
+import { useInternalLink } from "../../utils/useInternalLink";
 import type { ChatSource } from "../../bindings/ChatSource";
 import { useT } from "../../i18n";
 
@@ -121,7 +122,7 @@ export default function ChatPanel() {
   const [input, setInput] = useState("");
   const navigate = useNavigate();
   const selectFile = useNotesStore(s => s.selectFile);
-  const openNoteByRef = useNotesStore(s => s.openNoteByRef);
+  const handleLink = useInternalLink();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Keep the latest message / progress in view.
@@ -133,11 +134,6 @@ export default function ChatPanel() {
   const openByPath = async (path: string) => {
     await selectFile(path);
     navigate("/notes");
-  };
-
-  const handleWikilink = async (ref: string) => {
-    const ok = await openNoteByRef(ref);
-    if (ok) navigate("/notes");
   };
 
   const submit = (text?: string) => {
@@ -189,7 +185,7 @@ export default function ChatPanel() {
               {messages.map(m =>
                 m.role === "user"
                   ? <UserBubble key={m.id} text={m.content} />
-                  : <AssistantBubble key={m.id} turn={m} onWikilink={handleWikilink} onOpenSource={openByPath} />
+                  : <AssistantBubble key={m.id} turn={m} onNavigate={handleLink} onOpenSource={openByPath} />
               )}
               {loading && <ProgressView progress={progress} />}
               {error && <div style={{ fontSize: 13, color: "var(--danger)" }}>⚠ {error}</div>}
@@ -302,15 +298,15 @@ function UserBubble({ text }: { text: string }) {
 }
 
 function AssistantBubble({
-  turn, onWikilink, onOpenSource,
+  turn, onNavigate, onOpenSource,
 }: {
   turn: ChatTurn;
-  onWikilink: (ref: string) => void;
+  onNavigate: (href: string) => void;
   onOpenSource: (path: string) => void;
 }) {
   return (
     <div style={{ alignSelf: "flex-start", maxWidth: "100%", width: "100%" }}>
-      <BriefingContent markdown={turn.content} onWikilink={onWikilink} />
+      <BriefingContent markdown={turn.content} onNavigate={onNavigate} />
       {turn.sources && turn.sources.length > 0 && (
         <SourceChips sources={turn.sources} onOpen={onOpenSource} />
       )}

@@ -1,40 +1,37 @@
 import { useEffect, useRef } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { encodeLinkRef } from "../utils/linkRef";
 
 // react-markdown sanitizes hrefs and strips unknown protocols (only http/https/
-// mailto/… survive) — without this, wikilink: anchors render with href=""
+// mailto/… survive) — without this, wikilink:/task: anchors render with href=""
 function urlTransform(url: string): string {
-  return url.startsWith("wikilink:") ? url : defaultUrlTransform(url);
-}
-
-// encodeURIComponent leaves ( ) untouched, which would break [x](url) syntax
-function encodeRef(ref: string): string {
-  return encodeURIComponent(ref).replace(/\(/g, "%28").replace(/\)/g, "%29");
+  return url.startsWith("wikilink:") || url.startsWith("task:") ? url : defaultUrlTransform(url);
 }
 
 // [[Note Title]] or [[Note Title|alias]] → markdown link with wikilink: scheme
+// (a literal `[Title](task:<ref>)` link — e.g. from the compte-rendu's "Tâches"
+// section, spec/23 — is already valid markdown and needs no such rewrite).
 function resolveWikilinks(text: string): string {
-  let count = 0;
-  const resolved = text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, alias) => {
-    count++;
+  return text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, alias) => {
     const display = (alias?.trim() ?? target.trim()).replace(/"/g, "&quot;");
     const ref = target.trim().replace(/"/g, "&quot;");
-    return `[${display}](wikilink:${encodeRef(ref)})`;
+    return `[${display}](wikilink:${encodeLinkRef(ref)})`;
   });
-  console.log(`[wikilink] Briefing: ${count} wikilink(s) detected in briefing`);
-  return resolved;
 }
 
 interface Props {
   markdown: string;
-  onWikilink: (ref: string) => void;
+  /** Gestionnaire de lien interne unique (spec/23) — reçoit le href COMPLET,
+   *  schéma compris (`wikilink:<ref>`, `task:<ref>`, `http(s)://…`) : voir
+   *  `useInternalLink`. */
+  onNavigate: (href: string) => void;
 }
 
-export default function BriefingContent({ markdown, onWikilink }: Props) {
+export default function BriefingContent({ markdown, onNavigate }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const onWikilinkRef = useRef(onWikilink);
-  onWikilinkRef.current = onWikilink;
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
 
   // Direct DOM wiring — React onClick on ReactMarkdown anchors is unreliable in this WebView
   useEffect(() => {
@@ -42,23 +39,14 @@ export default function BriefingContent({ markdown, onWikilink }: Props) {
     if (!el) return;
 
     const anchors = el.querySelectorAll<HTMLAnchorElement>("a");
-    console.log(`[wikilink] Briefing: wiring ${anchors.length} anchor(s)`);
     anchors.forEach((a) => {
       const href = a.getAttribute("href") ?? "";
-      console.log(`[wikilink] Briefing: anchor href="${href}" text="${a.textContent}"`);
       a.style.cursor = "pointer";
 
       a.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        console.log(`[wikilink] Briefing: click on href="${href}"`);
-        if (href.startsWith("wikilink:")) {
-          const ref = decodeURIComponent(href.replace("wikilink:", ""));
-          console.log(`[wikilink] Briefing: resolved ref="${ref}"`);
-          onWikilinkRef.current?.(ref);
-        } else if (href.startsWith("http://") || href.startsWith("https://")) {
-          import("@tauri-apps/plugin-shell").then(({ open }) => open(href));
-        }
+        onNavigateRef.current?.(href);
       };
     });
   }); // no deps — runs after every render

@@ -12,6 +12,7 @@ import type { NoteFile } from "../bindings/NoteFile";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
 import { toggleChecked, groupTasksBySection, type TaskLine } from "../utils/todoTasks";
 import { renderInlineMd } from "../utils/inlineMd";
+import { useInternalLink } from "../utils/useInternalLink";
 import { useI18nStore, useT } from "../i18n";
 import { TODO_SECTION_LABELS, type TodoSectionKey } from "../i18n/todoSections";
 
@@ -156,6 +157,7 @@ function TaskRow({ task, onToggle, onOpen }: {
   task: TaskLine; onToggle: () => void; onOpen: () => void;
 }) {
   const t = useT();
+  const handleLink = useInternalLink();
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 12,
@@ -176,7 +178,7 @@ function TaskRow({ task, onToggle, onOpen }: {
           opacity: task.checked ? 0.5 : 1,
         }}
       >
-        {renderInlineMd(task.text)}
+        {renderInlineMd(task.text, handleLink)}
       </span>
     </div>
   );
@@ -320,8 +322,7 @@ function BriefCard() {
   const [text, setText] = useState<string | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const openNoteByRef = useNotesStore(s => s.openNoteByRef);
-  const navigate = useNavigate();
+  const handleLink = useInternalLink();
 
   const today = () => new Date().toISOString().slice(0, 10);
 
@@ -350,11 +351,6 @@ function BriefCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleWikilink = async (ref: string) => {
-    const ok = await openNoteByRef(ref);
-    if (ok) navigate("/notes");
-  };
-
   return (
     <div className="card" style={{ padding: "20px 24px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -378,7 +374,7 @@ function BriefCard() {
       ) : text ? (
         <>
           <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
-            <BriefingContent markdown={text} onWikilink={handleWikilink} />
+            <BriefingContent markdown={text} onNavigate={handleLink} />
           </div>
           {generatedAt && (
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>{t("dashboard.briefCard.generatedOn", { date: generatedAt })}</div>

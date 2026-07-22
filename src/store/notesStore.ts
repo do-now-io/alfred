@@ -5,11 +5,17 @@ import type { NoteFile } from "../bindings/NoteFile";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
 import type { RecentNote } from "../bindings/RecentNote";
 
+// Insensible casse/accents (spec/23 — « robustesse de résolution ») : un
+// wikilink tapé sans accent doit tout de même matcher « Réunion ».
+function normalizeRef(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
 // Recursively search a VaultNode tree for a file whose stem matches `ref`
 export function findNodeByRef(node: VaultNode, ref: string): string | null {
   if (!node.is_dir) {
     const stem = node.name; // already stripped of .md
-    if (stem.toLowerCase() === ref.toLowerCase()) return node.path;
+    if (normalizeRef(stem) === normalizeRef(ref)) return node.path;
   }
   for (const child of node.children) {
     const found = findNodeByRef(child, ref);

@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { MdClose, MdAdd, MdAutoAwesome, MdHub, MdOpenInNew, MdPersonPin } from "react-icons/md";
 import { useNotesStore } from "../../store/notesStore";
 import { useProfileStore } from "../../store/profileStore";
+import { useInternalLink } from "../../utils/useInternalLink";
 import { useT } from "../../i18n";
 import BriefingContent from "../BriefingContent";
 import type { Todo } from "../../bindings/Todo";
@@ -48,6 +49,7 @@ export default function TaskSheet({
   const t = useT();
   const navigate = useNavigate();
   const openNoteByRef = useNotesStore((s) => s.openNoteByRef);
+  const handleLink = useInternalLink();
   const profileName = useProfileStore((s) => s.name);
   const loadProfile = useProfileStore((s) => s.load);
   useEffect(() => { loadProfile(); }, [loadProfile]);
@@ -340,10 +342,7 @@ export default function TaskSheet({
           {gatherError && <div style={{ fontSize: 12, color: "var(--danger)" }}>⚠ {gatherError}</div>}
           {context && (
             <div style={{ background: "var(--bg)", borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
-              <BriefingContent
-                markdown={context.answer}
-                onWikilink={async (ref) => { const ok = await openNoteByRef(ref); if (ok) navigate("/notes"); }}
-              />
+              <BriefingContent markdown={context.answer} onNavigate={handleLink} />
             </div>
           )}
         </div>

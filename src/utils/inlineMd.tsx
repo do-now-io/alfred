@@ -1,4 +1,5 @@
 import React from "react";
+import { encodeLinkRef } from "./linkRef";
 
 // Inline-markdown rendering for one-line strings (task titles, brief lines) —
 // the lightweight counterpart of the CodeMirror live preview: Todo.md keeps its
@@ -10,8 +11,17 @@ import React from "react";
 const INLINE_RE =
   /`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*|~~([^~]+)~~|\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|\[([^\]]+)\]\(([^)]+)\)/g;
 
-/** Render a short string's inline markdown as React nodes. */
-export function renderInlineMd(text: string): React.ReactNode[] {
+const linkStyle: React.CSSProperties = {
+  color: "var(--accent)", cursor: "pointer", background: "none", border: "none",
+  padding: 0, font: "inherit", textDecoration: "underline", textDecorationColor: "rgba(200,145,74,0.4)",
+};
+
+/** Render a short string's inline markdown as React nodes. `onNavigate`
+ *  (spec/23) makes `[[wikilinks]]` and `[text](url)` clickable — same href
+ *  convention as `BriefingContent` (`wikilink:<ref>`, `task:<ref>`, or a raw
+ *  `http(s)://`/other url as literally typed). Without it, links render as
+ *  plain (non-interactive) styled text — the historical dead-span behavior. */
+export function renderInlineMd(text: string, onNavigate?: (href: string) => void): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   let last = 0;
   let i = 0;
@@ -31,11 +41,29 @@ export function renderInlineMd(text: string): React.ReactNode[] {
     } else if (m[4] != null) {
       nodes.push(<s key={i++}>{m[4]}</s>);
     } else if (m[5] != null) {
-      // Wikilink: show the alias (or target) without brackets; navigation has
-      // no target here (provenance/fiche tâche viendra avec la 2e passe).
-      nodes.push(<span key={i++} style={{ color: "var(--accent)" }}>{m[6] ?? m[5]}</span>);
+      const target = m[5];
+      const label = m[6] ?? m[5];
+      nodes.push(
+        onNavigate ? (
+          <button key={i++} style={linkStyle} onClick={(e) => { e.stopPropagation(); onNavigate(`wikilink:${encodeLinkRef(target)}`); }}>
+            {label}
+          </button>
+        ) : (
+          <span key={i++} style={{ color: "var(--accent)" }}>{label}</span>
+        )
+      );
     } else if (m[7] != null) {
-      nodes.push(<span key={i++} style={{ textDecoration: "underline" }}>{m[7]}</span>);
+      const label = m[7];
+      const url = m[8];
+      nodes.push(
+        onNavigate ? (
+          <button key={i++} style={linkStyle} onClick={(e) => { e.stopPropagation(); onNavigate(url); }}>
+            {label}
+          </button>
+        ) : (
+          <span key={i++} style={{ textDecoration: "underline" }}>{label}</span>
+        )
+      );
     }
     last = m.index! + m[0].length;
   }

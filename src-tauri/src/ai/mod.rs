@@ -427,6 +427,20 @@ async fn run_ingestion_core(
                     body.push_str(&format!("- {}\n", p));
                 }
             }
+            // Liste des tâches extraites, avec lien profond `task:` cliquable
+            // (spec/23) → complète le lien inverse déjà posé sur la ligne de
+            // Todo.md (provenance `[[compte-rendu]]`, spec/05/06) : la paire
+            // devient navigable dans les deux sens. Seulement quand les tâches
+            // sont réellement écrites (`tasks`) — sinon ces liens seraient
+            // morts (rien dans Todo.md à cette identité).
+            if tasks && !output.taches.is_empty() {
+                let heading = if app_language(db).await == "en" { "Tasks" } else { "Tâches" };
+                body.push_str(&format!("\n\n## {}\n", heading));
+                for task in &output.taches {
+                    let id = crate::notes::todo_md::normalize_title(&task.titre);
+                    body.push_str(&format!("- [{}](task:{})\n", task.titre, urlencoding::encode(&id)));
+                }
+            }
             match crate::notes::vault::create_intelligence_note(&folder, &report_title, metadata, &body).await {
                 Ok(ref note) => {
                     eprintln!("[ingestion] compte-rendu created: {}", report_title);

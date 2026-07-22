@@ -469,42 +469,6 @@ export default function Settings() {
         <AiAccessSection />
       </Section>
 
-      <Section title={t("settings.sections.transcription")}>
-        {/* Gestionnaire de modèles Whisper (spec/04/11) — même composant que
-            l'étape d'onboarding. « Utiliser » n'existe que sur un modèle
-            téléchargé : on ne peut plus activer un modèle absent du disque. */}
-        <div style={{ marginBottom: 14 }}>
-          <WhisperModelPicker />
-        </div>
-        <SettingRow label={t("settings.transcriptionSection.appLanguage")}>
-          <select
-            className="alfred-select"
-            value={lang}
-            onChange={(e) => setLang(e.target.value as Lang)}
-          >
-            <option value="fr">Français</option>
-            <option value="en">English</option>
-          </select>
-        </SettingRow>
-        <SettingRow label={t("settings.transcriptionSection.language")}>
-
-          <select
-            className="alfred-select"
-            value={languageHint}
-            onChange={(e) => {
-              setLanguageHint(e.target.value);
-              setConfig("language_hint", e.target.value);
-            }}
-          >
-            <option value="auto">{t("settings.transcriptionSection.autoDetect")}</option>
-            <option value="fr">Français</option>
-            <option value="en">English</option>
-            <option value="es">Español</option>
-            <option value="de">Deutsch</option>
-          </select>
-        </SettingRow>
-      </Section>
-
       <Section title={t("settings.sections.recording")}>
         <SettingRow label={t("settings.recordingSection.audioSource")}>
           <select
@@ -521,7 +485,11 @@ export default function Settings() {
           </select>
         </SettingRow>
         <SettingRow label={t("settings.recordingSection.recordingsFolder")}>
-          <RecordingFolderRow />
+          <FolderConfigRow
+            configKey="recording_folder"
+            defaultValue="alfred-raw"
+            load={() => invoke<string>("get_recording_folder")}
+          />
         </SettingRow>
         <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
           {t("settings.recordingSection.recordingsFolderHelp")} <code>alfred-raw</code>
@@ -530,6 +498,18 @@ export default function Settings() {
 
       <Section title={t("settings.sections.notes")}>
         <VaultPathRow />
+        <SettingRow label={t("settings.notesSection.newNoteFolder")}>
+          <FolderConfigRow
+            configKey="new_note_folder"
+            defaultValue="alfred-raw"
+            load={async () =>
+              (await invoke<string | null>("get_config", { key: "new_note_folder" })) || "alfred-raw"
+            }
+          />
+        </SettingRow>
+        <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 12 }}>
+          {t("settings.notesSection.newNoteFolderHelp")} <code>alfred-raw</code>
+        </div>
         <ContextNoteRow />
         <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
           {t("settings.notesSection.contextHelp")}
@@ -583,6 +563,43 @@ export default function Settings() {
           >
             {t("settings.systemSection.reviewGuidedTour")}
           </button>
+        </SettingRow>
+      </Section>
+
+      {/* Tout en bas (feedback Tanguy) : le gestionnaire de modèles est la
+          section la plus haute visuellement, elle écrasait le reste en tête. */}
+      <Section title={t("settings.sections.transcription")}>
+        {/* Gestionnaire de modèles Whisper (spec/04/11) : même composant que
+            l'étape d'onboarding. « Utiliser » n'existe que sur un modèle
+            téléchargé, on ne peut plus activer un modèle absent du disque. */}
+        <div style={{ marginBottom: 14 }}>
+          <WhisperModelPicker />
+        </div>
+        <SettingRow label={t("settings.transcriptionSection.appLanguage")}>
+          <select
+            className="alfred-select"
+            value={lang}
+            onChange={(e) => setLang(e.target.value as Lang)}
+          >
+            <option value="fr">Français</option>
+            <option value="en">English</option>
+          </select>
+        </SettingRow>
+        <SettingRow label={t("settings.transcriptionSection.language")}>
+          <select
+            className="alfred-select"
+            value={languageHint}
+            onChange={(e) => {
+              setLanguageHint(e.target.value);
+              setConfig("language_hint", e.target.value);
+            }}
+          >
+            <option value="auto">{t("settings.transcriptionSection.autoDetect")}</option>
+            <option value="fr">Français</option>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+            <option value="de">Deutsch</option>
+          </select>
         </SettingRow>
       </Section>
     </div>
@@ -689,14 +706,23 @@ function ContextNoteRow() {
   );
 }
 
-function RecordingFolderRow() {
+/** Ligne générique « dossier relatif au vault » stockée en config : affichage +
+ *  édition inline. `load` fournit la valeur courante (getter dédié ou
+ *  `get_config` avec repli). Utilisée pour `recording_folder` et
+ *  `new_note_folder` (spec/11). */
+function FolderConfigRow({ configKey, defaultValue, load }: {
+  configKey: string;
+  defaultValue: string;
+  load: () => Promise<string>;
+}) {
   const t = useT();
   const [value, setValue] = useState("");
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
 
   useEffect(() => {
-    invoke<string>("get_recording_folder").then((v) => setValue(v)).catch(() => {});
+    load().then((v) => setValue(v)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startEdit = () => {
@@ -705,8 +731,8 @@ function RecordingFolderRow() {
   };
 
   const handleSave = async () => {
-    const v = editValue.trim().replace(/^\/+|\/+$/g, "") || "alfred-raw";
-    await invoke("set_config", { key: "recording_folder", value: v });
+    const v = editValue.trim().replace(/^\/+|\/+$/g, "") || defaultValue;
+    await invoke("set_config", { key: configKey, value: v });
     setValue(v);
     setEditing(false);
   };
@@ -722,7 +748,7 @@ function RecordingFolderRow() {
             if (e.key === "Enter") handleSave();
             if (e.key === "Escape") setEditing(false);
           }}
-          placeholder="alfred-raw"
+          placeholder={defaultValue}
           style={{
             flex: 1, border: "1px solid var(--border)", borderRadius: 6,
             padding: "5px 10px", fontSize: 13,
@@ -755,7 +781,7 @@ function RecordingFolderRow() {
 
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-      <span style={{ fontSize: 13, color: "var(--text-primary)" }}>{value || "alfred-raw"}</span>
+      <span style={{ fontSize: 13, color: "var(--text-primary)" }}>{value || defaultValue}</span>
       <button
         onClick={startEdit}
         style={{

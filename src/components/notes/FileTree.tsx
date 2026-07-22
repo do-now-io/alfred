@@ -175,8 +175,12 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
 
   const handleCreate = async () => {
     if (!vaultPath) return;
-    // New notes land in the vault's raw/ folder (the ingest source).
-    await createNote(`${vaultPath}/raw`, t("notes.fileTree.newNoteDefaultTitle"));
+    // Dossier des nouvelles notes : config `new_note_folder` (spec/07/11),
+    // défaut alfred-raw. Le dossier est créé au besoin côté Rust.
+    const folder = (
+      (await invoke<string | null>("get_config", { key: "new_note_folder" })) || "alfred-raw"
+    ).replace(/^\/+|\/+$/g, "");
+    await createNote(`${vaultPath}/${folder}`, t("notes.fileTree.newNoteDefaultTitle"));
   };
 
   // Re-runs the merged ingestion (spec/05) on the selected alfred-raw/ note —

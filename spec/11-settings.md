@@ -15,6 +15,10 @@ Pas de `get_settings` / `update_setting` : chaque réglage passe par
 
 ## Sections v1
 
+Ordre d'affichage : Profil, Accès IA, Enregistrement, Notes, Tâches, Système,
+puis **Transcription tout en bas** (feedback Tanguy : le gestionnaire de modèles
+est la section la plus haute visuellement, elle écrasait le reste en tête de page).
+
 **Profil local** (✅ fait, feedback tests) — le menu profil ambigu du haut-droite
 est **retiré** (spec/10) ; l'identité vit ici (`ProfileSection`, `store/profileStore.ts`).
 **Prénom + avatar** stockés **en local** (`config.profile_name` / `config.profile_avatar`
@@ -54,7 +58,9 @@ langue (`language_hint`), inchangé.
 **défaut `mixed`** (✅ fait ; repli auto sur `mic_only` si le système n'est
 pas dispo, cf. spec/03) ; dossier d'enregistrement (défaut **`alfred-raw`**).
 
-**Notes** : dossier vault (`get/set_vault_path`, `pick_vault_folder`).
+**Notes** : dossier vault (`get/set_vault_path`, `pick_vault_folder`) ; **dossier
+des nouvelles notes** (`new_note_folder`, relatif au vault, défaut `alfred-raw`,
+spec/07).
 
 **Tâches** : fichier `Todo.md` (défaut **`alfred-intelligence/Todo.md`**).
 

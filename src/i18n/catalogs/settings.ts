@@ -76,6 +76,8 @@ export default {
     },
     notesSection: {
       vaultFolder: "Dossier Notes (vault)",
+      newNoteFolder: "Dossier des nouvelles notes",
+      newNoteFolderHelp: "Où sont créées les notes du bouton « Nouvelle note », relatif au vault. Défaut :",
       notConfigured: "Non configuré",
       choose: "Choisir…",
       context: "Contexte interne",
@@ -176,6 +178,8 @@ export default {
     },
     notesSection: {
       vaultFolder: "Notes folder (vault)",
+      newNoteFolder: "New notes folder",
+      newNoteFolderHelp: "Where notes created with the \"New note\" button go, relative to the vault. Default:",
       notConfigured: "Not configured",
       choose: "Choose…",
       context: "Internal context",

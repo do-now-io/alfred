@@ -174,6 +174,10 @@ la pop-up basse (transitoire, perdue si on enchaîne un enregistrement) :
 - **Arbre** : dossiers + `.md`, fichiers cachés ignorés, tri dossiers puis alpha.
 - **Contenu** : Preview (`react-markdown`) / Edit (CodeMirror 6), panneau
   Properties (frontmatter), auto-save.
+- **Nouvelle note** (bouton de l'arbre) : créée dans le dossier de config
+  **`new_note_folder`** (relatif au vault, **défaut `alfred-raw`** ; le dossier
+  est créé au besoin). Paramétrable dans Réglages → Notes (spec/11).
+  *(Corrige l'ancien `raw/` codé en dur, d'avant le renommage `alfred-raw`.)*
 
 (Design conservé de l'ancienne spec ; restylage avec spec 10.)
 

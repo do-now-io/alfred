@@ -25,17 +25,19 @@ plus de notes — la table `notes` est **legacy** (migration uniquement).
 - **Note brute d'enregistrement** créée après transcription (spec/04),
   frontmatter `for_recording` + corps `# Transcription`.
 
-> **Dossier `raw/` parasite (📝 à faire — nettoyage vestige, feedback tests).**
-> Constat : un vault peut contenir un **`raw/`** (souvent `raw/audios/`) **en plus**
-> de `alfred-raw/`. Origine : **ancien défaut** du dossier d'enregistrement =
-> `raw/audios` (spec/11, avant `alfred-raw`). Le code **actuel n'y écrit plus rien** ;
-> le `raw/` subsiste uniquement dans les **vaults réutilisés** d'une version
-> antérieure (supprimer l'app ne vide pas le vault). À traiter : **migration
-> unique et idempotente** au scaffolding du vault — si un legacy `raw/`
-> (et `raw/audios/`) existe, **déplacer son contenu** (`.wav` + notes) dans
-> `alfred-raw/` puis **supprimer le dossier vide** `raw/`. Ne rien écraser en cas de
-> collision de nom (suffixer). Idem pour l'ancien `wiki/Todo.md` → `alfred-intelligence/Todo.md`
-> si présent.
+> **Dossier `raw/` parasite — ✅ corrigé (nettoyage vestige, feedback tests).**
+> Un vault pouvait contenir un **`raw/`** (souvent `raw/audios/`) **en plus** de
+> `alfred-raw/`. Origine : **ancien défaut** du dossier d'enregistrement =
+> `raw/audios` (spec/11, avant `alfred-raw`) — le code actuel n'y écrit plus rien,
+> il subsistait dans les **vaults réutilisés** d'une version antérieure (supprimer
+> l'app ne vide pas le vault). `migrate_legacy_raw_folder`/`migrate_legacy_todo_file`
+> (`notes/vault.rs`) : déplace le contenu de `raw/` (aplati, y compris
+> `raw/audios/`) dans `alfred-raw/`, supprime les dossiers vidés, **sans jamais
+> écraser en cas de collision de nom** (suffixe `_2`/`_3`…) ; idem pour l'ancien
+> `wiki/Todo.md` → l'emplacement configuré, seulement si absent. Branché dans
+> `scaffold_vault` (idempotent) et **rejoué à chaque lancement de l'app** pour un
+> vault déjà connu (pas seulement à la sélection explicite du dossier) — sinon un
+> utilisateur déjà configuré avant cette migration ne la déclencherait jamais.
 
 - ✅ Défauts alignés : `recording_folder` → `alfred-raw` (spec/11), compte-rendus
   IA → `alfred-intelligence/{titre}.md`, todos → `alfred-intelligence/Todo.md`
@@ -173,15 +175,14 @@ faite, pour ne pas encombrer la navigation :
   `alfred-raw/` (ré-écoute / ré-ingestion, spec/04). Rien n'est supprimé — juste
   un changement de statut. Best-effort : une erreur ici ne fait jamais échouer
   l'ingestion (déjà réussie sur son travail principal).
-- **Cas du CONTEXTE — 📝 à faire (feedback tests)** : la transcription brute d'un
+- **Cas du CONTEXTE — ✅ corrigé (feedback tests)** : la transcription brute d'un
   enregistrement **de contexte** (visite guidée / « recréer mon contexte », spec/13,
-  `purpose: "context"`) n'est **jamais archivée** aujourd'hui — l'archivage n'est
-  branché que sur `run_ingestion_core` (compte-rendu), or le contexte passe par
-  `build_context_from_transcription` (pas de compte-rendu). Résultat : la note
-  d'enregistrement du contexte **reste visible** alors que les autres transcriptions
-  disparaissent. → **Archiver aussi la note brute de contexte** une fois
-  `build_context_from_transcription` **réussi** (même `archive_raw_note_by_recording_id`).
-  La note `Contexte Alfred.md` elle-même reste évidemment `active`.
+  `purpose: "context"`) n'était **jamais archivée** — l'archivage n'était branché
+  que sur `run_ingestion_core` (compte-rendu), or le contexte passe par
+  `build_context_from_transcription` (pas de compte-rendu). `build_context_from_transcription`
+  appelle désormais `archive_raw_note_by_recording_id` dès que la construction du
+  contexte réussit — même mécanisme que l'ingestion. La note `Contexte Alfred.md`
+  elle-même reste évidemment `active`.
 - **Masquage par défaut** : les notes `status: archived` sont **masquées** de
   **l'arbre Notes** (`VaultNode.status`, filtré côté front) *et* des **Récents**
   (spec/10 — filtrées côté backend, `list_recent_notes`, avant la troncature au
@@ -195,22 +196,21 @@ faite, pour ne pas encombrer la navigation :
 > **Cohérence** : l'archivage étant un simple `status` frontmatter (déjà dans
 > `NoteMetadata`), il reste **compatible Obsidian** et réversible.
 
-#### Corrections UI (📝 à faire, feedback tests)
+#### Corrections UI — ✅ fait (feedback tests)
 
-1. **Le toggle « archives » ne doit pas être un 3ᵉ bouton du sélecteur de vue.**
-   Aujourd'hui il est collé à **Folders / Projects** (une 3ᵉ case dans le même
-   segmented control) — ce n'est **pas le bon endroit** (ça mélange « choix de vue »
-   et « filtre »). Le sélecteur ne garde que **Folders** et **Projects** ; déplacer
-   le **« Afficher les archives »** ailleurs (ex. discret en **pied de l'arbre**, ou
-   petite action d'en-tête à part) — mais **présent et identique dans les DEUX vues**.
-2. **UI identique Folders ↔ Projects.** Le toggle et son comportement doivent être
-   les **mêmes** quelle que soit la vue.
-3. **La vue Projects doit AUSSI masquer les archivées par défaut.** Bug : le filtre
-   `showArchived` n'est appliqué qu'à la vue **Folders** (`filterArchived(tree)`) ;
-   la vue **Projects** (`projectGroups`) affiche les archivées **en permanence**.
-   Appliquer le **même filtre** aux groupes de projets — masquées par défaut,
-   révélées seulement quand le toggle est **on** (et la transcription archivée d'une
-   paire ne s'affiche que si le toggle est on).
+1. **Le toggle « archives » n'est plus un 3ᵉ bouton du sélecteur de vue.** Il était
+   collé à **Folders / Projects** (une 3ᵉ case dans le même segmented control) — ce
+   n'était pas le bon endroit (ça mélangeait « choix de vue » et « filtre »). Le
+   sélecteur ne garde que **Folders** et **Projects** ; **« Afficher les archives »**
+   vit maintenant en **pied de l'arbre** — présent et identique dans les DEUX vues.
+2. **UI identique Folders ↔ Projects** : même toggle, même comportement, même
+   estompé + badge sur une note archivée révélée (`FileTreeNode`/`ProjectNoteRow`).
+3. **La vue Projects masque désormais aussi les archivées par défaut.** Le bug
+   (`showArchived` appliqué à `filterArchived(tree)` mais pas à `projectGroups`) est
+   corrigé : `ProjectNote` gagne un champ `status` (`list_notes_with_project`,
+   backend) et `projectGroups` filtre sur ce champ avant tout regroupement/
+   appariement — une transcription archivée d'une paire ne s'affiche que si le
+   toggle est **on**.
 
 ### Tags — liste des existants + autocomplétion — ✅ fait (feedback tests)
 

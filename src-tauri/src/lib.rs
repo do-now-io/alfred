@@ -1577,6 +1577,24 @@ pub fn run() {
             });
             eprintln!("[setup] vault_path = {:?}", vault_path);
 
+            // Nettoyage vestige (spec/07/11, feedback tests) : `scaffold_vault`
+            // n'était appelé qu'à la sélection explicite du dossier (onboarding/
+            // Réglages) — un utilisateur déjà configuré avant cette migration ne
+            // la déclencherait jamais. Rejoué à chaque lancement pour un vault
+            // déjà connu ; idempotent (no-op une fois le legacy `raw/`/`wiki/`
+            // parti), jamais bloquant.
+            if let Some(vp) = vault_path.clone() {
+                let db2 = db.clone();
+                tauri::async_runtime::block_on(async move {
+                    let recording_folder = transcription::recording_folder(&db2).await;
+                    let intelligence_folder = ai::intelligence_folder(&db2).await;
+                    let todo_rel_path = todos::todo_file_path(&db2).await;
+                    if let Err(e) = notes::vault::scaffold_vault(&vp, &recording_folder, &intelligence_folder, &todo_rel_path).await {
+                        eprintln!("[setup] scaffold_vault (startup re-check) failed: {}", e);
+                    }
+                });
+            }
+
             let http_client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
                 .build()

@@ -213,6 +213,10 @@ pub struct ProjectNote {
     /// Lien de paire transcription ↔ compte-rendu (spec/07) : le compte-rendu
     /// porte le projet, la transcription est affichée avec lui via ce champ.
     pub recording_id: Option<String>,
+    /// Frontmatter `status` (spec/07) — masquage des archivées, même logique
+    /// que `VaultNode.status` mais pour la vue Projets (bug feedback tests :
+    /// le filtre `showArchived` n'était appliqué qu'à la vue Dossiers).
+    pub status: String,
 }
 
 /// Every `.md` note in the vault with its title/project/type, for virtual
@@ -250,6 +254,7 @@ pub fn list_notes_with_project(root: &Path) -> Result<Vec<ProjectNote>> {
                 project,
                 note_type: meta.note_type,
                 recording_id: meta.recording_id,
+                status: meta.status,
             })
         })
         .collect();
@@ -519,6 +524,19 @@ pub async fn scaffold_vault(
     intelligence_folder: &str,
     todo_rel_path: &str,
 ) -> Result<()> {
+    // Nettoyage vestige (spec/07/11, feedback tests) : les vaults réutilisés
+    // d'une version antérieure gardent un `raw/` (`raw/audios/`) et parfois
+    // `wiki/Todo.md` orphelins de l'ancien défaut — le code n'y écrit plus
+    // rien. Idempotent : no-op si les dossiers/fichiers legacy n'existent pas
+    // (vault neuf, ou déjà migré). Best-effort, jamais bloquant pour le
+    // scaffolding normal ci-dessous.
+    if let Err(e) = migrate_legacy_raw_folder(vault_root, recording_folder).await {
+        eprintln!("[migrate] legacy raw/ cleanup failed: {}", e);
+    }
+    if let Err(e) = migrate_legacy_todo_file(vault_root, todo_rel_path).await {
+        eprintln!("[migrate] legacy wiki/Todo.md cleanup failed: {}", e);
+    }
+
     tokio::fs::create_dir_all(vault_root.join(recording_folder)).await?;
     tokio::fs::create_dir_all(vault_root.join(intelligence_folder)).await?;
 
@@ -532,6 +550,91 @@ pub async fn scaffold_vault(
     }
 
     Ok(())
+}
+
+/// Ancien défaut du dossier d'enregistrement = `raw/audios` (spec/11, avant
+/// `alfred-raw`). Déplace tout le contenu de `raw/` (fichiers, y compris ceux
+/// sous `raw/audios/`) vers `recording_folder`, en aplatissant la structure —
+/// sans jamais écraser un fichier existant (suffixe `_2`, `_3`… en cas de
+/// collision de nom) — puis supprime les dossiers devenus vides.
+async fn migrate_legacy_raw_folder(vault_root: &Path, recording_folder: &str) -> Result<()> {
+    let legacy = vault_root.join("raw");
+    if !legacy.is_dir() {
+        return Ok(());
+    }
+    let target_dir = vault_root.join(recording_folder);
+    tokio::fs::create_dir_all(&target_dir).await?;
+
+    let files: Vec<PathBuf> = WalkDir::new(&legacy)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.path().to_path_buf())
+        .collect();
+
+    for path in files {
+        let name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+        let mut target = target_dir.join(&name);
+        if target.exists() {
+            let stem = target.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            let ext = target.extension().map(|s| s.to_string_lossy().to_string());
+            let mut counter = 2;
+            loop {
+                let candidate_name = match &ext {
+                    Some(e) => format!("{}_{}.{}", stem, counter, e),
+                    None => format!("{}_{}", stem, counter),
+                };
+                let candidate = target_dir.join(candidate_name);
+                if !candidate.exists() {
+                    target = candidate;
+                    break;
+                }
+                counter += 1;
+            }
+        }
+        if let Err(e) = tokio::fs::rename(&path, &target).await {
+            eprintln!("[migrate] failed to move legacy raw file {:?}: {}", path, e);
+        }
+    }
+
+    remove_empty_dirs_recursive(&legacy).await;
+    Ok(())
+}
+
+/// Ancien défaut de la to-do list = `wiki/Todo.md` (spec/06, avant
+/// `alfred-intelligence/Todo.md`). Migre le fichier legacy vers l'emplacement
+/// configuré actuel UNIQUEMENT s'il n'existe pas déjà là (jamais d'écrasement).
+async fn migrate_legacy_todo_file(vault_root: &Path, todo_rel_path: &str) -> Result<()> {
+    let legacy = vault_root.join("wiki").join("Todo.md");
+    let target = vault_root.join(todo_rel_path);
+    if legacy.is_file() && !target.exists() {
+        if let Some(parent) = target.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        if let Err(e) = tokio::fs::rename(&legacy, &target).await {
+            eprintln!("[migrate] failed to move legacy wiki/Todo.md: {}", e);
+        }
+    }
+    remove_empty_dirs_recursive(&vault_root.join("wiki")).await;
+    Ok(())
+}
+
+/// Supprime `root` et ses sous-dossiers devenus vides (enfants avant parents),
+/// best-effort — un dossier qui contient encore quelque chose reste en place.
+async fn remove_empty_dirs_recursive(root: &Path) {
+    if !root.is_dir() {
+        return;
+    }
+    let dirs: Vec<PathBuf> = WalkDir::new(root)
+        .contents_first(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_dir())
+        .map(|e| e.path().to_path_buf())
+        .collect();
+    for dir in dirs {
+        let _ = tokio::fs::remove_dir(&dir).await;
+    }
 }
 
 // ─── SQLite → vault migration ─────────────────────────────────────────────────
@@ -607,4 +710,81 @@ fn sanitize_filename(name: &str) -> String {
 
 fn count_words(text: &str) -> usize {
     text.split_whitespace().count()
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("alfred-vault-migrate-test-{}", name));
+        let _ = std::fs::remove_dir_all(&dir); // repart propre même si un run précédent a laissé des traces
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn moves_legacy_raw_contents_including_nested_audios() {
+        let root = temp_dir("nested");
+        let legacy_audios = root.join("raw").join("audios");
+        std::fs::create_dir_all(&legacy_audios).unwrap();
+        std::fs::write(root.join("raw").join("note.md"), "# Note").unwrap();
+        std::fs::write(legacy_audios.join("clip.wav"), b"fake wav").unwrap();
+
+        migrate_legacy_raw_folder(&root, "alfred-raw").await.unwrap();
+
+        assert!(root.join("alfred-raw").join("note.md").exists());
+        assert!(root.join("alfred-raw").join("clip.wav").exists(), "nested raw/audios/ file should be flattened into alfred-raw/");
+        assert!(!root.join("raw").exists(), "emptied legacy raw/ (and raw/audios/) should be removed");
+    }
+
+    #[tokio::test]
+    async fn suffixes_on_name_collision_never_overwrites() {
+        let root = temp_dir("collision");
+        std::fs::create_dir_all(root.join("raw")).unwrap();
+        std::fs::create_dir_all(root.join("alfred-raw")).unwrap();
+        std::fs::write(root.join("alfred-raw").join("clip.wav"), b"existing").unwrap();
+        std::fs::write(root.join("raw").join("clip.wav"), b"legacy").unwrap();
+
+        migrate_legacy_raw_folder(&root, "alfred-raw").await.unwrap();
+
+        assert_eq!(std::fs::read(root.join("alfred-raw").join("clip.wav")).unwrap(), b"existing", "existing file must never be overwritten");
+        assert_eq!(std::fs::read(root.join("alfred-raw").join("clip_2.wav")).unwrap(), b"legacy", "colliding legacy file should be suffixed, not dropped");
+    }
+
+    #[tokio::test]
+    async fn no_op_when_no_legacy_raw_folder() {
+        let root = temp_dir("noop");
+        // Pas de raw/ du tout — vault neuf, ou déjà migré.
+        migrate_legacy_raw_folder(&root, "alfred-raw").await.unwrap();
+        assert!(!root.join("alfred-raw").exists(), "should not even create the target dir when there's nothing to migrate");
+    }
+
+    #[tokio::test]
+    async fn moves_legacy_todo_only_when_target_absent() {
+        let root = temp_dir("todo-move");
+        std::fs::create_dir_all(root.join("wiki")).unwrap();
+        std::fs::write(root.join("wiki").join("Todo.md"), "## À faire\n- [ ] Ancienne tâche\n").unwrap();
+
+        migrate_legacy_todo_file(&root, "alfred-intelligence/Todo.md").await.unwrap();
+
+        assert!(root.join("alfred-intelligence").join("Todo.md").exists());
+        assert!(!root.join("wiki").exists(), "emptied legacy wiki/ should be removed");
+    }
+
+    #[tokio::test]
+    async fn never_overwrites_existing_todo_file() {
+        let root = temp_dir("todo-no-overwrite");
+        std::fs::create_dir_all(root.join("wiki")).unwrap();
+        std::fs::write(root.join("wiki").join("Todo.md"), "## À faire\n- [ ] Legacy\n").unwrap();
+        std::fs::create_dir_all(root.join("alfred-intelligence")).unwrap();
+        std::fs::write(root.join("alfred-intelligence").join("Todo.md"), "## À faire\n- [ ] Actuelle\n").unwrap();
+
+        migrate_legacy_todo_file(&root, "alfred-intelligence/Todo.md").await.unwrap();
+
+        let content = std::fs::read_to_string(root.join("alfred-intelligence").join("Todo.md")).unwrap();
+        assert!(content.contains("Actuelle"), "existing Todo.md must never be overwritten by the legacy one");
+        // Le fichier legacy reste en place tel quel (pas de fusion, pas de perte).
+        assert!(root.join("wiki").join("Todo.md").exists());
+    }
 }

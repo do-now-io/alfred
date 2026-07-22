@@ -1183,6 +1183,14 @@ pub async fn build_context_from_transcription(
 
     match build_context_inner(transcription_text, recording_id, db, vault_root).await {
         Ok((sections, terms)) => {
+            // Archivage de la transcription brute de CONTEXTE (spec/07/13,
+            // feedback tests) : ce chemin ne passe jamais par
+            // `run_ingestion_core` (pas de compte-rendu en mode contexte),
+            // donc la note restait seule visible dans Notes alors que toutes
+            // les autres transcriptions disparaissent après ingestion.
+            // `Contexte Alfred.md` elle-même reste évidemment `active`.
+            let recording_folder = crate::transcription::recording_folder(db).await;
+            crate::notes::vault::archive_raw_note_by_recording_id(vault_root, &recording_folder, recording_id).await;
             let _ = app_handle.emit("notes-updated", json!({}));
             emit_status("done", sections, terms, None);
             Ok(())

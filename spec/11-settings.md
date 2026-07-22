@@ -76,10 +76,10 @@ clé de registre Windows) ; **« Revoir l'introduction »** (rejoue l'onboarding
 - `DEFAULT_RECORDING_FOLDER` : `raw/audios` → **`alfred-raw`**.
 - `DEFAULT_TODO_FILE` : `wiki/Todo.md` → **`alfred-intelligence/Todo.md`**.
 
-> ⚠️ **Vestige dans les vaults réutilisés (feedback tests)** : un vault créé par une
-> version antérieure garde un **`raw/`** (`raw/audios/`) — et parfois `wiki/` —
-> orphelins, le code n'y écrivant plus. Prévoir une **migration de nettoyage** qui
-> consolide `raw/` → `alfred-raw/` et supprime le dossier vide (spec/07).
+> ✅ **Vestige dans les vaults réutilisés — corrigé (feedback tests)** : un vault
+> créé par une version antérieure gardait un **`raw/`** (`raw/audios/`) — et
+> parfois `wiki/` — orphelins. Migration de nettoyage consolidant `raw/` →
+> `alfred-raw/` (et `wiki/Todo.md` → l'emplacement configuré) — détails spec/07.
 
 ## Note bug — ✅ fait
 

@@ -75,6 +75,11 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
   // la transcription (alfred-raw, sans projet propre) est rattachée au
   // compte-rendu qui porte le projet, au lieu de tomber dans « Sans projet ».
   const projectGroups = useMemo(() => {
+    // Masquage des archivées (spec/07, feedback tests) — bug corrigé : ce
+    // filtre n'était appliqué qu'à la vue Dossiers, jamais à Projects, qui
+    // les montrait donc en permanence.
+    const visible = showArchived ? projectNotes : projectNotes.filter((n) => n.status !== "archived");
+
     // « audio » = transcription datée d'un enregistrement, « transcription » =
     // note brute sans audio — les deux vivent dans alfred-raw et s'apparient pareil.
     const isTranscription = (n: ProjectNote) => {
@@ -82,22 +87,25 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
       return k === "audio" || k === "transcription";
     };
 
-    // recording_id → transcription brute, pour l'appariement.
+    // recording_id → transcription brute, pour l'appariement. Cherché dans
+    // `visible` : une transcription archivée ne doit s'apparier que si le
+    // toggle « Afficher les archives » est actif (sinon elle n'est même pas
+    // dans `visible`, donc pas de paire — la note porteuse s'affiche seule).
     const transcriptions = new Map<string, ProjectNote>();
-    for (const n of projectNotes) {
+    for (const n of visible) {
       if (n.recording_id && isTranscription(n)) transcriptions.set(n.recording_id, n);
     }
     const paired = new Set<string>(); // paths des transcriptions rattachées
 
     const entries: ProjectEntry[] = [];
-    for (const n of projectNotes) {
+    for (const n of visible) {
       if (isTranscription(n)) continue; // traitée via sa paire (ou en reliquat plus bas)
       const pair = n.recording_id ? transcriptions.get(n.recording_id) : undefined;
       if (pair) paired.add(pair.path);
       entries.push({ note: n, pair });
     }
     // Transcriptions orphelines (pas encore de compte-rendu) → entrées propres.
-    for (const n of projectNotes) {
+    for (const n of visible) {
       if (isTranscription(n) && !paired.has(n.path)) entries.push({ note: n });
     }
 
@@ -119,7 +127,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
         if (b.project === "") return -1;
         return a.project.localeCompare(b.project);
       });
-  }, [projectNotes]);
+  }, [projectNotes, showArchived]);
 
   // Glisser-déposer une note sur un groupe (spec/07) : ajoute le projet cible à
   // la liste `project` du frontmatter (déposer sur « Sans projet » vide la liste).
@@ -278,7 +286,10 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
         )}
       </div>
 
-      {/* View toggle: physical folders vs virtual grouping by project (spec/07). */}
+      {/* View toggle: physical folders vs virtual grouping by project (spec/07).
+          Seulement 2 cases (spec/07, feedback tests) — le toggle « archives »
+          n'est PAS un 3e bouton ici, c'est un filtre, pas un choix de vue ; il
+          vit en pied d'arbre (ci-dessous), identique dans les deux vues. */}
       {vaultPath && (
         <div style={{ display: "flex", gap: 4, padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
           {([["folders", t("notes.fileTree.viewFolders"), <MdStickyNote2 key="f" />], ["projects", t("notes.fileTree.viewProjects"), <MdFolderSpecial key="p" />]] as const).map(([id, label, icon]) => (
@@ -296,21 +307,6 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
               {icon} {label}
             </button>
           ))}
-          {view === "folders" && (
-            <button
-              onClick={() => setShowArchived((v) => !v)}
-              title={showArchived ? t("notes.fileTree.hideArchived") : t("notes.fileTree.showArchived")}
-              style={{
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                background: showArchived ? "var(--active-bg)" : "transparent",
-                color: showArchived ? "var(--accent)" : "var(--text-secondary)",
-                border: "1px solid var(--border)", borderRadius: 6,
-                padding: "4px 7px", cursor: "pointer", fontSize: 13, flexShrink: 0,
-              }}
-            >
-              {showArchived ? <MdUnarchive size={14} /> : <MdArchive size={14} />}
-            </button>
-          )}
         </div>
       )}
 
@@ -415,6 +411,28 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
         )}
       </div>
 
+      {/* Pied d'arbre (spec/07, feedback tests) : le toggle « archives » est un
+          FILTRE, pas un choix de vue — retiré du sélecteur Dossiers/Projets,
+          identique dans les deux vues (le filtre s'applique à `filterArchived`
+          ET `projectGroups` ci-dessus). */}
+      {vaultPath && (
+        <div style={{ padding: "6px 8px", borderTop: "1px solid var(--border)" }}>
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, width: "100%",
+              background: showArchived ? "var(--active-bg)" : "transparent",
+              color: showArchived ? "var(--accent)" : "var(--text-muted)",
+              border: "1px solid var(--border)", borderRadius: 6,
+              padding: "5px 8px", cursor: "pointer", fontSize: 12,
+            }}
+          >
+            {showArchived ? <MdUnarchive size={14} /> : <MdArchive size={14} />}
+            {showArchived ? t("notes.fileTree.hideArchived") : t("notes.fileTree.showArchived")}
+          </button>
+        </div>
+      )}
+
       {/* Rename dialog */}
       {renaming && (
         <div style={{
@@ -494,6 +512,9 @@ function ProjectNoteRow({
   onToggleExpand?: () => void;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
+  // Même traitement visuel que la vue Dossiers (spec/07, feedback tests —
+  // « UI identique Folders ↔ Projects ») : estompé + badge « archivé ».
+  const isArchived = note.status === "archived";
   return (
     <div
       onClick={() => onSelect(note.path)}
@@ -509,6 +530,7 @@ function ProjectNoteRow({
         borderRadius: 6, color: active ? "var(--accent)" : "var(--text-secondary)",
         background: active ? "var(--active-bg)" : "transparent",
         overflow: "hidden", whiteSpace: "nowrap",
+        opacity: isArchived ? 0.55 : 1,
       }}
     >
       {expandable ? (
@@ -524,6 +546,14 @@ function ProjectNoteRow({
       ) : null}
       <NoteTypeIcon path={note.path} noteType={note.type} recordingId={note.recording_id} size={13} />
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{note.title}</span>
+      {isArchived && (
+        <span style={{
+          fontSize: 10, color: "var(--text-muted)", border: "1px solid var(--border)",
+          borderRadius: 8, padding: "0 5px", flexShrink: 0, marginLeft: "auto",
+        }}>
+          {t("notes.fileTree.archivedBadge")}
+        </span>
+      )}
     </div>
   );
 }

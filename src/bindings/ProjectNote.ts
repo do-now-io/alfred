@@ -13,4 +13,10 @@ project: Array<string>, type: string,
  * Lien de paire transcription ↔ compte-rendu (spec/07) : le compte-rendu
  * porte le projet, la transcription est affichée avec lui via ce champ.
  */
-recording_id: string | null, };
+recording_id: string | null, 
+/**
+ * Frontmatter `status` (spec/07) — masquage des archivées, même logique
+ * que `VaultNode.status` mais pour la vue Projets (bug feedback tests :
+ * le filtre `showArchived` n'était appliqué qu'à la vue Dossiers).
+ */
+status: string, };

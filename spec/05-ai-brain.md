@@ -84,23 +84,25 @@ français**. Deux causes distinctes :
 2. **Transcription** : voir spec/17 (le glossaire injecté en `initial_prompt` était
    enrobé d'une phrase **française figée** qui biaisait Whisper — corrigé).
 
-> 🚧 **ENCORE OBSERVÉ au test (2e passe) — la note de CONTEXTE sort en français.**
-> App EN, titres EN (localisés ✅), mais le **corps** de `Contexte Alfred.md` (écrit
-> par Claude via `build_context_from_transcription` / `submit_context`) est en
-> **français**. Deux faiblesses de l'approche actuelle :
-> - **`language_instruction` repose sur l'INFÉRENCE** (« écris dans la MÊME langue que
->   le texte fourni ») **et est elle-même rédigée en français**, tout comme
->   `CONTEXT_BUILD_SYSTEM` **et les descriptions des champs du tool `submit_context`**.
->   Ce prompt massivement FR **tire Claude vers le français** même sur une
->   transcription EN — surtout sur un texte court (présentation d'1–2 min).
-> - **On dispose pourtant de la langue détectée** (`transcriptions.language`, stockée
->   par le worker, spec/04). ⟹ **Correctif** : passer une **consigne EXPLICITE et
->   impérative** construite à partir de la langue **détectée** (ou `app_language` si
->   inconnue), du type *« Rédige TOUS les champs en anglais. »* — au lieu de laisser
->   Claude déduire. Vaut pour `build_context` **et** l'ingestion.
-> - **Vérification** : si la **note brute** (`alfred-raw/`) est en anglais mais la
->   note de contexte en français → c'est bien Claude (ici) ; si la note brute est
->   déjà française → c'est Whisper (spec/17).
+> ✅ **Corrigé.** La note de CONTEXTE sortait en français malgré une app EN — deux
+> faiblesses de l'ancienne approche : `language_instruction` reposait sur
+> l'**inférence** (« écris dans la MÊME langue que le texte fourni ») et était
+> **elle-même rédigée en français**, tout comme `CONTEXT_BUILD_SYSTEM`/
+> `INGESTION_SYSTEM`/`ANALYZE_SYSTEM` et les **descriptions des champs des tools**
+> (`submit_context`, `submit_ingestion`, `submit_clarifications`) — un prompt et un
+> schéma massivement FR tirent Claude vers le français même sur une transcription EN,
+> surtout un texte court. **Correctif** : `recording_language(db, recording_id)`
+> (`ai/mod.rs`) lit la langue **RÉELLEMENT détectée** par Whisper pour cet
+> enregistrement (`transcriptions.language`, spec/04) — pas une inférence — avec
+> repli sur `app_language` si le `recording_id` n'a pas de transcription connue
+> (ré-ingestion d'une note libre). `language_directive(lang)` construit une consigne
+> **impérative** (« Write ALL fields / your entire answer in {lang} », pas
+> « écris dans la langue du texte ») appliquée à `call_ingestion`, `call_analyze`
+> (n'avait **aucune** consigne de langue avant — la fuite la plus nette) et
+> `build_context_inner`. Les **descriptions** de `submit_ingestion`/
+> `submit_clarifications`/`submit_context` sont **alignées sur cette même langue**
+> (les **noms** de champs — `titre`, `resume`, `entreprise`… — restent inchangés,
+> ce sont des clés serde internes, pas du texte affiché).
 
 Les **titres générés** du compte-rendu (`## Points clés` → `## Key points`) sont
 **localisés selon `app_language`** (ce sont NOS titres, écrits par le code Rust, pas

@@ -52,6 +52,45 @@ async fn language_instruction(db: &SqlitePool) -> String {
     )
 }
 
+/// Langue à cibler pour UNE sortie IA dérivée d'une transcription PRÉCISE
+/// (analyse, contexte, ingestion) — spec/05/17, 2e test tranché. Contrairement
+/// à `language_instruction` (INFÉRENCE : Claude devine depuis le texte, avec
+/// replis vers `app_language` seulement si ambigu), celle-ci lit la langue
+/// RÉELLEMENT détectée par Whisper (`transcriptions.language`, spec/04) pour
+/// ce `recording_id` précis — l'inférence dérivait vers le français malgré une
+/// transcription confirmée EN (preuve `/resolve`, citation d'origine anglaise
+/// mais propositions/faits rédigés en français). `recording_id: None` (ex.
+/// ré-ingestion d'une note libre sans transcription liée, spec/05) retombe sur
+/// `app_language`. Seules `"en"`/`"fr"` sont ciblées (v1 = FR/EN uniquement,
+/// spec/21) ; whisper.cpp renvoie des codes ISO-639-1 deux lettres.
+async fn recording_language(db: &SqlitePool, recording_id: Option<&str>) -> &'static str {
+    if let Some(id) = recording_id {
+        let detected: Option<String> = sqlx::query_scalar("SELECT language FROM transcriptions WHERE recording_id = ?")
+            .bind(id)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten();
+        if let Some(code) = detected {
+            return if code == "en" { "en" } else { "fr" };
+        }
+    }
+    if app_language(db).await == "en" { "en" } else { "fr" }
+}
+
+/// Consigne de langue IMPÉRATIVE dérivée de `recording_language` — pas une
+/// inférence proposée à Claude, une DIRECTIVE. « Write ALL fields / your
+/// entire answer in {lang} » plutôt que « écris dans la langue du texte » :
+/// le premier libellé n'a laissé aucune place à une dérive vers le français
+/// en test, le second en laissait (spec/05/17).
+fn language_directive(lang: &str) -> &'static str {
+    if lang == "en" {
+        "- Language: write ALL fields / your entire answer in English. This is not optional, regardless of the language used elsewhere in this prompt."
+    } else {
+        "- Langue : rédige TOUS les champs / ta réponse entière en français. Ce n'est pas optionnel, quelle que soit la langue employée ailleurs dans ce prompt."
+    }
+}
+
 /// Pick the AI access mode from config (`ai_mode` = "alfredia" | "byo"), falling
 /// back to whichever secret is present. Personal key → api.anthropic.com
 /// (`x-api-key`); AlfredIA token → our proxy (`Authorization: Bearer`). The
@@ -123,24 +162,31 @@ Consignes :
 - `project` : la liste des projets concernés (0, 1 ou plusieurs), UNIQUEMENT ceux clairement identifiables (nommés dans la transcription ou reconnaissables via le contexte interne). Liste vide sinon — ne devine pas.
 - N'invente rien : si la transcription est trop courte ou vide de contenu exploitable, renvoie un résumé bref, une liste de points clés vide, et aucune tâche."#;
 
-fn ingestion_tool() -> serde_json::Value {
+/// Schéma du tool — les DESCRIPTIONS de champs suivent `lang` (spec/05/17, 2e
+/// test tranché) : un schéma tout-français tirait Claude vers le français même
+/// avec une bonne consigne système. Les NOMS de champs (`titre`, `resume`…)
+/// restent inchangés, quelle que soit `lang` — ce sont des clés internes lues
+/// par `IngestionOutput` (serde), pas du texte affiché.
+fn ingestion_tool(lang: &str) -> serde_json::Value {
+    let en = lang == "en";
     json!([{
         "name": "submit_ingestion",
-        "description": "Soumets le compte-rendu structuré de la transcription et les tâches identifiées.",
+        "description": if en { "Submit the structured summary of the transcription and the identified tasks." } else { "Soumets le compte-rendu structuré de la transcription et les tâches identifiées." },
         "input_schema": {
             "type": "object",
             "properties": {
                 "titre": {
                     "type": "string",
-                    "description": "Sujet court de l'échange — nom de fichier du compte-rendu (sans date). Vide si inexploitable."
+                    "description": if en { "Short subject of the exchange — filename of the summary (no date). Empty if unusable." } else { "Sujet court de l'échange — nom de fichier du compte-rendu (sans date). Vide si inexploitable." }
                 },
                 "resume": {
                     "type": "string",
-                    "description": "Compte-rendu structuré en Markdown"
+                    "description": if en { "Structured summary in Markdown" } else { "Compte-rendu structuré en Markdown" }
                 },
                 "points_cles": {
                     "type": "array",
-                    "items": { "type": "string" }
+                    "items": { "type": "string" },
+                    "description": if en { "Key points covered" } else { "Points clés abordés" }
                 },
                 "taches": {
                     "type": "array",
@@ -148,21 +194,22 @@ fn ingestion_tool() -> serde_json::Value {
                         "type": "object",
                         "properties": {
                             "titre": { "type": "string" },
-                            "responsable": { "type": "string", "description": "Prénom du responsable, si identifiable" },
-                            "echeance": { "type": "string", "description": "YYYY-MM-DD, si mentionnée" }
+                            "responsable": { "type": "string", "description": if en { "First name of the owner, if identifiable" } else { "Prénom du responsable, si identifiable" } },
+                            "echeance": { "type": "string", "description": if en { "YYYY-MM-DD, if mentioned" } else { "YYYY-MM-DD, si mentionnée" } }
                         },
                         "required": ["titre"]
-                    }
+                    },
+                    "description": if en { "Tasks identified in the transcription" } else { "Tâches identifiées dans la transcription" }
                 },
                 "participants": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "description": "Prénoms des participants à l'échange"
+                    "description": if en { "First names of participants in the exchange" } else { "Prénoms des participants à l'échange" }
                 },
                 "project": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "description": "Projets concernés (0..n), seulement s'ils sont clairement identifiables"
+                    "description": if en { "Projects concerned (0..n), only if clearly identifiable" } else { "Projets concernés (0..n), seulement s'ils sont clairement identifiables" }
                 }
             },
             "required": ["titre", "resume", "points_cles", "taches"]
@@ -250,6 +297,7 @@ async fn call_ingestion(
     text: &str,
     context: Option<&str>,
     want_tasks: bool,
+    recording_id: Option<&str>,
     db: &SqlitePool,
 ) -> Result<(IngestionOutput, &'static str)> {
     let access = resolve_access(db).await?;
@@ -263,14 +311,15 @@ async fn call_ingestion(
             INGESTION_SYSTEM
         )
     };
-    system_prompt.push_str(&format!("\n{}", language_instruction(db).await));
+    let lang = recording_language(db, recording_id).await;
+    system_prompt.push_str(&format!("\n{}", language_directive(lang)));
 
     let body = json!({
         "model": MODEL,
         "max_tokens": 4096,
         "thinking": {"type": "disabled"},
         "system": system_blocks(&system_prompt, context),
-        "tools": ingestion_tool(),
+        "tools": ingestion_tool(lang),
         "tool_choice": {"type": "tool", "name": "submit_ingestion"},
         "messages": [{
             "role": "user",
@@ -335,7 +384,7 @@ async fn run_ingestion_core(
         None => None,
     };
 
-    let (output, ai_mode) = match call_ingestion(text, context.as_deref(), tasks, db).await {
+    let (output, ai_mode) = match call_ingestion(text, context.as_deref(), tasks, recording_id, db).await {
         Ok(r) => r,
         Err(e) => {
             emit_status("error", "error", Some(e.to_string()));
@@ -488,7 +537,7 @@ pub async fn run_ingestion_for_recording(
         Some(root) => crate::notes::context::read_context(root, db).await,
         None => None,
     };
-    let clarifications = match call_analyze(transcription_text, context.as_deref(), db).await {
+    let clarifications = match call_analyze(transcription_text, context.as_deref(), recording_id, db).await {
         Ok(mut c) => {
             let segments = fetch_segments(recording_id, db).await.unwrap_or_default();
             fill_timestamps(&mut c, &segments);
@@ -619,10 +668,11 @@ Sois SÉLECTIF : ne remonte que ce qui est vraiment utile (haute confiance ou vr
 - `unclear_sentences` : une phrase IMPORTANTE mais floue/ambiguë. `quote` = la phrase ; `proposed` = ta compréhension proposée.
 - `context_additions` : un fait durable appris sur l'univers de l'utilisateur (ex. « Marie = cheffe de projet », « le projet Atlas concerne le client Dupont »). `fact` = le fait, en une ligne."#;
 
-fn analyze_tool() -> serde_json::Value {
+fn analyze_tool(lang: &str) -> serde_json::Value {
+    let en = lang == "en";
     json!([{
         "name": "submit_clarifications",
-        "description": "Soumets les points à valider avant de finaliser le compte-rendu.",
+        "description": if en { "Submit the points to validate before finalizing the summary." } else { "Soumets les points à valider avant de finaliser le compte-rendu." },
         "input_schema": {
             "type": "object",
             "properties": {
@@ -633,10 +683,11 @@ fn analyze_tool() -> serde_json::Value {
                         "properties": {
                             "quote": { "type": "string" },
                             "correction": { "type": "string" },
-                            "confidence": { "type": "number", "description": "0 à 1" }
+                            "confidence": { "type": "number", "description": if en { "0 to 1" } else { "0 à 1" } }
                         },
                         "required": ["quote", "correction"]
-                    }
+                    },
+                    "description": if en { "Likely mis-transcribed passages you can confidently correct" } else { "Passages probablement mal transcrits que tu peux corriger avec confiance" }
                 },
                 "unassigned_tasks": {
                     "type": "array",
@@ -647,7 +698,8 @@ fn analyze_tool() -> serde_json::Value {
                             "question": { "type": "string" }
                         },
                         "required": ["task", "question"]
-                    }
+                    },
+                    "description": if en { "Clearly stated tasks with no identifiable owner" } else { "Tâches clairement énoncées sans responsable identifiable" }
                 },
                 "unclear_sentences": {
                     "type": "array",
@@ -658,7 +710,8 @@ fn analyze_tool() -> serde_json::Value {
                             "proposed": { "type": "string" }
                         },
                         "required": ["quote", "proposed"]
-                    }
+                    },
+                    "description": if en { "Important but unclear/ambiguous sentences" } else { "Phrases importantes mais floues/ambiguës" }
                 },
                 "context_additions": {
                     "type": "array",
@@ -666,7 +719,8 @@ fn analyze_tool() -> serde_json::Value {
                         "type": "object",
                         "properties": { "fact": { "type": "string" } },
                         "required": ["fact"]
-                    }
+                    },
+                    "description": if en { "Durable facts learned about the user's world" } else { "Faits durables appris sur l'univers de l'utilisateur" }
                 }
             },
             "required": ["transcription_fixes", "unassigned_tasks", "unclear_sentences", "context_additions"]
@@ -676,18 +730,23 @@ fn analyze_tool() -> serde_json::Value {
 
 /// One Claude call → `Clarifications` (timestamps not yet filled). Forces the
 /// `submit_clarifications` tool so the response is always structured.
-async fn call_analyze(text: &str, context: Option<&str>, db: &SqlitePool) -> Result<Clarifications> {
+async fn call_analyze(text: &str, context: Option<&str>, recording_id: &str, db: &SqlitePool) -> Result<Clarifications> {
     if text.trim().is_empty() {
         return Ok(Clarifications::default());
     }
     let access = resolve_access(db).await?;
     let client = reqwest::Client::new();
+    // Aucune consigne de langue n'existait ici (contrairement à l'ingestion/au
+    // contexte) — l'analyse dérivait donc vers le français via le seul system
+    // prompt + schéma français (spec/05/17, 2e test tranché).
+    let lang = recording_language(db, Some(recording_id)).await;
+    let system_text = format!("{}\n{}", ANALYZE_SYSTEM, language_directive(lang));
     let body = json!({
         "model": MODEL,
         "max_tokens": 2048,
         "thinking": {"type": "disabled"},
-        "system": system_blocks(ANALYZE_SYSTEM, context),
-        "tools": analyze_tool(),
+        "system": system_blocks(&system_text, context),
+        "tools": analyze_tool(lang),
         "tool_choice": {"type": "tool", "name": "submit_clarifications"},
         "messages": [{ "role": "user", "content": format!("Transcription:\n{}", text) }]
     });
@@ -802,7 +861,7 @@ pub async fn analyze_transcription(
         Some(root) => crate::notes::context::read_context(root, db).await,
         None => None,
     };
-    let mut clar = call_analyze(&text, context.as_deref(), db).await?;
+    let mut clar = call_analyze(&text, context.as_deref(), recording_id, db).await?;
     let segments = fetch_segments(recording_id, db).await.unwrap_or_default();
     fill_timestamps(&mut clar, &segments);
     Ok(clar)
@@ -1056,17 +1115,18 @@ Consignes :
 - `projets` : les projets en cours cités (nom + une ligne), en liste à puces. Vide si rien.
 - Reste fidèle : n'invente pas d'information non dite. Rédige dans la même langue que la présentation orale (voir consigne de langue ci-dessous si besoin d'un repli). Orthographie au mieux les noms propres (au besoin d'après le son)."#;
 
-fn context_build_tool() -> serde_json::Value {
+fn context_build_tool(lang: &str) -> serde_json::Value {
+    let en = lang == "en";
     json!([{
         "name": "submit_context",
-        "description": "Structure la présentation orale dans la fiche de contexte de l'utilisateur.",
+        "description": if en { "Structure the spoken introduction into the user's context sheet." } else { "Structure la présentation orale dans la fiche de contexte de l'utilisateur." },
         "input_schema": {
             "type": "object",
             "properties": {
-                "entreprise": { "type": "string" },
-                "equipe": { "type": "string" },
-                "vocabulaire": { "type": "string" },
-                "projets": { "type": "string" }
+                "entreprise": { "type": "string", "description": if en { "Who the user is, their role, their company and what it does" } else { "Qui est l'utilisateur, son rôle, son entreprise et ce qu'elle fait" } },
+                "equipe": { "type": "string", "description": if en { "Colleagues mentioned (first name + role), bullet list" } else { "Collègues cités (prénom + rôle), en liste à puces" } },
+                "vocabulaire": { "type": "string", "description": if en { "Proper nouns, clients, acronyms, tools and jargon mentioned, bullet list" } else { "Noms propres, clients, sigles, outils et jargon cités, en liste à puces" } },
+                "projets": { "type": "string", "description": if en { "Current projects mentioned (name + one line), bullet list" } else { "Projets en cours cités (nom + une ligne), en liste à puces" } }
             },
             "required": ["entreprise", "equipe", "vocabulaire", "projets"]
         }
@@ -1121,7 +1181,7 @@ pub async fn build_context_from_transcription(
         }
     };
 
-    match build_context_inner(transcription_text, db, vault_root).await {
+    match build_context_inner(transcription_text, recording_id, db, vault_root).await {
         Ok((sections, terms)) => {
             let _ = app_handle.emit("notes-updated", json!({}));
             emit_status("done", sections, terms, None);
@@ -1136,6 +1196,7 @@ pub async fn build_context_from_transcription(
 
 async fn build_context_inner(
     transcription_text: &str,
+    recording_id: &str,
     db: &SqlitePool,
     vault_root: &Path,
 ) -> Result<(usize, usize)> {
@@ -1145,13 +1206,18 @@ async fn build_context_inner(
 
     let access = resolve_access(db).await?;
     let client = reqwest::Client::new();
-    let system_text = format!("{}\n{}", CONTEXT_BUILD_SYSTEM, language_instruction(db).await);
+    // Langue du CONTENU des champs (spec/05/17, 2e test tranché) — dérivée de la
+    // langue détectée pour cet enregistrement, pas inférée. Distinct des titres
+    // de section de la note (`titles(app_language)` ci-dessous), qui suivent
+    // délibérément la langue UI (spec/16).
+    let lang = recording_language(db, Some(recording_id)).await;
+    let system_text = format!("{}\n{}", CONTEXT_BUILD_SYSTEM, language_directive(lang));
     let body = json!({
         "model": MODEL,
         "max_tokens": 2048,
         "thinking": {"type": "disabled"},
         "system": [{ "type": "text", "text": system_text, "cache_control": {"type": "ephemeral"} }],
-        "tools": context_build_tool(),
+        "tools": context_build_tool(lang),
         "tool_choice": {"type": "tool", "name": "submit_context"},
         "messages": [{ "role": "user", "content": format!("Présentation orale :\n{}", transcription_text) }]
     });

@@ -93,8 +93,18 @@ S'ajoutent deux gains **indépendants du contexte** : la **qualité de décodage
   > est **en anglais** (« UAE T1 and UAE T2 were not accessible… ») → **Whisper
   > transcrit bien en anglais**. Ce sont les **sorties de Claude** qui sont
   > françaises (reformulation proposée, faits « à retenir »). Donc **le bug de langue
-  > est côté Claude**, pas Whisper (le volet Whisper/`initial_prompt` ci-dessus n'est
-  > pas la cause de ce cas). Voir §3 + spec/05.
+  > est côté Claude**, pas Whisper — les correctifs glossaire ci-dessus n'étaient
+  > donc pas la cause de CE cas (ils restent valables pour un vrai biais Whisper,
+  > si observé séparément). Voir §3 + spec/05.
+  >
+  > ✅ **Corrigé (spec/05).** `call_analyze`/`call_ingestion`/`build_context_inner`
+  > utilisent désormais `recording_language(db, recording_id)` — la langue
+  > **réellement détectée par Whisper** pour cet enregistrement précis
+  > (`transcriptions.language`), pas une inférence — avec une consigne
+  > **impérative** (« Write ALL fields / your entire answer in {lang} ») et des
+  > **schémas de tool alignés** (`submit_ingestion`/`submit_clarifications`/
+  > `submit_context` en anglais quand la cible est EN). `call_analyze` n'avait
+  > jusqu'ici **aucune** consigne de langue — c'était la fuite la plus nette.
 
 ## §2 — Qualité de décodage (beam + seuils)
 

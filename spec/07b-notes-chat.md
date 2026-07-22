@@ -73,7 +73,7 @@ déjà présents — mais en **mode éphémère**, distinct de l'enregistrement 
 - **Réutilisable** ailleurs (hors périmètre de cette tâche mais viser un composant
   partagé) : correction de contexte (spec/13), feedback (spec/14).
 
-## Contexte d'une tâche (bouton « Rassembler le contexte ») — 📝 à faire (feedback tests)
+## Contexte d'une tâche (bouton « Rassembler le contexte ») — ✅ fait (feedback tests)
 
 Depuis la **fiche tâche** (spec/06), un bouton lance une **action IA à la demande**
 qui **réunit le contexte utile pour réaliser la tâche** : point d'entrée = la même

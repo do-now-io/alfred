@@ -58,7 +58,7 @@ pas dispo, cf. spec/03) ; dossier d'enregistrement (défaut **`alfred-raw`**).
 
 **Tâches** : fichier `Todo.md` (défaut **`alfred-intelligence/Todo.md`**).
 
-**Langue / Language** (📝 à faire, spec/21) : `app_language` (`fr` | `en`) —
+**Langue / Language** (✅ fait, spec/21) : `app_language` (`fr` | `en`) —
 traduction entière de l'app ; changeable à tout moment (sans redémarrage).
 
 **Système** : lancer au démarrage (`get/set_launch_at_login` — LaunchAgent macOS /

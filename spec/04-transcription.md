@@ -71,7 +71,7 @@ note dans le vault**, puis déclenche l'IA (ingestion, spec 05).
   défini, sinon la langue **détectée** par Whisper (`full_lang_id_from_state` +
   `get_lang_str`). *(Ancien bug « colonne toujours NULL » corrigé.)*
 
-## Qualité du décodage — 📝 à faire (spec/17)
+## Qualité du décodage — ✅ fait (spec/17)
 
 Aujourd'hui `run_whisper` utilise le réglage le plus faible : `Greedy
 { best_of: 1 }`, aucun seuil, pas de glossaire. Améliorations spécifiées dans

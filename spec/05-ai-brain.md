@@ -186,7 +186,7 @@ s'affiche. On expose les **phases** de l'ingestion pour piloter la capsule major
   éventuelle **ré-ingestion en lot** (« toutes les notes ») — la capsule reflète la
   note en cours (et son avancement n/total si lot).
 
-### Ingestion augmentée — 📝 à faire (spec/17)
+### Ingestion augmentée — ✅ fait (spec/17)
 
 Évolution en **deux temps** : Claude **analyse** la
 transcription + `Contexte Alfred.md` et renvoie des **propositions groupées

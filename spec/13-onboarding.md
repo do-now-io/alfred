@@ -23,7 +23,7 @@ explicitement remis à `false` dans `finishOnboarding`/`finishOnboardingReplay`
 
 ## Flux (assistant à étapes — points de progression, Précédent / Suivant / Passer)
 
-0. **Langue / Language** (📝 à faire, spec/21) — sélecteur **Français / English**
+0. **Langue / Language** (✅ fait, spec/21) — sélecteur **Français / English**
    avant tout le reste ; écrit `app_language` (pré-sélection sur la langue système si
    `fr`/`en`, sinon `en`). Toute la suite de l'onboarding s'affiche dans la langue
    choisie. Modifiable ensuite dans les Réglages.
@@ -56,7 +56,9 @@ explicitement remis à `false` dans `finishOnboarding`/`finishOnboardingReplay`
      l'essai ; débit à la fin des 14 jours si non annulé (facturation : spec/15).
 7. **Micro** — test de permission (`test_microphone` ; déclenche le prompt macOS ;
    sur Windows, ouverture WASAPI).
-8. **Contexte** (📝 à faire, spec/17) — carte d'annonce : *« Alfred travaille
+8. **Contexte** (🚧 pas de carte dédiée dans le wizard — l'annonce équivalente
+   vit dans la carte d'intro de la visite guidée juste après, § Tournée guidée
+   étape 1 ; à trancher si les deux doivent coexister) — carte d'annonce : *« Alfred travaille
    bien mieux s'il connaît votre univers (collègues, clients, projets, jargon). On
    va le lui apprendre à la voix, juste après, en 2 minutes. »* **Aucun formulaire
    ici** : la création du contexte est faite **à la voix dans la visite guidée**

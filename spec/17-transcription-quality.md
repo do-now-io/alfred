@@ -145,20 +145,18 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
 
 **Jamais d'auto-application** d'une correction.
 
-> 🚧 **Langue des propositions — BUG confirmé au test (📝 à corriger).** Sur une
-> réunion **anglaise** (transcription EN vérifiée à l'écran), l'écran `/resolve`
-> affiche des **propositions et faits en français** : `unclear_sentence` proposée
-> (« Il s'agit probablement des environnements UAT1 et UAT2… »), `context_addition`
-> (« Alexandre Chevalier est un contact… », « Un incident a eu lieu un mardi… »). Le
-> prompt d'`analyze_transcription` et les **descriptions de champs** du tool
-> d'analyse sont **en français** → Claude génère ses propositions **en français**
-> quel que soit la langue de la transcription. **Correctif** : ces sorties
-> (`unclear_sentence.proposed`, `transcription_fix.correction`, `context_addition.fact`)
-> doivent être **dans la langue de la transcription** — consigne **explicite et
-> impérative** dérivée de la **langue détectée** (`transcriptions.language`), pas par
-> inférence (même correctif que spec/05 pour l'ingestion/`build_context`). ⚠️ Sinon
-> les faits « appris automatiquement » **polluent la note de contexte EN avec des
-> lignes FR** (§4).
+> ✅ **Langue des propositions — corrigé (spec/05).** Sur une réunion **anglaise**
+> (transcription EN vérifiée à l'écran), l'écran `/resolve` affichait des
+> **propositions et faits en français** : `unclear_sentence` proposée, `context_addition`,
+> etc. Cause : le prompt d'`analyze_transcription` et les **descriptions de champs**
+> du tool d'analyse étaient **en français** → Claude générait ses propositions **en
+> français** quel que soit la langue de la transcription. **Corrigé** : `call_analyze`
+> lit désormais `recording_language(db, recording_id)` — la langue **réellement
+> détectée par Whisper** pour cet enregistrement (`transcriptions.language`), pas une
+> inférence — et lui adjoint une consigne **impérative** (`language_directive`) ; le
+> schéma `submit_clarifications` (`analyze_tool(lang)`) est lui aussi aligné sur cette
+> langue. Couvre `unclear_sentence.proposed`, `transcription_fix.correction` **et**
+> `context_addition.fact` — donc plus de pollution FR dans une note de contexte EN (§4).
 
 ### `/resolve` seulement s'il y a quelque chose à vérifier — ✅ fait (feedback tests, **revient sur** l'exigence précédente)
 

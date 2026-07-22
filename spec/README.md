@@ -68,6 +68,7 @@ par nous).
 | 20  | Rendre le projet open source | 📝 | **Pas encore spécifié** — licence, ce qui reste privé (secrets Coolify/Stripe/clés déjà hors repo) vs code publié, dépôt cible. Décisions produit/légales à prendre avant d'écrire la spec |
 | 21  | Internationalisation (FR / EN) | 📝 | **Spec écrite, rien de codé.** Traduction **entière** de l'app en anglais + **choix de la langue à l'installation** (`app_language`, modifiable en Réglages) ; langue des sorties IA ≠ langue UI ; templates/`Todo.md` à découpler du libellé (feedback tests) |
 | 22  | Alfred agentique (actions) | 📝 | **Spec écrite, rien de codé.** Alfred passe de lecture seule à **agent** : créer/éditer/renommer/**archiver** notes + tâches + contexte via le chat (réutilise les commandes existantes). **« Supprimer » = archiver** (jamais de suppression dure par l'IA) ; confirmation pour les **lots/écrasements** ; Réglages/app + suppression dure hors périmètre v1 (feedback tests) |
+| 23  | Liens internes & navigation | 📝 | **Spec écrite, rien de codé.** Audit : les `[[wikilinks]]` s'affichent mais **ne naviguent pas** (`renderInlineMd` = spans morts ; résolution qui échoue). Gestionnaire de lien **unique** (note→note via `openNoteByRef` ; **tâche via schéma `task:`** → Kanban surligné) ; compte-rendu → liste de tâches cliquables ; échec = feedback visible (feedback tests) |
 | —   | Ingest « run Claude » (CLI) | ❌ | **Supprimé** — remplacé par l'ingestion API (spec 05) |
 
 ## Deux modes d'accès à l'IA

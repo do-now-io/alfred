@@ -84,6 +84,24 @@ français**. Deux causes distinctes :
 2. **Transcription** : voir spec/17 (le glossaire injecté en `initial_prompt` était
    enrobé d'une phrase **française figée** qui biaisait Whisper — corrigé).
 
+> 🚧 **ENCORE OBSERVÉ au test (2e passe) — la note de CONTEXTE sort en français.**
+> App EN, titres EN (localisés ✅), mais le **corps** de `Contexte Alfred.md` (écrit
+> par Claude via `build_context_from_transcription` / `submit_context`) est en
+> **français**. Deux faiblesses de l'approche actuelle :
+> - **`language_instruction` repose sur l'INFÉRENCE** (« écris dans la MÊME langue que
+>   le texte fourni ») **et est elle-même rédigée en français**, tout comme
+>   `CONTEXT_BUILD_SYSTEM` **et les descriptions des champs du tool `submit_context`**.
+>   Ce prompt massivement FR **tire Claude vers le français** même sur une
+>   transcription EN — surtout sur un texte court (présentation d'1–2 min).
+> - **On dispose pourtant de la langue détectée** (`transcriptions.language`, stockée
+>   par le worker, spec/04). ⟹ **Correctif** : passer une **consigne EXPLICITE et
+>   impérative** construite à partir de la langue **détectée** (ou `app_language` si
+>   inconnue), du type *« Rédige TOUS les champs en anglais. »* — au lieu de laisser
+>   Claude déduire. Vaut pour `build_context` **et** l'ingestion.
+> - **Vérification** : si la **note brute** (`alfred-raw/`) est en anglais mais la
+>   note de contexte en français → c'est bien Claude (ici) ; si la note brute est
+>   déjà française → c'est Whisper (spec/17).
+
 Les **titres générés** du compte-rendu (`## Points clés` → `## Key points`) sont
 **localisés selon `app_language`** (ce sont NOS titres, écrits par le code Rust, pas
 par Claude — `run_ingestion_core`, `ai::app_language(db)`). La **langue UI, la

@@ -64,6 +64,31 @@ S'ajoutent deux gains **indépendants du contexte** : la **qualité de décodage
   Le compte-rendu FR qui suivait était un **second problème**, corrigé en parallèle
   (prompt d'ingestion, spec/05) — les deux se cumulaient.
 
+  > 🚧 **ENCORE OBSERVÉ au test (2e passe) — pas totalement corrigé.** App en EN,
+  > `language_hint`/log Whisper = **`_LANG_en` forcé**, et **pourtant** le contenu
+  > sort en **français**. Le log montre **~179 tokens d'`initial_prompt` AVANT**
+  > `[_LANG_en]` (`prompt[179] = [_LANG_en]`). Enseignement : **forcer le token de
+  > langue ne suffit pas** — un `initial_prompt` (glossaire) dont le **texte réel
+  > stocké** (`config.transcription_glossary`) est encore **français** (« Transcription
+  > en français. Termes… ») fournit ~179 tokens de **prior français** qui **priment
+  > sur le token `en`**. Rendre l'**exemple** de `GLOSSARY_SYSTEM` bilingue ne change
+  > **pas** la valeur déjà stockée ni ne garantit une régénération EN. Correctifs à
+  > faire :
+  > - **La valeur stockée `transcription_glossary` doit être régénérée dans la langue
+  >   cible** (pas seulement l'exemple du prompt) ; à défaut, **omettre la phrase
+  >   d'enrobage** et n'injecter qu'une **liste nue de noms propres** (neutre en
+  >   langue) — le plus sûr, puisque le rôle du glossaire est acoustique (noms), pas
+  >   de fixer la langue.
+  > - **Cas du 1er enregistrement de contexte** : il n'y a en principe pas encore de
+  >   glossaire — vérifier d'où viennent ces 179 tokens (glossaire résiduel d'un tour
+  >   précédent ? valeur seed ?) et **ne rien injecter** si le glossaire est censé
+  >   être vide.
+  > - **Vérification décisive Whisper vs Claude** : ouvrir la **note brute**
+  >   (`alfred-raw/`). Si **elle** est en français → c'est bien ce biais
+  >   `initial_prompt` (ci-dessus). Si elle est en **anglais** mais que la **note de
+  >   contexte** est en français → le fautif est **Claude** (`build_context`,
+  >   spec/05/13).
+
 ## §2 — Qualité de décodage (beam + seuils)
 
 Dans `run_whisper` (spec/04). Aujourd'hui : `Greedy { best_of: 1 }`, aucun seuil —

@@ -31,6 +31,14 @@ export default {
       send: "Envoyer",
       sending: "⏳",
     },
+    action: {
+      apply: "Appliquer",
+      cancel: "Annuler",
+      applied: "Appliqué",
+      appliedCount: "{count} élément(s) modifié(s).",
+      cancelled: "Annulé — rien n'a été modifié.",
+      failed: "L'action a échoué : {error}",
+    },
   },
   en: {
     suggestions: {
@@ -62,6 +70,14 @@ export default {
       placeholder: "Ask a question…",
       send: "Send",
       sending: "⏳",
+    },
+    action: {
+      apply: "Apply",
+      cancel: "Cancel",
+      applied: "Applied",
+      appliedCount: "{count} item(s) changed.",
+      cancelled: "Cancelled — nothing was changed.",
+      failed: "The action failed: {error}",
     },
   },
 };

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MdAdd, MdDeleteOutline, MdChatBubbleOutline } from "react-icons/md";
+import { MdAdd, MdDeleteOutline, MdChatBubbleOutline, MdCheckCircle, MdCheck, MdClose } from "react-icons/md";
 import { useChatStore, type ChatTurn } from "../../store/chatStore";
 import { useNotesStore } from "../../store/notesStore";
 import { useTourTarget } from "../../store/tourStore";
@@ -314,6 +314,75 @@ function AssistantBubble({
       {turn.sources && turn.sources.length > 0 && (
         <SourceChips sources={turn.sources} onOpen={onOpenSource} />
       )}
+      {turn.pendingAction && <ActionCard turn={turn} />}
+    </div>
+  );
+}
+
+// ─── Carte de confirmation Alfred agentique (spec/22) ───────────────────────
+// Esprit de /resolve (spec/17) : la proposition est résolue localement, dans
+// l'UI, en cliquant Appliquer/Annuler — SANS repasser par Claude. « Appliquer »
+// appelle directement `confirm_agent_action` (chatStore.applyAction).
+
+const actionCardStyle: React.CSSProperties = {
+  marginTop: 10, background: "var(--card-bg)", border: "1px solid var(--border)",
+  borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8,
+};
+
+function actionBtn(primary?: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex", alignItems: "center", gap: 4,
+    border: `1px solid ${primary ? "var(--accent)" : "var(--border)"}`,
+    background: primary ? "var(--accent)" : "transparent",
+    color: primary ? "#fff" : "var(--text-secondary)",
+    borderRadius: 8, padding: "6px 14px", fontSize: 12.5, cursor: "pointer",
+  };
+}
+
+function ActionCard({ turn }: { turn: ChatTurn }) {
+  const t = useT();
+  const applyAction = useChatStore(s => s.applyAction);
+  const cancelAction = useChatStore(s => s.cancelAction);
+  const action = turn.pendingAction;
+  if (!action) return null;
+
+  const state = turn.actionState ?? "pending";
+
+  if (state === "applied") {
+    return (
+      <div style={{ ...actionCardStyle, flexDirection: "row", alignItems: "center", gap: 6, opacity: 0.85 }}>
+        <MdCheckCircle size={15} style={{ color: "var(--accent)", flexShrink: 0 }} />
+        <span style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
+          {t("chat.action.applied")} — {t("chat.action.appliedCount", { count: String(turn.actionResult ?? 0) })}
+        </span>
+      </div>
+    );
+  }
+
+  if (state === "cancelled") {
+    return (
+      <div style={{ ...actionCardStyle, flexDirection: "row", alignItems: "center", opacity: 0.7 }}>
+        <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{t("chat.action.cancelled")}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={actionCardStyle}>
+      <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5 }}>{action.summary}</div>
+      {state === "error" && (
+        <div style={{ fontSize: 12, color: "var(--danger)" }}>
+          {t("chat.action.failed", { error: turn.actionError ?? "" })}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button onClick={() => cancelAction(turn.id)} disabled={state === "applying"} style={actionBtn()}>
+          <MdClose size={14} /> {t("chat.action.cancel")}
+        </button>
+        <button onClick={() => applyAction(turn.id)} disabled={state === "applying"} style={actionBtn(true)}>
+          <MdCheck size={14} /> {state === "applying" ? "…" : t("chat.action.apply")}
+        </button>
+      </div>
     </div>
   );
 }

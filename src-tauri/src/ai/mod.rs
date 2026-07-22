@@ -9,6 +9,7 @@ use ts_rs::TS;
 use crate::keychain;
 use crate::notes::todo_md::IngestTask;
 
+pub mod agent_actions;
 pub mod chat;
 pub mod chat_history;
 

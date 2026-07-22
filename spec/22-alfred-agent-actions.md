@@ -1,9 +1,12 @@
 # spec/22 — Alfred agentique (outils d'action)
 
-> **Statut v1 :** 📝 spec à créer, **rien de codé**. Étend la boucle de chat
-> (spec/07b) : Alfred passe de **lecture seule** (`search_notes` + `read_note`) à un
-> **agent capable d'agir** sur l'app. But (feedback tests) : *« pouvoir tout gérer
-> par Alfred si besoin »*.
+> **Statut v1 : ✅ fait.** Étend la boucle de chat (spec/07b) : Alfred passe de
+> **lecture seule** (`search_notes` + `read_note`) à un **agent capable d'agir**
+> sur l'app. But (feedback tests) : *« pouvoir tout gérer par Alfred si
+> besoin »*. Implémentation : `src-tauri/src/ai/agent_actions.rs` (nouveaux
+> outils + `ProposedAction` + garde-fous chemins) + `ai/chat.rs` (boucle,
+> system prompt, dispatch) + `confirm_agent_action` (commande) +
+> `ChatPanel.tsx`/`chatStore.ts` (carte Appliquer/Annuler).
 
 ## Idée directrice
 
@@ -113,3 +116,28 @@ dans la boucle de chat (spec/07b) + le rafraîchissement UI (`notes-updated` /
 
 Pilotage des **Réglages & app** (config, enregistrement, partage) ; corbeille /
 undo explicite ; historique d'actions ; permissions par domaine paramétrables.
+
+## Décisions d'implémentation (non tranchées par la 1ʳᵉ version de cette spec)
+
+- **Pas de round-trip conversationnel pour la confirmation lot/écrasement**
+  (décidé) : le back n'a qu'un cycle requête/réponse (pas de canal pour faire
+  patienter Claude pendant que l'utilisateur clique). Sur détection d'un outil
+  lot/écrasement, la boucle **s'arrête immédiatement** et renvoie une
+  `ProposedAction` ; le front affiche une carte (esprit `/resolve`) et, sur
+  « Appliquer », appelle **directement** `confirm_agent_action` — Claude n'est
+  **jamais** informé du résultat (pas de nouvelle bulle « ✓ fait »). Plus
+  simple, cohérent avec `/resolve` qui suit déjà ce schéma.
+- **Chat aligné sur `app_language`** (décidé) : le system prompt et **tous**
+  les schémas d'outils (existants `search_notes`/`read_note` compris, jamais
+  traités par le correctif spec/05/17) suivent désormais `app_language` — même
+  constat qu'ailleurs : un schéma tout-français tire Claude vers le FR même
+  avec une bonne consigne. La langue de LA RÉPONSE reste inférée depuis la
+  question (`language_instruction`, inchangé) : un chat vit dans les deux sens,
+  contrairement au brief quotidien (spec/05, directive inconditionnelle).
+- **Une seule proposition à la fois** : si Claude appelle un outil lot/
+  écrasement, tout autre appel d'outil dans le même tour est ignoré (pas de
+  fusion de plusieurs propositions dans une même carte).
+- **Correctif de sécurité en passant** : `read_note` acceptait un chemin
+  littéral absolu sans vérifier qu'il restait dans le coffre. Corrigé en
+  réutilisant `agent_actions::resolve_note_path` (confinement vault) pour la
+  lecture aussi, pas seulement pour les nouveaux outils d'écriture.

@@ -6,12 +6,22 @@ import type { ChatMessage } from "../bindings/ChatMessage";
 import type { ChatConversation } from "../bindings/ChatConversation";
 import type { ChatExchangeResult } from "../bindings/ChatExchangeResult";
 import type { StoredChatMessage } from "../bindings/StoredChatMessage";
+import type { ProposedAction } from "../bindings/ProposedAction";
+
+/** État LOCAL de résolution d'une action proposée (spec/22) — jamais
+ *  persisté : une carte non résolue redevient "pending" si on rouvre la
+ *  conversation (le pending_action lui-même n'est pas stocké en base). */
+export type ActionState = "pending" | "applying" | "applied" | "cancelled" | "error";
 
 export interface ChatTurn {
   id: string;
   role: "user" | "assistant";
   content: string;
   sources?: ChatSource[];
+  pendingAction?: ProposedAction | null;
+  actionState?: ActionState;
+  actionResult?: number;
+  actionError?: string;
 }
 
 interface ChatStore {
@@ -30,6 +40,10 @@ interface ChatStore {
   fetchConversations: () => Promise<void>;
   openConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
+  /** Carte Appliquer/Annuler (spec/22) — appelle directement la commande
+   *  Tauri, sans repasser par Claude (carte locale, esprit de /resolve). */
+  applyAction: (turnId: string) => Promise<void>;
+  cancelAction: (turnId: string) => void;
 }
 
 let seq = 0;
@@ -76,7 +90,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       set(state => ({
         messages: [
           ...state.messages,
-          { id: nextId(), role: "assistant", content: res.answer, sources: res.sources },
+          {
+            id: nextId(),
+            role: "assistant",
+            content: res.answer,
+            sources: res.sources,
+            pendingAction: res.pending_action,
+            actionState: res.pending_action ? "pending" : undefined,
+          },
         ],
         conversationId: res.conversation_id || state.conversationId,
       }));
@@ -132,5 +153,31 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     } catch (e) {
       console.error("delete_chat_conversation failed:", e);
     }
+  },
+
+  applyAction: async (turnId) => {
+    const turn = get().messages.find(m => m.id === turnId);
+    if (!turn?.pendingAction) return;
+    set(state => ({
+      messages: state.messages.map(m => (m.id === turnId ? { ...m, actionState: "applying" } : m)),
+    }));
+    try {
+      const count = await invoke<number>("confirm_agent_action", { action: turn.pendingAction });
+      set(state => ({
+        messages: state.messages.map(m => (m.id === turnId ? { ...m, actionState: "applied", actionResult: count } : m)),
+      }));
+      // La mutation a pu toucher Notes/Tâches — les autres écrans écoutent
+      // déjà notes-updated/todos-updated (émis côté back par la commande).
+    } catch (e) {
+      set(state => ({
+        messages: state.messages.map(m => (m.id === turnId ? { ...m, actionState: "error", actionError: String(e) } : m)),
+      }));
+    }
+  },
+
+  cancelAction: (turnId) => {
+    set(state => ({
+      messages: state.messages.map(m => (m.id === turnId ? { ...m, actionState: "cancelled" } : m)),
+    }));
   },
 }));

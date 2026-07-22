@@ -24,6 +24,11 @@ pub struct ChatExchangeResult {
     pub answer: String,
     pub sources: Vec<ChatSource>,
     pub conversation_id: String,
+    /// Action en lot / écrasement proposée par Claude pour CE tour (spec/22)
+    /// — jamais persistée : une fois résolue (ou la conversation rouverte),
+    /// elle disparaît.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_action: Option<super::agent_actions::ProposedAction>,
 }
 
 #[derive(Debug, Serialize, Clone, TS)]

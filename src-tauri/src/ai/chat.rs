@@ -37,45 +37,88 @@ pub struct ChatSource {
 pub struct ChatResponse {
     pub answer: String,
     pub sources: Vec<ChatSource>,
+    /// Action en lot / écrasement proposée par Claude, en attente de
+    /// confirmation utilisateur (spec/22) — absente pour un tour normal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_action: Option<super::agent_actions::ProposedAction>,
 }
 
-const CHAT_SYSTEM: &str = r#"Tu es Alfred, l'assistant personnel de l'utilisateur. Tu réponds à ses questions en t'appuyant sur ses notes personnelles (un coffre de fichiers Markdown).
+/// Base du system prompt, alignée sur `app_language` (spec/21/22) — un schéma
+/// d'outils tout-français tire Claude vers le FR même avec une bonne consigne
+/// de langue (constat spec/05/17). La consigne de langue de LA RÉPONSE reste
+/// séparée (`language_instruction`, inférée depuis la question) : ceci ne
+/// fixe que la langue des DÉFINITIONS d'outils / instructions statiques.
+fn chat_system(lang: &str) -> String {
+    if lang == "en" {
+        r#"You are Alfred, the user's personal assistant. You answer their questions and can ACT on their notes vault and tasks, using the tools provided.
 
-Méthode :
+Reading method:
+- Use `search_notes` to find relevant notes (run several searches with different keywords if needed).
+- Use `read_note` to read a note in full BEFORE relying on it.
+- Only answer from what the notes actually say. If the information isn't there, say so clearly, never invent it.
+
+Action tools (notes and tasks):
+- You can create/edit/archive notes (create_note, append_to_note, update_note_metadata, archive_note, unarchive_note, rename_note) and tasks (create_task, complete_task, move_task, update_task, dismiss_task).
+- Golden rule: you NEVER truly delete anything. Any "delete" intent becomes a reversible ARCHIVE (archive_note / dismiss_task) — never a file deletion.
+- UNITARY actions (a single item, non-destructive): apply them directly, then report the result in your answer.
+- BULK actions (several items at once) or a FULL REWRITE of existing content: use ONLY the dedicated tools (archive_notes_bulk, unarchive_notes_bulk, dismiss_tasks_bulk, rewrite_note_body) — they never execute immediately, a confirmation card is shown to the user instead. Briefly explain what you're proposing in your answer while the card is shown.
+- Never use those bulk/rewrite tools for a simple addition — append_to_note handles additions directly, no confirmation needed.
+
+Final answer:
+- Concise, structured Markdown, in the same language as the question (see the language instruction below as a fallback).
+- **Bold** names, dates, and key points.
+- Cite each source note by its EXACT name in double brackets, e.g. [[Note name]] — copy it verbatim from the "Note" field of the results, since it acts as a clickable link."#
+    } else {
+        r#"Tu es Alfred, l'assistant personnel de l'utilisateur. Tu réponds à ses questions et tu peux AGIR sur son coffre de notes et ses tâches, en t'appuyant sur les outils fournis.
+
+Méthode de lecture :
 - Utilise l'outil `search_notes` pour trouver les notes pertinentes (fais plusieurs recherches avec des mots-clés différents si besoin).
 - Utilise l'outil `read_note` pour lire en entier une note qui semble utile AVANT de t'en servir.
 - Ne réponds qu'à partir de ce que disent réellement les notes. Si l'information ne s'y trouve pas, dis-le clairement, sans inventer.
 
+Outils d'action (notes et tâches) :
+- Tu peux créer/éditer/archiver des notes (create_note, append_to_note, update_note_metadata, archive_note, unarchive_note, rename_note) et des tâches (create_task, complete_task, move_task, update_task, dismiss_task).
+- Règle d'or : tu NE SUPPRIMES JAMAIS RIEN pour de vrai. Toute intention de « suppression » se traduit par un ARCHIVAGE réversible (archive_note / dismiss_task) — jamais par une suppression de fichier.
+- Actions UNITAIRES (un seul élément, non destructives) : applique-les directement, puis rends compte du résultat dans ta réponse.
+- Actions en LOT (plusieurs éléments à la fois) ou RÉÉCRITURE COMPLÈTE d'un contenu existant : n'utilise QUE les outils dédiés (archive_notes_bulk, unarchive_notes_bulk, dismiss_tasks_bulk, rewrite_note_body) — ils ne s'exécutent jamais immédiatement, une carte de confirmation est affichée à l'utilisateur à la place. Explique brièvement ce que tu proposes dans ta réponse pendant que la carte s'affiche.
+- N'utilise jamais ces outils lot/écrasement pour un simple ajout — append_to_note gère les ajouts directement, sans confirmation.
+
 Réponse finale :
 - Concise et structurée en Markdown, dans la même langue que la question (voir consigne de langue ci-dessous si besoin d'un repli).
 - Mets en **gras** les noms, dates et points clés.
-- Cite chaque note source en reprenant son nom EXACT entre doubles crochets, par ex. [[Nom de la note]] — recopie-le à l'identique depuis le champ « Note » des résultats, car il sert de lien cliquable."#;
+- Cite chaque note source en reprenant son nom EXACT entre doubles crochets, par ex. [[Nom de la note]] — recopie-le à l'identique depuis le champ « Note » des résultats, car il sert de lien cliquable."#
+    }
+    .to_string()
+}
 
-fn tools() -> Value {
-    json!([
-        {
+fn tools(lang: &str) -> Value {
+    let en = lang == "en";
+    let mut base = vec![
+        json!({
             "name": "search_notes",
-            "description": "Recherche dans le coffre de notes celles qui correspondent à une requête (mots-clés). Renvoie les meilleures notes avec un court extrait. Utilise des requêtes courtes et ciblées.",
+            "description": if en { "Searches the notes vault for keyword matches. Returns the best notes with a short excerpt. Use short, focused queries." } else { "Recherche dans le coffre de notes celles qui correspondent à une requête (mots-clés). Renvoie les meilleures notes avec un court extrait. Utilise des requêtes courtes et ciblées." },
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "query": { "type": "string", "description": "Mots-clés ou sujet à rechercher" }
+                    "query": { "type": "string", "description": if en { "Keywords or topic to search for" } else { "Mots-clés ou sujet à rechercher" } }
                 },
                 "required": ["query"]
             }
-        },
-        {
+        }),
+        json!({
             "name": "read_note",
-            "description": "Lit le contenu complet d'une note, identifiée par son nom (tel que renvoyé par search_notes, sans guillemets) ou son chemin.",
+            "description": if en { "Reads a note's full content, identified by its name (as returned by search_notes, without quotes) or its path." } else { "Lit le contenu complet d'une note, identifiée par son nom (tel que renvoyé par search_notes, sans guillemets) ou son chemin." },
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "note": { "type": "string", "description": "Nom exact de la note ou son chemin" }
+                    "note": { "type": "string", "description": if en { "Exact note name or its path" } else { "Nom exact de la note ou son chemin" } }
                 },
                 "required": ["note"]
             }
-        }
-    ])
+        }),
+    ];
+    base.extend(super::agent_actions::tool_defs(lang));
+    Value::Array(base)
 }
 
 // ─── Vault tools (blocking I/O — run via spawn_blocking) ────────────────────────
@@ -153,43 +196,12 @@ fn load_note(path: &Path) -> Option<(String, String, String)> {
 }
 
 /// Resolve a note by exact path, else by file stem (case-insensitive),
-/// else by frontmatter title. Returns (stem, path, body).
+/// else by frontmatter title. Returns (stem, path, body). Delegates to
+/// `agent_actions::resolve_note_path`, which additionally guarantees the
+/// resolved path never escapes `root` (spec/22 garde-fou — a literal
+/// out-of-vault path used to be accepted unchecked here).
 fn read_note(root: &Path, note_ref: &str) -> Option<(String, String, String)> {
-    let as_path = Path::new(note_ref);
-    if as_path.is_file() && as_path.extension().map(|x| x == "md").unwrap_or(false) {
-        return load_note(as_path);
-    }
-
-    let target = note_ref.trim().to_lowercase();
-    let mut title_match: Option<PathBuf> = None;
-
-    for entry in walkdir::WalkDir::new(root)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(is_md_entry)
-        .take(5000)
-    {
-        let stem = entry
-            .path()
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        if stem.to_lowercase() == target {
-            return load_note(entry.path());
-        }
-
-        if title_match.is_none() {
-            if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                let (meta, _) = crate::notes::frontmatter::parse(&content, &stem);
-                if meta.title.to_lowercase() == target {
-                    title_match = Some(entry.path().to_path_buf());
-                }
-            }
-        }
-    }
-
-    title_match.and_then(|p| load_note(&p))
+    super::agent_actions::resolve_note_path(root, note_ref).and_then(|p| load_note(&p))
 }
 
 fn extract_text(content: &[Value]) -> String {
@@ -217,7 +229,8 @@ pub async fn answer_question(
         .ok_or_else(|| anyhow!("Aucun coffre de notes configuré. Choisissez-en un dans Réglages → Notes."))?;
 
     let client = reqwest::Client::new();
-    let system_text = format!("{}\n{}", CHAT_SYSTEM, super::language_instruction(db).await);
+    let lang = if super::app_language(db).await == "en" { "en" } else { "fr" };
+    let system_text = format!("{}\n{}", chat_system(lang), super::language_instruction(db).await);
 
     let mut messages: Vec<Value> = Vec::new();
     for m in &history {
@@ -226,7 +239,7 @@ pub async fn answer_question(
     }
     messages.push(json!({ "role": "user", "content": question }));
 
-    let tools = tools();
+    let tools = tools(lang);
     let mut sources: Vec<ChatSource> = Vec::new();
 
     for _ in 0..MAX_TOOL_ITERATIONS {
@@ -248,7 +261,7 @@ pub async fn answer_question(
         let stop_reason = resp["stop_reason"].as_str().unwrap_or("");
 
         if stop_reason != "tool_use" {
-            return Ok(ChatResponse { answer: extract_text(&content), sources });
+            return Ok(ChatResponse { answer: extract_text(&content), sources, pending_action: None });
         }
 
         // Record the assistant's tool-use turn verbatim before answering it.
@@ -263,6 +276,29 @@ pub async fn answer_question(
             let name = block["name"].as_str().unwrap_or("");
             let input = &block["input"];
 
+            // Lot / écrasement (spec/22) : jamais exécuté ici — dès qu'une
+            // proposition est construite, on s'arrête et on la renvoie au
+            // front (carte Appliquer/Annuler, pas de round-trip vers Claude).
+            if super::agent_actions::is_confirm_required(name) {
+                match super::agent_actions::build_proposal(name, input, &root, db, lang).await {
+                    Ok(action) => {
+                        let answer = {
+                            let text = extract_text(&content);
+                            if text.is_empty() { action.summary.clone() } else { text }
+                        };
+                        return Ok(ChatResponse { answer, sources, pending_action: Some(action) });
+                    }
+                    Err(e) => {
+                        tool_results.push(json!({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_id,
+                            "content": e.to_string(),
+                        }));
+                        continue;
+                    }
+                }
+            }
+
             let result_text = match name {
                 "search_notes" => {
                     let query = input["query"].as_str().unwrap_or("").to_string();
@@ -272,7 +308,7 @@ pub async fn answer_question(
                         .await
                         .unwrap_or_default();
                     if hits.is_empty() {
-                        "Aucune note ne correspond à cette recherche.".to_string()
+                        if lang == "en" { "No note matches this search.".to_string() } else { "Aucune note ne correspond à cette recherche.".to_string() }
                     } else {
                         hits.iter()
                             .enumerate()
@@ -297,10 +333,14 @@ pub async fn answer_question(
                             }
                             format!("Note: \"{}\"\n\n{}", stem, body)
                         }
-                        None => format!("Note introuvable : {}", note_ref),
+                        None => if lang == "en" { format!("Note not found: {}", note_ref) } else { format!("Note introuvable : {}", note_ref) },
                     }
                 }
-                other => format!("Outil inconnu : {}", other),
+                other if super::agent_actions::is_unitary_agent_tool(other) => {
+                    let _ = app.emit("chat-progress", json!({ "kind": "action", "label": other }));
+                    super::agent_actions::execute_unitary(other, input, &root, db, app, lang).await
+                }
+                other => if lang == "en" { format!("Unknown tool: {}", other) } else { format!("Outil inconnu : {}", other) },
             };
 
             tool_results.push(json!({
@@ -328,10 +368,11 @@ pub async fn answer_question(
     let answer = extract_text(&content);
     Ok(ChatResponse {
         answer: if answer.is_empty() {
-            "Je n'ai pas pu produire de réponse.".to_string()
+            if lang == "en" { "I couldn't produce an answer.".to_string() } else { "Je n'ai pas pu produire de réponse.".to_string() }
         } else {
             answer
         },
         sources,
+        pending_action: None,
     })
 }

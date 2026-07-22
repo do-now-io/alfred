@@ -687,6 +687,7 @@ async fn ask_notes(
         answer: response.answer,
         sources: response.sources,
         conversation_id: conv_id,
+        pending_action: response.pending_action,
     })
 }
 
@@ -856,6 +857,26 @@ async fn gather_task_context(
     ai::chat::answer_question(question, vec![], vault_root, &state.db, &app)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Applique une action d'Alfred agentique déjà PROPOSÉE (lot / écrasement,
+/// spec/22) une fois l'utilisateur ayant cliqué « Appliquer » sur la carte —
+/// appelée directement par le front, sans repasser par Claude (carte locale,
+/// esprit de `/resolve`). Rafraîchit Notes/Tâches via les mêmes événements que
+/// l'ingestion. Retourne le nombre d'éléments effectivement modifiés.
+#[tauri::command]
+async fn confirm_agent_action(
+    action: ai::agent_actions::ProposedAction,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<usize, String> {
+    let root = get_vault_root(&state)?;
+    let count = ai::agent_actions::apply_action(&action, &root, &state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("notes-updated", serde_json::json!({}));
+    let _ = app.emit("todos-updated", serde_json::json!({}));
+    Ok(count)
 }
 
 // ─── Notes (vault) commands ───────────────────────────────────────────────────
@@ -1671,6 +1692,7 @@ pub fn run() {
             // AI
             test_api_key,
             ask_notes,
+            confirm_agent_action,
             list_chat_conversations,
             get_chat_messages,
             delete_chat_conversation,

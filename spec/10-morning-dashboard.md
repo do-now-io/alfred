@@ -8,6 +8,27 @@
 `[Sidebar 240px] | [Contenu]` — **plus de panneau droit** (calendrier retiré).
 Topbar **sans barre de recherche**.
 
+### Verrouiller le shell — pas d'overscroll global — 📝 à faire (feedback tests)
+
+Constat test : **partout où la vue courante n'a pas son propre scroll**, on peut
+**tirer la page entière dans tous les sens** (rubber-band) → des **marges vides**
+apparaissent en haut / à gauche, puis **tout revient au relâchement** (élastique).
+Déstabilisant.
+
+Cause : `html, body, #root` (`styles.css`) ont `height: 100%` **mais ni
+`overflow: hidden` ni `overscroll-behavior`** → le document lui-même est
+scrollable/élastique (WebView).
+
+Correctif (CSS du shell) :
+- `html, body, #root { height: 100%; overflow: hidden; overscroll-behavior: none; }`
+  (+ `position: fixed; inset: 0` sur la racine si besoin sur WebView).
+- **Seuls les panneaux internes scrollent** : chaque zone longue (arbre de notes,
+  contenu, liste de conversations, colonnes Kanban, fil de chat…) porte son propre
+  `overflow: auto` **dans** un conteneur à hauteur bornée — le **shell** (sidebar +
+  topbar + zone de contenu) reste **fixe**, jamais scrollé.
+- Vérifier qu'aucun enfant ne **déborde** la hauteur du shell (un débordement rend le
+  document scrollable même avec `overflow: hidden` mal placé).
+
 ## Sidebar
 
 - ✅ **Logo Alfred** en haut = **déclencheur d'enregistrement** (anim micro au hover).

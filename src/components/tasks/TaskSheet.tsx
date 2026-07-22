@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { MdClose, MdAdd, MdAutoAwesome, MdHub, MdOpenInNew, MdPersonPin } from "react-icons/md";
-import { useNotesStore } from "../../store/notesStore";
 import { useProfileStore } from "../../store/profileStore";
 import { useInternalLink } from "../../utils/useInternalLink";
+import { encodeLinkRef } from "../../utils/linkRef";
 import { useT } from "../../i18n";
 import BriefingContent from "../BriefingContent";
 import type { Todo } from "../../bindings/Todo";
@@ -48,7 +48,6 @@ export default function TaskSheet({
 }) {
   const t = useT();
   const navigate = useNavigate();
-  const openNoteByRef = useNotesStore((s) => s.openNoteByRef);
   const handleLink = useInternalLink();
   const profileName = useProfileStore((s) => s.name);
   const loadProfile = useProfileStore((s) => s.load);
@@ -113,10 +112,13 @@ export default function TaskSheet({
 
   useEffect(() => () => { clearTimeout(saveTimer.current); clearTimeout(blockTimer.current); }, []);
 
-  const openSource = async () => {
+  const openSource = () => {
     if (!todo.source_note) return;
-    const ok = await openNoteByRef(todo.source_note);
-    if (ok) navigate("/notes");
+    // Réutilise le handler partagé (spec/23) — la résolution manuelle ici
+    // n'avait pas le toast de secours : un clic sans effet, silencieux (bug
+    // remonté par l'utilisateur : « le lien vers le graphe marche, pas la note »,
+    // le bouton graphe naviguant TOUJOURS sans vérifier, contrairement à celui-ci).
+    handleLink(`wikilink:${encodeLinkRef(todo.source_note)}`);
   };
 
   const gatherContext = async () => {

@@ -33,10 +33,13 @@ export default {
       sections: "sections",
       primary: "Revoir / corriger",
     },
+    recordCta: {
+      title: "Pour enregistrer, la prochaine fois",
+      text: "Cliquez mon logo en haut à gauche, ou cette carte, à tout moment — je me lance immédiatement.",
+    },
     closing: {
       title: "Vous êtes équipé",
       text: "Désormais : parlez, je vous écoute, je résume et je retiens. Et je connais votre univers. Le reste, vous le découvrirez en m'utilisant.",
-      previewHint: "Voilà ce que vous retrouverez au prochain enregistrement",
       primary: "Terminer",
     },
     visit: {
@@ -117,10 +120,13 @@ export default {
       sections: "sections",
       primary: "Review / fix",
     },
+    recordCta: {
+      title: "To record, next time",
+      text: "Click my logo up there, or this card, any time — I start right away.",
+    },
     closing: {
       title: "You're all set",
       text: "From now on: talk, I'll listen, summarize, and remember. And I know your world. You'll discover the rest as you use me.",
-      previewHint: "Here's what you'll find again for your next recording",
       primary: "Finish",
     },
     visit: {

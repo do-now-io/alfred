@@ -29,6 +29,11 @@ import { t as translate } from "../../i18n";
 export interface LivePreviewOptions {
   /** Called when a rendered [[wikilink]] (or relative .md link) is clicked. */
   onWikilink?: (ref: string) => void;
+  /** Called for any other scheme-prefixed `[text](url)` link — currently just
+   *  `task:<ref>` (spec/23, the compte-rendu's clickable "Tâches" section) —
+   *  with the FULL href, scheme included (mirrors `useInternalLink`'s
+   *  contract, so callers can pass that hook's handler directly). */
+  onNavigate?: (href: string) => void;
   /** When true, each task gets a ★ toggle that flags it important (trailing ⭐). */
   importantToggles?: boolean;
 }
@@ -172,6 +177,9 @@ class TableWidget extends WidgetType {
         const href = ext.getAttribute("data-mdlink") ?? "";
         if (href.startsWith("http://") || href.startsWith("https://")) {
           import("@tauri-apps/plugin-shell").then(({ open }) => open(href));
+        } else if (href.startsWith("task:")) {
+          // spec/23 — jamais un chemin de note, ne PAS le faire passer par `onWikilink`.
+          this.opts.onNavigate?.(href);
         } else if (href && !href.startsWith("#")) {
           this.opts.onWikilink?.(href.replace(/^\.\//, "").replace(/\.md$/i, ""));
         }
@@ -611,6 +619,9 @@ function linkClicks(opts: LivePreviewOptions) {
       const href = el.getAttribute("data-mdlink") ?? "";
       if (href.startsWith("http://") || href.startsWith("https://")) {
         import("@tauri-apps/plugin-shell").then(({ open }) => open(href));
+      } else if (href.startsWith("task:")) {
+        // spec/23 — jamais un chemin de note, ne PAS le faire passer par `onWikilink`.
+        opts.onNavigate?.(href);
       } else if (href && !href.startsWith("#")) {
         // Relative link to another note → same navigation as a wikilink.
         opts.onWikilink?.(href.replace(/^\.\//, "").replace(/\.md$/i, ""));

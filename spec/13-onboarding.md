@@ -328,18 +328,29 @@ de `transcription-complete` :
 `alfred-intelligence/Todo.md` (avec les sections Prioritaire / En cours / À faire /
 Archivé). Idempotent.
 
-## Écran de fin — ✅ fait
+## Écran de fin — ✅ fait (2e passe, feedback tests)
 
 L'étape de clôture du wizard (`Onboarding.tsx`, « Tout est prêt ! ») et l'étape
 « Vous êtes équipé » de la visite guidée (`GuidedTour.tsx`, case `closing`)
 étaient des panneaux génériques (icône + titre + texte), sans rapport visuel
-avec le reste de l'app. Les deux affichent désormais un **aperçu de la carte
-« Démarrer l'enregistrement »** de `/recording` (`RecordingGuide.tsx` —
-spec/03) : même bouton accent (icône micro, mêmes rayons/tailles) précédé d'un
-hint (« Voilà ce que vous retrouverez au prochain enregistrement »), dans un
-encart dédié sous le texte de clôture — pour que la dernière chose vue à
-l'onboarding ressemble à ce que l'utilisateur retrouvera pour son prochain
-enregistrement, au lieu d'un écran générique déconnecté.
+avec le reste de l'app.
+
+**1ʳᵉ passe (revenue en arrière) :** aperçu statique de la carte « Démarrer
+l'enregistrement » dans chacun des deux écrans. **Retour d'usage :** cet
+aperçu ne correspondait même pas au vrai bouton et n'apportait rien — retiré.
+
+**2ᵉ passe (actuelle) :** le wizard redevient un panneau simple (« Tout est
+prêt ! » sans encart). À la place, une **nouvelle étape `record-cta`** dans la
+visite guidée, juste avant `closing` — un **vrai spotlight** (composant
+`Spotlight`, déjà utilisé pour l'étape « point d'état ») sur les DEUX vrais
+déclencheurs, simultanément visibles sur `/` : le **logo Alfred** (sidebar,
+toujours monté — nouvelle cible `alfred-logo-button`) et la **carte
+d'enregistrement de l'accueil** (`hero-card`, déjà enregistrée par
+`Dashboard.tsx` mais jusqu'ici jamais consommée par la visite). `Spotlight`
+gagne un `children` optionnel pour ce cas (glow seul, sans bulle de texte —
+évite un overlay invisible cliquable qui bloquerait la sidebar dessous).
+`Resolve.tsx` route désormais vers `record-cta` (au lieu de `closing`
+directement) après validation du contexte en mode visite guidée.
 
 ## Retiré / déplacé
 

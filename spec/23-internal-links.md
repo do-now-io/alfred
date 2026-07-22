@@ -119,6 +119,30 @@ dont le pattern a d'ailleurs servi de modèle à `/tasks?focus=<id>` ci-dessous)
   `TaskSheet.tsx`, chacun avec son propre `openNoteByRef` + `navigate` inline)
   remplacés par `useInternalLink()`.
 
+### 2 correctifs (feedback tests, 2e passe) — la 1ʳᵉ passe avait un angle mort
+
+- **Fiche tâche — bouton « Ouvrir la note » (provenance)** : `TaskSheet.tsx`
+  réimplémentait sa propre résolution (`openNoteByRef` + `navigate` sans passer
+  par `useInternalLink`) — un clic sans effet en cas d'échec, exactement le bug
+  que ce chantier devait éliminer partout. Délègue désormais à `handleLink`
+  (`wikilink:${encodeLinkRef(todo.source_note)}`). **Cause fréquente de
+  l'échec** (pas juste théorique) : `findNodeByRef` comparait le titre BRUT de
+  provenance (`source_note`, posé tel quel par l'ingestion) au nom de fichier
+  réel, qui lui passe par `sanitize_filename` côté Rust (`/ \ : * ? " < > |` →
+  `-`) — tout titre de réunion avec un `:` (très courant en français : « Point
+  projet : Atlas ») ne matchait donc jamais. `findNodeByRef` gagne un repli
+  miroir de `sanitize_filename` en JS.
+- **Preview de note (`NoteEditor`/CodeMirror)** : `BriefingContent` n'est PAS le
+  seul renderer de markdown de l'app — la preview de note utilise un moteur
+  entièrement séparé, `markdownLivePreview.ts` (extension CodeMirror), que la
+  1ʳᵉ passe n'avait pas touché. Il traitait tout lien `[text](url)` non-`http(s)`
+  comme un lien relatif vers une note (`onWikilink`) — un `task:<ref>` cliqué
+  depuis la section « Tâches » d'un compte-rendu ouvert dans Notes tombait dans
+  cette branche et cherchait (en échouant silencieusement) une note nommée
+  `task:<ref>`. Ajout d'un `onNavigate` dédié : `task:` y est détecté
+  explicitement (dans `linkClicks` ET dans `TableWidget`, pour les liens en
+  tableau) et ne passe plus jamais par `onWikilink`.
+
 ## Hors v1 / plus tard
 
 Backlinks (« notes qui pointent ici »), aperçu au survol d'un lien, liens vers un

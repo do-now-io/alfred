@@ -6,6 +6,7 @@ import { MdFolder, MdStickyNote2, MdFactCheck, MdSearch } from "react-icons/md";
 import { useNotesStore, findNodeByRef } from "../store/notesStore";
 import { useResolveStore } from "../store/resolveStore";
 import { usePendingReviewStore } from "../store/pendingReviewStore";
+import { useInternalLink } from "../utils/useInternalLink";
 import ShareButton from "../components/ShareButton";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
 import type { Clarifications } from "../bindings/Clarifications";
@@ -36,6 +37,7 @@ export default function Notes() {
   } = useNotesStore();
 
   const navigate = useNavigate();
+  const handleLink = useInternalLink();
   const setResolveSession = useResolveStore((s) => s.setSession);
   const loadPersisted = useResolveStore((s) => s.loadPersisted);
   const pendingReviewIds = usePendingReviewStore((s) => s.ids);
@@ -271,6 +273,7 @@ export default function Notes() {
                 noteKey={selectedFile.path}
                 onChange={handleBodyChange}
                 onWikilink={handleWikilink}
+                onNavigate={handleLink}
               />
             </div>
 

@@ -47,7 +47,9 @@ export function Spotlight({
   padding = 8,
 }: {
   target: HTMLElement | null | undefined;
-  children: React.ReactNode;
+  /** Omit for a bare highlight ring with no tooltip (e.g. a 2nd simultaneous
+   *  spotlight) — no invisible click-blocking overlay is rendered in that case. */
+  children?: React.ReactNode;
   padding?: number;
 }) {
   const rect = useTargetRect(target);
@@ -82,7 +84,7 @@ export function Spotlight({
   return (
     <>
       <div style={highlightStyle} />
-      <div style={tooltipStyle}>{children}</div>
+      {children != null && <div style={tooltipStyle}>{children}</div>}
     </>
   );
 }

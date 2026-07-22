@@ -11,11 +11,25 @@ function normalizeRef(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
+// Miroir de `sanitize_filename` (src-tauri/src/notes/vault.rs) — un titre de
+// réunion contenant un caractère illégal dans un nom de fichier (le cas le
+// plus courant en français : « Point projet : Atlas ») est écrit sur disque
+// avec ces caractères remplacés par `-`. Le wikilink de provenance posé sur
+// la ligne de tâche (spec/05/06), lui, porte le titre BRUT — sans ce repli,
+// la résolution échouait silencieusement pour tout titre avec un `:`/`/`
+// (spec/23, bug remonté).
+function sanitizeFilenameLike(name: string): string {
+  const safe = name.replace(/[/\\:*?"<>|]/g, "-").trim();
+  return safe.length > 80 ? safe.slice(0, 80) : safe;
+}
+
 // Recursively search a VaultNode tree for a file whose stem matches `ref`
 export function findNodeByRef(node: VaultNode, ref: string): string | null {
+  const target = normalizeRef(ref);
+  const targetSanitized = normalizeRef(sanitizeFilenameLike(ref));
   if (!node.is_dir) {
-    const stem = node.name; // already stripped of .md
-    if (normalizeRef(stem) === normalizeRef(ref)) return node.path;
+    const stem = normalizeRef(node.name); // already stripped of .md
+    if (stem === target || stem === targetSanitized) return node.path;
   }
   for (const child of node.children) {
     const found = findNodeByRef(child, ref);

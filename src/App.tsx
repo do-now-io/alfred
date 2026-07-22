@@ -78,6 +78,9 @@ function AlfredLogo() {
   // Visite guidée (spec/13) — pointé juste après la présentation pour
   // expliquer ce que ce point représente, avant le reste de la visite.
   const statusTourRef = useTourTarget("alfred-status");
+  // Étape finale de la visite (feedback tests) — spotlight sur le VRAI bouton
+  // qui déclenche l'enregistrement, plutôt qu'un aperçu statique déconnecté.
+  const logoTourRef = useTourTarget("alfred-logo-button");
 
   const title = isRecording
     ? t("nav.logo.stopRecording")
@@ -88,6 +91,7 @@ function AlfredLogo() {
   return (
     <div style={{ padding: "20px 20px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
       <button
+        ref={logoTourRef}
         onClick={handleClick}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}

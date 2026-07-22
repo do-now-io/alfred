@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { MdClose, MdMic } from "react-icons/md";
+import { MdClose } from "react-icons/md";
 import { useTourStore, type TourStep } from "../../store/tourStore";
 import { useRecordingStore, useRecordingElapsed } from "../../store/recordingStore";
 import { useResolveStore } from "../../store/resolveStore";
@@ -202,7 +202,7 @@ export default function GuidedTour() {
     listen<{ status: string; recording_id: string; note_title?: string | null; sections_filled?: number; glossary_terms?: number }>(
       "context-status-changed",
       (e) => {
-        if (step === "record" || step === "ready" || step === "correcting" || step === "closing") return;
+        if (step === "record" || step === "ready" || step === "correcting" || step === "record-cta" || step === "closing") return;
         if (e.payload.status === "done") {
           setRecap({
             sections: e.payload.sections_filled ?? 0,
@@ -348,8 +348,28 @@ export default function GuidedTour() {
 
     case "correcting":
       // L'écran /resolve (mode contexte) est aux commandes ; il renvoie vers
-      // « closing » au Valider (voir Resolve.tsx). Rien à afficher par-dessus.
+      // « record-cta » au Valider (voir Resolve.tsx). Rien à afficher par-dessus.
       return null;
+
+    case "record-cta":
+      // Dernière étape avant la clôture (feedback tests) — remplace l'ancien
+      // aperçu statique du bouton d'enregistrement (qui ne correspondait même
+      // pas au vrai bouton) par un vrai spotlight sur les DEUX déclencheurs
+      // réels : le logo Alfred (sidebar, toujours monté) et la carte
+      // d'enregistrement de l'accueil — les deux visibles à la fois sur "/".
+      return (
+        <>
+          <Spotlight target={targets["alfred-logo-button"]} padding={10} />
+          <Spotlight target={targets["hero-card"]}>
+            <SpotlightCard
+              title={t("tour.recordCta.title")}
+              text={t("tour.recordCta.text")}
+              onNext={() => goto("closing")}
+              nextLabel={t("common.next")}
+            />
+          </Spotlight>
+        </>
+      );
 
     case "closing":
       return (
@@ -371,22 +391,6 @@ export default function GuidedTour() {
             <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.6, color: "var(--text-secondary)" }}>
               {t("tour.closing.text")}
             </p>
-            {/* Aperçu de /recording (spec/03) : ce qu'on retrouvera au prochain
-                enregistrement, plutôt qu'un écran générique déconnecté (spec/13). */}
-            <div style={{
-              border: "1px solid var(--border)", borderRadius: 12, padding: "14px 18px",
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%",
-            }}>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {t("tour.closing.previewHint")}
-              </div>
-              <div style={{
-                background: ACCENT, color: "#fff", borderRadius: 10, padding: "9px 20px",
-                fontSize: 13.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 8,
-              }}>
-                <MdMic size={16} /> {t("recording.guide.startRecording")}
-              </div>
-            </div>
             <button onClick={finish} style={primaryBtn()}>{t("tour.closing.primary")}</button>
           </div>
         </div>

@@ -24,6 +24,7 @@ export type TourStep =
   | "waiting" // visit finished but the context isn't ready yet
   | "ready" // context built — pop-up, single « Revoir / corriger » button
   | "correcting" // /resolve open in context mode; tour waits for Valider
+  | "record-cta" // real spotlight on the Alfred logo AND the home recording card
   | "closing";
 
 /** Recap payload of `context-status-changed: done` (spec/13 étape 4). */

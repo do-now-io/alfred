@@ -39,6 +39,9 @@ interface Props {
   noteKey: string; // used to reset editor when note changes
   onChange: (body: string) => void;
   onWikilink?: (ref: string) => void;
+  /** `task:<ref>` links (spec/23, the compte-rendu's "Tâches" section) — pass
+   *  `useInternalLink()`'s handler directly, same contract. */
+  onNavigate?: (href: string) => void;
   /** When true, each task gets a ★ toggle to flag it important (Tâches screen). */
   importantToggles?: boolean;
 }
@@ -52,7 +55,7 @@ export interface NoteEditorHandle {
 }
 
 const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEditor(
-  { body, noteKey, onChange, onWikilink, importantToggles }, ref
+  { body, noteKey, onChange, onWikilink, onNavigate, importantToggles }, ref
 ) {
   const t = useT();
   const lang = useI18nStore((s) => s.lang);
@@ -62,6 +65,8 @@ const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEditor(
   onChangeRef.current = onChange;
   const onWikilinkRef = useRef(onWikilink);
   onWikilinkRef.current = onWikilink;
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
 
   useImperativeHandle(ref, () => ({
     toggleAll() {
@@ -84,7 +89,11 @@ const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEditor(
         keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap]),
         // GFM-enabled parsing (task lists, strikethrough, tables) for the live preview.
         markdown({ base: markdownLanguage }),
-        markdownLivePreview({ onWikilink: r => onWikilinkRef.current?.(r), importantToggles }),
+        markdownLivePreview({
+          onWikilink: r => onWikilinkRef.current?.(r),
+          onNavigate: href => onNavigateRef.current?.(href),
+          importantToggles,
+        }),
         placeholder(t("notes.editor.placeholder")),
         search({ top: true }),
         highlightSelectionMatches(),

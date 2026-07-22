@@ -206,10 +206,11 @@ export default function Resolve() {
         await invoke("update_note_file", { path: session.contextPath, metadata: note.metadata, body: text });
         invoke("track_event", { event: "resolve_finalized", props: { mode: "context" } }).catch(() => {});
         clear();
-        // Dans la visite guidée → carte de clôture « Vous êtes équipé » (spec/13).
+        // Dans la visite guidée → spotlight sur les vrais déclencheurs
+        // d'enregistrement avant la carte de clôture (feedback tests, spec/13).
         const tour = useTourStore.getState();
         if (tour.active) {
-          tour.goto("closing");
+          tour.goto("record-cta");
           navigate("/");
         } else {
           navigate("/notes");

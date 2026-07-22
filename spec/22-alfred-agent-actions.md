@@ -13,8 +13,24 @@ outils de lecture. Alfred peut alors créer/éditer/supprimer des notes, gérer 
 tâches, éditer le contexte, supprimer les données de démo — en langage naturel.
 
 Exemple qui échoue aujourd'hui : *« Delete all the test data »* → Alfred répond qu'il
-ne peut que chercher/lire. Cible : il appelle `delete_starter_content` (après
-confirmation, car destructif).
+ne peut que chercher/lire. Cible : il **archive** les notes/tâches de démo (voir
+règle « suppression = archivage » ci-dessous) ; la **purge dure** reste le bouton
+one-shot manuel (spec/13).
+
+## Règle d'or : **Alfred ne supprime jamais pour de vrai — il ARCHIVE** (décidé)
+
+Toute intention de « suppression » formulée à Alfred est **traduite en archivage**
+(réversible), **jamais** en suppression de fichier :
+
+- **Note** « supprime… » → `status: archived` (spec/07), récupérable.
+- **Tâche** « supprime… » → déplacée en **`## Archivé`** (`dismiss_todo`, spec/06).
+- **La suppression dure reste réservée à l'UI manuelle** (corbeille de Notes,
+  bouton one-shot des données de démo) — **pas** exposée comme outil d'Alfred.
+  Donc `delete_note_file` et `delete_starter_content` **ne sont PAS** dans la
+  whitelist d'Alfred.
+
+Conséquence : le risque d'une mauvaise interprétation de l'IA est **borné** (rien
+d'irréversible), ce qui allège les confirmations (voir ci-dessous).
 
 **Réutilisation, pas de nouveau stockage** : les outils appellent les **commandes
 Tauri existantes** (mêmes chemins que l'UI) — le vault Markdown reste la source de
@@ -25,43 +41,48 @@ vérité, tout reste **compatible Obsidian**.
 Alfred peut agir sur **trois domaines** :
 
 - **Notes** (spec/07) : `create_note_file`, `update_note_file` (corps + frontmatter :
-  projet, tags, participants), `rename_note_file`, `delete_note_file`, **archiver**
-  (passer `status: archived` / désarchiver).
+  projet, tags, participants), `rename_note_file`, **archiver / désarchiver**
+  (`status`). **Pas** de `delete_note_file` (règle d'or : archivage, pas suppression).
 - **Tâches** (spec/06) : `create_todo`, `complete_todo` (→ Fait), `move_todo`
   (colonne), `dismiss_todo` (→ Archivé), `update_todo` (champs).
-- **Contexte & données de démo** (spec/13/16) : éditer `Contexte Alfred.md`
-  (`update_note_file`), **`delete_starter_content`** (données de démo).
+- **Contexte** (spec/13/16) : éditer `Contexte Alfred.md` (`update_note_file`).
+  Les **données de démo** : Alfred peut les **archiver** (notes → `archived`,
+  tâches → `Archivé`) ; la **purge dure** (`delete_starter_content`) reste le
+  **bouton one-shot manuel** (spec/13), hors outils d'Alfred.
 
 **Hors périmètre v1 (décidé)** : **Réglages & app** — changer la config (langue,
 dossiers), déclencher un enregistrement/une ingestion, partager une note. Trop
 sensible pour un premier jet ; à rouvrir plus tard (pilotage vocal complet).
 
-## Garde-fou : confirmer **uniquement** le destructif (décidé)
+## Garde-fou : confirmer les actions **en lot** et l'**écrasement** (décidé)
 
-- **Actions non destructives** (créer, éditer un champ, cocher une tâche, déplacer une
-  tâche, ajouter un tag, archiver **une** note) → **appliquées directement** par
-  Alfred, qui rend compte dans sa réponse.
-- **Actions destructives** → **carte de confirmation** dans le fil de chat
-  (**Appliquer / Annuler**) **avant** exécution. Sont destructives :
-  - **suppression** (`delete_note_file`, `delete_starter_content`),
-  - **écrasement** massif d'un contenu existant (réécriture complète du corps, pas un
-    ajout),
-  - **opérations en lot** (supprimer/archiver **plusieurs** éléments d'un coup).
-- **Lot = une seule confirmation** récapitulant les N éléments (ex. *« Supprimer les
-  données de démo : 2 notes, 4 tâches, 1 conversation ? »*), pas N pop-ups.
+Puisqu'Alfred **ne supprime jamais pour de vrai** (tout est réversible : archivage,
+édition de frontmatter), le besoin de confirmation est réduit — il reste utile pour
+la **transparence** sur les gros gestes :
+
+- **Actions non destructives et unitaires** (créer, éditer un champ, cocher une tâche,
+  déplacer une tâche, ajouter un tag, **archiver UNE** note/tâche) → **appliquées
+  directement** ; Alfred rend compte dans sa réponse.
+- **Confirmation** (carte **Appliquer / Annuler** dans le chat) pour :
+  - **opérations en LOT** (archiver / éditer **plusieurs** éléments d'un coup) — pour
+    que l'utilisateur ne soit pas surpris (*« Archiver 12 notes du projet X ? »*),
+  - **écrasement** massif d'un contenu existant (réécriture complète d'un corps de
+    note, pas un ajout).
+- **Lot = une seule confirmation** récapitulant les N éléments, pas N pop-ups.
 - Annuler → l'action n'est pas exécutée et Alfred en est informé (il enchaîne / propose
   autre chose). Le protocole reprend l'esprit des cartes de `/resolve` (spec/17).
 
 ## Mécanique (tool-use)
 
 - Les outils d'action sont exposés à Claude **en plus** de `search_notes`/`read_note`,
-  dans la même boucle. Le **system prompt** décrit les outils **et le protocole de
-  confirmation** (une action destructive doit être **proposée**, pas exécutée d'office).
-- **Deux temps pour le destructif** : Claude émet une **intention** d'action
-  destructive (nom d'outil + arguments + résumé lisible) → le front affiche la carte
-  de confirmation → sur **Appliquer**, la commande Tauri est appelée et le résultat
-  renvoyé à Claude (qui confirme à l'utilisateur) ; sur **Annuler**, on renvoie « refusé ».
-- **Non destructif** : exécution directe dans la boucle, résultat renvoyé à Claude.
+  dans la même boucle. Le **system prompt** décrit les outils, la **règle d'or**
+  (« supprimer = archiver ») **et le protocole de confirmation** (un lot / un
+  écrasement doit être **proposé**, pas exécuté d'office).
+- **Deux temps pour lot / écrasement** : Claude émet une **intention** (nom d'outil +
+  arguments + résumé lisible) → le front affiche la carte → sur **Appliquer**, la (les)
+  commande(s) Tauri est appelée et le résultat renvoyé à Claude ; sur **Annuler**, on
+  renvoie « refusé ».
+- **Action unitaire non risquée** : exécution directe dans la boucle, résultat renvoyé.
 - **Multi-étapes** : Alfred peut chaîner (ex. *« archive toutes les notes du projet
   X »* → `search_notes` puis archivage en lot **avec une confirmation groupée**).
 
@@ -71,20 +92,20 @@ sensible pour un premier jet ; à rouvrir plus tard (pilotage vocal complet).
   jamais de chemin absolu arbitraire — les outils opèrent sur des chemins **vault-relatifs** validés.
 - **Idempotence** quand c'est possible ; les commandes réutilisées portent déjà leurs
   garde-fous (dédup todos, archivage réversible via `status`).
-- **Réversibilité** : archivage et édition de frontmatter sont réversibles (Obsidian) ;
-  la **suppression** de fichier ne l'est pas → c'est précisément pourquoi elle est
-  **confirmée** (option « corbeille » plutôt que suppression dure = à considérer, hors
-  périmètre strict).
+- **Tout est réversible** : Alfred n'expose **que** des actions réversibles
+  (archivage, édition de frontmatter, déplacement de tâche). **Aucun outil de
+  suppression dure** → pas de perte de données possible par l'IA.
 - **Traçabilité** : chaque action appliquée est **résumée dans la réponse** d'Alfred
-  (« ✓ 2 notes archivées, 1 supprimée »).
+  (« ✓ 2 notes archivées, 1 déplacée en Archivé »).
 
 ## Commandes / événements
 
 Aucune nouvelle commande de stockage : réutilise `create_note_file` /
-`update_note_file` / `rename_note_file` / `delete_note_file` (spec/07),
+`update_note_file` / `rename_note_file` **+ archivage via `status`** (spec/07),
 `create_todo` / `complete_todo` / `move_todo` / `dismiss_todo` / `update_todo`
-(spec/06), `delete_starter_content` (spec/13). À ajouter : le **contrat d'action
-proposée** (intention destructive → carte de confirmation → exécution/annulation)
+(spec/06). **N'expose PAS** `delete_note_file` ni `delete_starter_content`
+(suppression dure = UI manuelle uniquement). À ajouter : le **contrat d'action
+proposée** (intention lot/écrasement → carte de confirmation → exécution/annulation)
 dans la boucle de chat (spec/07b) + le rafraîchissement UI (`notes-updated` /
 `todos-updated`) après chaque mutation.
 

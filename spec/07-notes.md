@@ -150,20 +150,23 @@ dans le volet **Récents** (gauche), où seul le nom (souvent une date) s'affich
   bienvenu : un compte-rendu nommé par sujet **ne collisionne plus** avec la
   transcription datée (cf. graphe, spec/07c).
 
-## Indicateur « à vérifier » sur la note — 📝 à faire (feedback tests, spec/17)
+## Indicateur « à vérifier » sur la note — ✅ fait (feedback tests, spec/17)
 
 Quand une transcription a des **clarifications en attente** (analyse `/resolve` non
-encore validée, spec/17), la note doit le **montrer directement** — pas seulement via
+encore validée, spec/17), la note le **montre directement** — pas seulement via
 la pop-up basse (transitoire, perdue si on enchaîne un enregistrement) :
 
-- **Petite icône « à vérifier »** à côté de la transcription concernée dans l'arbre
-  (et Récents). Alimentée par l'état **persistant** des clarifications par
-  `recording_id` (spec/17).
-- **Cliquer la note ouvre `/resolve`** directement avec l'analyse **déjà faite**
-  (persistée) — **pas** de nouvelle ingestion. (Le bouton « Vérifier / corriger »
-  reste pour relancer volontairement une analyse.)
+- **Petite icône « à vérifier »** (`MdFactCheck`) à côté de la transcription
+  concernée dans l'arbre (vue Dossiers, `FileTreeNode.tsx`) **et** dans Récents
+  (`App.tsx`). Alimentée par l'état **persistant** des clarifications par
+  `recording_id` (spec/17, table `pending_clarifications`).
+- **Cliquer l'icône ouvre `/resolve`** directement avec l'analyse **déjà faite**
+  (persistée, `resolveStore.loadPersisted`) — **pas** de nouvelle ingestion. (Le
+  bouton « Vérifier / corriger » reste pour relancer volontairement une analyse.)
 - L'icône **persiste jusqu'à validation** ; elle disparaît quand l'utilisateur a
   validé (→ finalisation + archivage de la transcription).
+- **Non couvert** : la vue **Projects** de l'arbre n'affiche pas l'icône (seules
+  la vue Dossiers et Récents la portent).
 
 ## UI Notes (3 panneaux)
 

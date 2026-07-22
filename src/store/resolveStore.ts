@@ -1,5 +1,7 @@
 import { create } from "zustand";
+import { invoke } from "@tauri-apps/api/core";
 import type { Clarifications } from "../bindings/Clarifications";
+import type { PendingClarification } from "../bindings/PendingClarification";
 
 /**
  * Une résolution en attente (spec/17 §3) — l'écran `/resolve` est **toujours**
@@ -34,10 +36,36 @@ interface ResolveStore {
   session: ResolveSession | null;
   setSession: (s: ResolveSession) => void;
   clear: () => void;
+  /** Ouvre l'analyse déjà persistée pour cette note (spec/17 §3/spec/07,
+   *  feedback tests) — SANS relancer `analyze_transcription` (coût Claude déjà
+   *  payé). Utilisé par l'indicateur « à vérifier » (arbre + Récents). Renvoie
+   *  `true` si une vérification en attente a bien été trouvée et chargée. */
+  loadPersisted: (recordingId: string) => Promise<boolean>;
 }
 
 export const useResolveStore = create<ResolveStore>((set) => ({
   session: null,
   setSession: (session) => set({ session }),
   clear: () => set({ session: null }),
+  loadPersisted: async (recordingId) => {
+    try {
+      const pending = await invoke<PendingClarification | null>("get_pending_clarification", { recordingId });
+      if (!pending) return false;
+      set({
+        session: {
+          mode: "meeting",
+          recordingId: pending.recording_id,
+          noteTitle: pending.note_title,
+          text: pending.text,
+          clarifications: pending.clarifications,
+          summary: pending.summary,
+          tasks: pending.tasks,
+        },
+      });
+      return true;
+    } catch (e) {
+      console.error("get_pending_clarification failed:", e);
+      return false;
+    }
+  },
 }));

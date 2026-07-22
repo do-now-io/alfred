@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MdEdit, MdDelete, MdCreateNewFolder } from "react-icons/md";
+import { MdEdit, MdDelete, MdCreateNewFolder, MdFactCheck } from "react-icons/md";
 import type { VaultNode } from "../../bindings/VaultNode";
 import { useNotesStore } from "../../store/notesStore";
 import { NoteTypeIcon } from "../../utils/noteType";
@@ -22,10 +22,14 @@ interface Props {
   onCreateFolder: (parentPath: string) => void;
   onDeleteFolder: (path: string, name: string) => void;
   onRenameFolder: (path: string, currentName: string) => void;
+  /** Indicateur « à vérifier » persistant (spec/17 §3/spec/07, feedback tests). */
+  pendingReviewIds?: Set<string>;
+  onOpenReview?: (recordingId: string) => void;
 }
 
 export default function FileTreeNode({
   node, depth, selectedPath, onSelect, onDelete, onRename, onMove, onCreateFolder, onDeleteFolder, onRenameFolder,
+  pendingReviewIds, onOpenReview,
 }: Props) {
   const t = useT();
   const { expandedPaths, toggleExpanded } = useNotesStore();
@@ -35,6 +39,7 @@ export default function FileTreeNode({
   const isExpanded = expandedPaths.has(node.path);
   const isSelected = !node.is_dir && node.path === selectedPath;
   const isArchived = node.status === "archived";
+  const needsReview = !!node.recording_id && !!pendingReviewIds?.has(node.recording_id);
   const indent = depth * 16;
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -93,6 +98,8 @@ export default function FileTreeNode({
             onCreateFolder={onCreateFolder}
             onDeleteFolder={onDeleteFolder}
             onRenameFolder={onRenameFolder}
+            pendingReviewIds={pendingReviewIds}
+            onOpenReview={onOpenReview}
           />
         ))}
 
@@ -160,10 +167,23 @@ export default function FileTreeNode({
         {/* Icône de type à l'œil (spec/07) — dérivée du dossier / nom de fichier. */}
         <NoteTypeIcon path={node.path} size={13} />
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.name}</span>
+        {needsReview && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpenReview?.(node.recording_id!); }}
+            title={t("notes.fileTree.needsReviewTitle")}
+            style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              background: "none", border: "none", cursor: "pointer", padding: 0,
+              color: "var(--accent)", flexShrink: 0, marginLeft: "auto", fontSize: 13,
+            }}
+          >
+            <MdFactCheck size={13} />
+          </button>
+        )}
         {isArchived && (
           <span style={{
             fontSize: 10, color: "var(--text-muted)", border: "1px solid var(--border)",
-            borderRadius: 8, padding: "0 5px", flexShrink: 0, marginLeft: "auto",
+            borderRadius: 8, padding: "0 5px", flexShrink: 0, marginLeft: needsReview ? 0 : "auto",
           }}>
             {t("notes.fileTree.archivedBadge")}
           </span>

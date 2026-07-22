@@ -26,6 +26,7 @@ export default {
     recents: {
       title: "Récents",
       workingOnThisNote: "Alfred travaille sur cette note",
+      needsReview: "À vérifier — cliquer pour ouvrir",
       renamePrompt: "Renommer la note",
       deleteConfirm: 'Supprimer "{name}" ?',
     },
@@ -67,6 +68,7 @@ export default {
     recents: {
       title: "Recent",
       workingOnThisNote: "Alfred is working on this note",
+      needsReview: "Needs review — click to open",
       renamePrompt: "Rename note",
       deleteConfirm: 'Delete "{name}"?',
     },

@@ -12,6 +12,7 @@ use crate::notes::todo_md::IngestTask;
 pub mod agent_actions;
 pub mod chat;
 pub mod chat_history;
+pub mod pending_clarifications;
 
 const MODEL: &str = "claude-sonnet-5";
 const ANTHROPIC_BASE: &str = "https://api.anthropic.com";
@@ -503,11 +504,13 @@ async fn run_ingestion_core(
     Ok(())
 }
 
-/// Automatic trigger, right after `transcription-complete` (spec/05). **Toujours**
-/// routé par l'écran de vérification `/resolve` (spec/17 §3, feedback tests) : le
-/// compte-rendu et les tâches ne sont écrits qu'après le **Valider** de
-/// l'utilisateur, jamais auto-enchaînés — même quand Claude n'a rien à signaler
-/// (l'écran est alors juste plus court : texte + Valider, cf `Resolve.tsx`).
+/// Automatic trigger, right after `transcription-complete` (spec/05). **RÉVISÉ**
+/// (spec/17 §3, feedback tests — revient sur « toujours `/resolve` ») : si
+/// l'analyse ne relève **aucun** point à vérifier (fix/tâche sans responsable/
+/// phrase floue), on finalise directement — l'écran `/resolve` n'est présenté
+/// que quand il y a réellement quelque chose à trancher. Les `context_additions`
+/// (auto « Appris ») ne comptent jamais comme « à vérifier » : ils sont toujours
+/// écrits, avec ou sans clarifications.
 pub async fn run_ingestion_for_recording(
     recording_id: &str,
     transcription_text: &str,
@@ -550,10 +553,29 @@ pub async fn run_ingestion_for_recording(
         }
     };
 
-    // Toujours vers l'écran de vérification (spec/17 §3) — le compte-rendu est
-    // écrit seulement à `finalize_ingestion`, sur le texte corrigé. La sélection
-    // du panneau de revue voyage avec, pour que la finalisation la respecte
-    // (spec/05).
+    let needs_review = !clarifications.transcription_fixes.is_empty()
+        || !clarifications.unassigned_tasks.is_empty()
+        || !clarifications.unclear_sentences.is_empty();
+
+    if !needs_review {
+        // Rien à trancher (spec/17 §3, révisé) : finalise directement sur le
+        // texte brut — les faits appris (context_additions) sont toujours
+        // écrits par `finalize_ingestion`, qu'il y ait eu clarification ou non.
+        let context_additions: Vec<String> = clarifications.context_additions.iter().map(|c| c.fact.clone()).collect();
+        return finalize_ingestion(recording_id, transcription_text, note_title, context_additions, summary, tasks, db, vault_root, app_handle).await;
+    }
+
+    // Persisté par `recording_id` (spec/17 §3/spec/07, feedback tests) — survit à
+    // la navigation, à un enregistrement suivant et à un redémarrage ; plusieurs
+    // vérifications en attente coexistent. `clarifications-ready` reste émis pour
+    // le chemin "on vient de finir un enregistrement, on ouvre tout de suite" ;
+    // l'indicateur sur la note (arbre/Récents) couvre le cas où l'utilisateur a
+    // navigué ailleurs entre-temps.
+    if let Err(e) = pending_clarifications::save(db, recording_id, note_title, transcription_text, &clarifications, summary, tasks).await {
+        eprintln!("[analyze] failed to persist pending clarifications: {}", e);
+    }
+    let _ = app_handle.emit("pending-clarifications-changed", json!({}));
+
     let _ = app_handle.emit(
         "clarifications-ready",
         json!({
@@ -886,6 +908,13 @@ pub async fn finalize_ingestion(
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
     run_ingestion_core(corrected_text, note_title, Some(recording_id), summary, tasks, db, vault_root, app_handle).await?;
+
+    // La vérification en attente, s'il y en avait une, est résolue (spec/17
+    // §3/spec/07) — l'indicateur « à vérifier » disparaît de la note.
+    if let Err(e) = pending_clarifications::delete(db, recording_id).await {
+        eprintln!("[ingestion] failed to clear pending clarification for {}: {}", recording_id, e);
+    }
+    let _ = app_handle.emit("pending-clarifications-changed", json!({}));
 
     if let Some(root) = vault_root {
         if !context_additions.is_empty() {

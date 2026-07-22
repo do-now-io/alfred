@@ -24,9 +24,12 @@ interface Props {
   vaultPath: string | null;
   selectedPath: string | null;
   onSelect: (path: string) => void;
+  /** Indicateur « à vérifier » persistant (spec/17 §3/spec/07, feedback tests). */
+  pendingReviewIds?: Set<string>;
+  onOpenReview?: (recordingId: string) => void;
 }
 
-export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Props) {
+export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pendingReviewIds, onOpenReview }: Props) {
   const t = useT();
   const { createNote, deleteNote, renameNote, moveNote, createFolder, renameFolder, deleteFolder, fetchTree } = useNotesStore();
   const [renaming, setRenaming] = useState<{ path: string; current: string } | null>(null);
@@ -353,6 +356,8 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect }: Pr
             onCreateFolder={handleCreateFolder}
             onDeleteFolder={handleDeleteFolder}
             onRenameFolder={handleRenameFolder}
+            pendingReviewIds={pendingReviewIds}
+            onOpenReview={onOpenReview}
           />
         ))}
 

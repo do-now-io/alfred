@@ -160,25 +160,29 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
 > les faits « appris automatiquement » **polluent la note de contexte EN avec des
 > lignes FR** (§4).
 
-### `/resolve` seulement s'il y a quelque chose à vérifier — 📝 à refaire (feedback tests, **revient sur** l'exigence précédente)
+### `/resolve` seulement s'il y a quelque chose à vérifier — ✅ fait (feedback tests, **revient sur** l'exigence précédente)
 
 **Décision révisée.** On avait imposé « `/resolve` **toujours** présenté, même sans
 rien à corriger ». Retour d'usage : c'est **une friction inutile** quand Claude n'a
 **rien** à signaler. Nouveau comportement :
 
 - **Analyse d'abord.** Après la transcription, on lance l'analyse
-  (`analyze_transcription`).
+  (`analyze_transcription`, implémenté dans `run_ingestion_for_recording`).
   - **Rien à vérifier** (aucun `transcription_fix` / `unclear_sentence` /
-    `unassigned_task` au-dessus du seuil) → **finalisation directe** (compte-rendu +
-    tâches), **sans** afficher `/resolve`, puis étapes suivantes (archivage, etc.).
-    *(Les `context_addition` restent auto-écrits en « Appris automatiquement », §4 —
-    ils ne comptent pas comme « à vérifier ».)*
+    `unassigned_task`) → **finalisation directe** (`finalize_ingestion` sur le
+    texte brut : compte-rendu + tâches), **sans** afficher `/resolve`, puis
+    étapes suivantes (archivage, etc.).
+    *(Les `context_additions` restent auto-écrits en « Appris automatiquement », §4 —
+    ils ne comptent pas comme « à vérifier », avec ou sans clarifications.)*
   - **Il y a des points à vérifier** → on **n'écrit pas** le compte-rendu tout de
-    suite ; la vérification reste en attente (voir persistance ci-dessous), et la
+    suite ; la vérification est **persistée** (voir ci-dessous), et la
     finalisation n'a lieu qu'**au « Valider »** de `/resolve`.
-- Vaut pour réunion **et** contexte (spec/13).
+- **Ne s'applique qu'à la réunion** (`run_ingestion_for_recording`) — le mode
+  **contexte** (spec/13) n'a jamais de `clarifications` à seuiller : sa revue
+  sur `/resolve` (« Revoir/corriger ») reste **systématique et volontaire**,
+  ce n'est pas une conséquence de ce seuillage.
 
-### La vérification en attente **persiste** et vit **sur la note** — 📝 à faire (feedback tests)
+### La vérification en attente **persiste** et vit **sur la note** — ✅ fait (feedback tests)
 
 Constat test : la vérification n'est proposée que par une **pop-up basse
 transitoire** (« N points à vérifier »), **non persistée** (`resolveStore` en mémoire,
@@ -186,26 +190,34 @@ spec/17 historique). Si on **enchaîne un 2ᵉ enregistrement** sans avoir véri
 1ᵉʳ, la pop-up **disparaît / est écrasée** → la vérification est perdue. Or l'analyse
 a un coût (appel Claude) : on ne veut pas la refaire.
 
-- **Persister les clarifications par `recording_id`** (pas une session unique en
-  mémoire) : elles survivent à la navigation, à un **nouvel enregistrement**, et à un
-  redémarrage. **Plusieurs vérifications en attente coexistent** (file), chacune
-  rattachée à sa note.
-- **Indicateur « à vérifier » SUR la note** (spec/07) : une **petite icône de
-  vérification** à côté de la transcription concernée dans l'arbre Notes. **Cliquer la
-  note ouvre directement `/resolve`** avec l'analyse **persistée** — **sans** repasser
-  par le bouton « Vérifier / corriger » qui **relance une analyse** (`analyze_transcription`).
-  Le bouton « Vérifier / corriger » reste pour **re-vérifier volontairement** (nouvelle
-  analyse) ; le chemin normal réutilise l'analyse déjà faite.
-- **La vue reste tant que non vérifiée** : l'indicateur (et la pop-up de rappel, si
-  conservée) **persiste jusqu'à ce que l'utilisateur ait validé** cette
-  transcription — jamais effacé par un enregistrement suivant.
-- Après **Valider** → finalisation (compte-rendu + tâches), l'entrée « à vérifier »
-  disparaît, et la transcription est archivée (spec/07).
+- **Persistées par `recording_id`** — table SQLite `pending_clarifications`
+  (migration 013, clé `recording_id`, JSON des `Clarifications`) : survivent à
+  la navigation, à un **nouvel enregistrement**, et à un redémarrage.
+  **Plusieurs vérifications en attente coexistent** (une ligne par
+  `recording_id`), chacune rattachée à sa note.
+- **Indicateur « à vérifier » SUR la note** (spec/07) : une **petite icône**
+  (`MdFactCheck`) à côté de la transcription concernée, dans l'**arbre Notes**
+  (vue Dossiers) **et** dans **Récents**. Alimenté par
+  `list_pending_clarifications` (les `recording_id` en attente) + l'event
+  `pending-clarifications-changed`. **Cliquer l'icône ouvre directement
+  `/resolve`** (`resolveStore.loadPersisted` → `get_pending_clarification`) avec
+  l'analyse **persistée** — **sans** repasser par le bouton « Vérifier / corriger »
+  qui **relance une analyse** (`analyze_transcription`). Ce bouton reste pour
+  **re-vérifier volontairement** (nouvelle analyse) ; le chemin normal réutilise
+  l'analyse déjà faite.
+- **La vue reste tant que non vérifiée** : l'indicateur **persiste jusqu'à ce que
+  l'utilisateur ait validé** cette transcription — jamais effacé par un
+  enregistrement suivant (une ligne par `recording_id`, pas un slot unique).
+- Après **Valider** → `finalize_ingestion` écrit le compte-rendu + tâches,
+  **supprime** la ligne `pending_clarifications` (l'icône « à vérifier »
+  disparaît) et archive la transcription (spec/07).
 
-> **Implémentation** : stocker les clarifications (JSON) par `recording_id` — table
-> SQLite dédiée ou marqueur/fichier associé — plutôt que le `resolveStore` volatil.
-> L'événement `clarifications-ready` alimente ce store persistant ; l'UI (icône note,
-> pop-up) le lit ; `/resolve` peut être rouvert à tout moment depuis la note.
+> **Implémentation faite** : `src-tauri/src/ai/pending_clarifications.rs`
+> (`save`/`get`/`list_recording_ids`/`delete`) + commandes
+> `list_pending_clarifications`/`get_pending_clarification` + `VaultNode` gagne
+> `recording_id` (parsé comme `status`, pour le croisement côté arbre).
+> **Non couvert** : la vue **Projects** de l'arbre (icône ajoutée seulement à la
+> vue Dossiers et à Récents — les deux surfaces citées explicitement ci-dessus).
 
 ## §4 — Enrichissement du contexte & onboarding
 

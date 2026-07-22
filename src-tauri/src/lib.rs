@@ -1137,6 +1137,30 @@ async fn finalize_ingestion(
     .map_err(|e| e.to_string())
 }
 
+/// `recording_id`s ayant une vérification en attente (spec/17 §3/spec/07,
+/// feedback tests) — le front croise cette liste avec le `recording_id` de
+/// chaque note pour afficher l'indicateur « à vérifier » (arbre + Récents).
+#[tauri::command]
+async fn list_pending_clarifications(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+    ai::pending_clarifications::list_recording_ids(&state.db)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// La vérification déjà faite pour cette note (spec/17 §3, feedback tests) —
+/// utilisé pour rouvrir `/resolve` sur un clic depuis l'indicateur, SANS
+/// relancer `analyze_transcription` (le bouton « Vérifier / corriger » reste le
+/// seul chemin qui relance volontairement une analyse).
+#[tauri::command]
+async fn get_pending_clarification(
+    recording_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<ai::pending_clarifications::PendingClarification>, String> {
+    ai::pending_clarifications::get(&state.db, &recording_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Build `Contexte Alfred.md` from a recording's transcription (spec/13). Used by
 /// the guided-tour "context" recording (auto-triggered) and reusable by a future
 /// "(re)créer mon contexte à la voix" button. Emits `context-status-changed`.
@@ -1738,6 +1762,8 @@ pub fn run() {
             generate_glossary_from_context,
             analyze_transcription,
             finalize_ingestion,
+            list_pending_clarifications,
+            get_pending_clarification,
             build_context_from_transcription,
             read_recording_wav,
             share_note,

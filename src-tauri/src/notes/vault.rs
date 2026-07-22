@@ -17,6 +17,10 @@ pub struct VaultNode {
     /// Frontmatter `status` (spec/07) — `None` for directories. Drives the
     /// default hide + dimmed/badge display of archived notes in the tree.
     pub status: Option<String>,
+    /// Frontmatter `recording_id` (spec/07/17) — `None` for directories and
+    /// notes with no linked recording. Lets the tree cross-reference the
+    /// pending-clarifications list to show the « à vérifier » indicator.
+    pub recording_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, TS)]
@@ -64,19 +68,21 @@ fn build_node(path: &Path, root: &Path) -> VaultNode {
         .unwrap_or_else(|| path.to_string_lossy().to_string());
 
     if path.is_file() {
-        // Lu pour le seul champ `status` (spec/07 — masquage des archivées) ;
-        // coût acceptable pour les petits vaults visés (~10 users), même
-        // pattern déjà utilisé par `list_recent_notes`/`list_notes_with_project`.
-        let status = std::fs::read_to_string(path).ok().map(|raw| {
+        // Lu pour `status` (spec/07 — masquage des archivées) et `recording_id`
+        // (spec/17 §3 — indicateur « à vérifier ») ; coût acceptable pour les
+        // petits vaults visés (~10 users), même pattern déjà utilisé par
+        // `list_recent_notes`/`list_notes_with_project`.
+        let meta = std::fs::read_to_string(path).ok().map(|raw| {
             let stem = stem(&name);
-            frontmatter::parse(&raw, &stem).0.status
+            frontmatter::parse(&raw, &stem).0
         });
         return VaultNode {
             name: stem(&name),
             path: path.to_string_lossy().to_string(),
             is_dir: false,
             children: vec![],
-            status,
+            status: meta.as_ref().map(|m| m.status.clone()),
+            recording_id: meta.and_then(|m| m.recording_id),
         };
     }
 
@@ -120,6 +126,7 @@ fn build_node(path: &Path, root: &Path) -> VaultNode {
         is_dir: true,
         children: dirs,
         status: None,
+        recording_id: None,
     }
 }
 

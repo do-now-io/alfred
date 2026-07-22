@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { MdFolder, MdStickyNote2, MdFactCheck, MdSearch } from "react-icons/md";
 import { useNotesStore, findNodeByRef } from "../store/notesStore";
 import { useResolveStore } from "../store/resolveStore";
+import { usePendingReviewStore } from "../store/pendingReviewStore";
 import ShareButton from "../components/ShareButton";
 import type { NoteMetadata } from "../bindings/NoteMetadata";
 import type { Clarifications } from "../bindings/Clarifications";
@@ -36,6 +37,8 @@ export default function Notes() {
 
   const navigate = useNavigate();
   const setResolveSession = useResolveStore((s) => s.setSession);
+  const loadPersisted = useResolveStore((s) => s.loadPersisted);
+  const pendingReviewIds = usePendingReviewStore((s) => s.ids);
   const [analyzing, setAnalyzing] = useState(false);
 
   const [localMetadata, setLocalMetadata] = useState<NoteMetadata | null>(null);
@@ -141,6 +144,12 @@ export default function Notes() {
     }
   };
 
+  // Ouvre l'analyse déjà persistée (spec/17 §3/spec/07, feedback tests) — clic
+  // sur l'indicateur « à vérifier » de l'arbre, sans relancer `analyze_transcription`.
+  const handleOpenReview = useCallback(async (recordingId: string) => {
+    if (await loadPersisted(recordingId)) navigate("/resolve");
+  }, [loadPersisted, navigate]);
+
   const handleWikilink = useCallback((ref: string) => {
     console.log(`[wikilink] Notes: handleWikilink ref="${ref}", tree ${tree ? "loaded" : "NOT loaded"}`);
     if (!tree) return;
@@ -161,6 +170,8 @@ export default function Notes() {
         vaultPath={vaultPath}
         selectedPath={selectedFile?.path ?? null}
         onSelect={selectFile}
+        pendingReviewIds={pendingReviewIds}
+        onOpenReview={handleOpenReview}
       />
 
       {/* Content pane */}

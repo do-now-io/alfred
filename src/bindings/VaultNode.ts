@@ -5,4 +5,10 @@ export type VaultNode = { name: string, path: string, is_dir: boolean, children:
  * Frontmatter `status` (spec/07) — `None` for directories. Drives the
  * default hide + dimmed/badge display of archived notes in the tree.
  */
-status: string | null, };
+status: string | null, 
+/**
+ * Frontmatter `recording_id` (spec/07/17) — `None` for directories and
+ * notes with no linked recording. Lets the tree cross-reference the
+ * pending-clarifications list to show the « à vérifier » indicator.
+ */
+recording_id: string | null, };

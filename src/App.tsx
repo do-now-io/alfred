@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
   MdCheckBox, MdStickyNote2,
-  MdAutoAwesome, MdSettings, MdHub, MdMic, MdStop,
+  MdAutoAwesome, MdSettings, MdHub, MdMic, MdStop, MdFactCheck,
 } from "react-icons/md";
 import alfredAvatar from "./assets/alfred-logo.png";
 import Dashboard from "./screens/Dashboard";
@@ -17,6 +17,7 @@ import Feedback from "./screens/Feedback";
 import Onboarding from "./screens/Onboarding";
 import Resolve from "./screens/Resolve";
 import { useResolveStore } from "./store/resolveStore";
+import { usePendingReviewStore } from "./store/pendingReviewStore";
 import type { Clarifications } from "./bindings/Clarifications";
 import { useRecordingStore } from "./store/recordingStore";
 import { useNotesStore } from "./store/notesStore";
@@ -222,6 +223,13 @@ function Recents() {
   // Le point ambre = la note qu'Alfred TRAITE en ce moment (spec/10, feedback
   // tests) — plus « note sélectionnée » (le highlight suffit pour la sélection).
   const targetPath = useAlfredStatusStore(s => s.target?.targetPath ?? null);
+  // Indicateur « à vérifier » persistant (spec/17 §3/spec/07, feedback tests).
+  const pendingReviewIds = usePendingReviewStore(s => s.ids);
+  const loadPersisted = useResolveStore(s => s.loadPersisted);
+  const openReview = async (recordingId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (await loadPersisted(recordingId)) navigate("/resolve");
+  };
 
   // Clic droit (spec/07, feedback tests) : mêmes actions Renommer/Supprimer que
   // l'arbre de Notes — sans ce menu, le clic droit ici tombait sur le menu
@@ -246,6 +254,7 @@ function Recents() {
       {recents.map((item) => {
         const active = item.path === selectedPath;
         const processing = samePath(item.path, targetPath);
+        const needsReview = !!item.recording_id && pendingReviewIds.has(item.recording_id);
         return (
           <div key={item.path} style={{
             display: "flex", alignItems: "center", gap: 8,
@@ -271,6 +280,19 @@ function Recents() {
                 {formatRecentDate(item.modified)}
               </span>
             </span>
+            {needsReview && (
+              <button
+                onClick={(e) => openReview(item.recording_id!, e)}
+                title={t("nav.recents.needsReview")}
+                style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  background: "none", border: "none", cursor: "pointer", padding: 0,
+                  color: "var(--accent)", flexShrink: 0, fontSize: 14,
+                }}
+              >
+                <MdFactCheck size={14} />
+              </button>
+            )}
             {processing && (
               <span
                 title={t("nav.recents.workingOnThisNote")}
@@ -365,6 +387,7 @@ function AppInner() {
   const setAlfredTarget = useAlfredStatusStore((s) => s.setTarget);
   const setAlfredProgress = useAlfredStatusStore((s) => s.setProgress);
   const setResolveSession = useResolveStore((s) => s.setSession);
+  const fetchPendingReview = usePendingReviewStore((s) => s.fetch);
   // Ingestion failures must be VISIBLE: a silent one is indistinguishable from
   // "the feature doesn't work" (compte-rendu + tasks just never appear).
   const [ingestError, setIngestError] = useState<string | null>(null);
@@ -376,6 +399,12 @@ function AppInner() {
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
+
+    // Indicateur « à vérifier » persistant (spec/17 §3/spec/07, feedback tests) :
+    // chargé une fois au montage, puis rafraîchi à chaque changement (nouvelle
+    // vérification en attente OU résolue par un Valider ailleurs).
+    fetchPendingReview();
+    listen("pending-clarifications-changed", () => fetchPendingReview()).then(fn => unsubs.push(fn));
 
     listen<{ status: string; duration_seconds: number; volume?: number; recording_id?: string; purpose?: string }>("recording-status-changed", (e) => {
       setStatus(
@@ -469,7 +498,7 @@ function AppInner() {
     ).then(fn => unsubs.push(fn));
 
     return () => unsubs.forEach(fn => fn());
-  }, [setStatus, setAlfredState, setAlfredTarget, setAlfredProgress, setResolveSession]);
+  }, [setStatus, setAlfredState, setAlfredTarget, setAlfredProgress, setResolveSession, fetchPendingReview]);
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
@@ -585,9 +614,12 @@ function ResolveBanner() {
   // Le mode contexte (visite guidée) est piloté par la visite — pas de bannière.
   if (!session || session.mode !== "meeting" || location.pathname === "/resolve") return null;
 
-  // La finalisation n'est JAMAIS auto-enchaînée (spec/17 §3, feedback tests) —
-  // la bannière s'affiche donc même à 0 point à vérifier : sans elle, rien ne
-  // rappellerait qu'un « Valider » reste nécessaire pour obtenir le compte-rendu.
+  // RÉVISÉ (spec/17 §3, feedback tests) : le pipeline automatique ne peuple
+  // plus jamais `session` à 0 point à vérifier (finalisation directe côté back
+  // dans ce cas — `run_ingestion_for_recording`). Le count===0 ci-dessous ne
+  // survient donc plus que via le bouton manuel « Vérifier / corriger »
+  // (`Notes.tsx`, ré-analyse volontaire) ou l'indicateur persistant, où Claude
+  // peut légitimement ne rien avoir à signaler cette fois.
   const c = session.clarifications;
   const count =
     c.transcription_fixes.length + c.unclear_sentences.length + c.unassigned_tasks.length;

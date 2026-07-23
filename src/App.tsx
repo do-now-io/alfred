@@ -585,36 +585,20 @@ function AppInner() {
 }
 
 // Invite to the resolution screen when a session is pending (spec/17 §3). Hidden
-// while already on /resolve. Dismiss = drop the session (equivalent to "Ignorer").
+// while already on /resolve. Dismiss = hide the banner only (feedback tests) —
+// the pending clarification stays persisted server-side (spec/17 §3/spec/07 :
+// table `pending_clarifications`, indicateur « à vérifier » sur la note) et
+// reste accessible plus tard, aucune finalisation n'est déclenchée ici.
 function ResolveBanner() {
   const t = useT();
   const navigate = useNavigate();
   const location = useLocation();
   const session = useResolveStore((s) => s.session);
   const clear = useResolveStore((s) => s.clear);
-  const [dismissing, setDismissing] = useState(false);
 
-  // "Ignorer et rédiger directement": produce the compte-rendu from the original
-  // text (no corrections, no context additions) so the recording is never left
-  // without one just because the user skipped the review.
-  const dismiss = async () => {
-    if (!session || session.mode !== "meeting" || dismissing) return;
-    setDismissing(true);
-    try {
-      await invoke("finalize_ingestion", {
-        recordingId: session.recordingId,
-        correctedText: session.text,
-        noteTitle: session.noteTitle,
-        contextAdditions: [],
-        summary: session.summary,
-        tasks: session.tasks,
-      });
-    } catch {
-      /* fall through — clearing still unblocks the UI */
-    }
-    invoke("track_event", { event: "resolve_ignored", props: {} }).catch(() => {});
+  const dismiss = () => {
+    invoke("track_event", { event: "resolve_banner_dismissed", props: {} }).catch(() => {});
     clear();
-    setDismissing(false);
   };
 
   // Le mode contexte (visite guidée) est piloté par la visite — pas de bannière.
@@ -657,7 +641,6 @@ function ResolveBanner() {
       </div>
       <button
         onClick={dismiss}
-        disabled={dismissing}
         title={t("nav.resolveBanner.dismissTitle")}
         style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 15, padding: 0, lineHeight: 1 }}
       >

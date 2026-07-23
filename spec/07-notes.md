@@ -146,8 +146,13 @@ dans le volet **Récents** (gauche), où seul le nom (souvent une date) s'affich
   mtime presque systématiquement — elle passait donc TOUJOURS devant le
   compte-rendu qu'on venait réellement de produire, alors que c'est une note
   qu'on « ne devrait quasiment jamais rouvrir ». `list_recent_notes` gagne un
-  paramètre `exclude_path` (résolu via `context_note_path`), appliqué par
+  paramètre `exclude_paths` (résolu via `context_note_path`), appliqué par
   `get_recent_notes` (Récents) **et** `generate_daily_brief` (spec/05).
+- **`Todo.md` exclue des Récents — ✅ corrigé (feedback tests, spec/06)** : même
+  paramètre `exclude_paths`, étendu à `todo_file_path` — la liste de tâches se
+  rouvre déjà via la page Tâches (bouton « Markdown ») ou en cliquant une tâche
+  depuis les Notes ; sa présence dans Récents n'apportait rien et poussait une
+  vraie note hors de la liste à chaque coche/déplacement de tâche.
 - **Nommage : sujet après ingestion, plus la date** — une fois l'intelligence faite,
   le **compte-rendu est nommé par un sujet court** (nom de réunion / description),
   **pas** par la date. L'IA fournit ce titre : ajouter un champ **`titre`** (sujet

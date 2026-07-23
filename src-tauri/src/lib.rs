@@ -1017,13 +1017,17 @@ async fn get_recent_notes(
 ) -> Result<Vec<notes::RecentNote>, String> {
     let root = get_vault_root(&state)?;
     let limit = limit.unwrap_or(5);
-    // Exclut `Contexte Alfred.md` (spec/07/16, feedback tests) : sa mtime
-    // avance presque à chaque ingestion (context_additions auto-écrits par
-    // `finalize_ingestion`), la faisant systématiquement passer devant le
-    // compte-rendu qu'on vient réellement de produire — une note que
-    // l'utilisateur « ne devrait quasiment jamais ouvrir ».
-    let context_path = root.join(notes::context::context_note_path(&state.db).await);
-    tokio::task::spawn_blocking(move || notes::vault::list_recent_notes(&root, limit, Some(&context_path)))
+    // Exclut `Contexte Alfred.md` et `Todo.md` (spec/07/16, feedback tests) :
+    // ni l'un ni l'autre n'est une note d'« activité ». Le contexte voit sa
+    // mtime avancer presque à chaque ingestion (context_additions auto-écrits
+    // par `finalize_ingestion`), passant systématiquement devant le compte-rendu
+    // qu'on vient réellement de produire ; Todo.md se rouvre déjà via la page
+    // Tâches ou ses propres raccourcis.
+    let exclude_paths = vec![
+        root.join(notes::context::context_note_path(&state.db).await),
+        root.join(todos::todo_file_path(&state.db).await),
+    ];
+    tokio::task::spawn_blocking(move || notes::vault::list_recent_notes(&root, limit, &exclude_paths))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
@@ -1274,12 +1278,21 @@ async fn get_share_link(
     Ok(sharing::share_link(&state.db, &note_path).await)
 }
 
-/// Raw WAV bytes for a recording (by its note title), for the "🔊 réécouter"
-/// button of the resolution screen (spec/17 §3). Returns an ArrayBuffer to the
-/// front (efficient — no base64/JSON-array bloat); the UI seeks to the segment.
+/// Raw WAV bytes for a recording, for the "🔊 réécouter" button of the
+/// resolution screen (spec/17 §3). Returns an ArrayBuffer to the front
+/// (efficient — no base64/JSON-array bloat); the UI seeks to the segment.
+///
+/// Resolves by **`recording_id`**, not by note title (feedback tests — bug) :
+/// the raw note's title is only ever the right wav-filename key while THAT
+/// note is the one open. Once ingestion succeeds, the raw note is archived
+/// (never renamed — the file is untouched) and the note actually open is
+/// usually the compte-rendu, whose title differs → the old title-based lookup
+/// built a path that never existed. `find_note_by_recording_id` finds the raw
+/// note by its frontmatter `recording_id` regardless of which note is open or
+/// of its `status`, then derives the wav filename from ITS stem.
 #[tauri::command]
 async fn read_recording_wav(
-    note_title: String,
+    recording_id: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<tauri::ipc::Response, String> {
     let vault_root = state
@@ -1288,8 +1301,11 @@ async fn read_recording_wav(
         .unwrap()
         .clone()
         .ok_or_else(|| "Vault non configuré".to_string())?;
-    let folder = transcription::recording_folder(&state.db).await;
-    let path = vault_root.join(folder).join(format!("{}.wav", note_title));
+    let folder = vault_root.join(transcription::recording_folder(&state.db).await);
+    let note_path = notes::vault::find_note_by_recording_id(&folder, &recording_id)
+        .ok_or_else(|| format!("Transcription introuvable pour cet enregistrement ({})", recording_id))?;
+    let stem = note_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let path = folder.join(format!("{}.wav", stem));
     let bytes = tokio::fs::read(&path)
         .await
         .map_err(|e| format!("Audio introuvable ({:?}): {}", path, e))?;

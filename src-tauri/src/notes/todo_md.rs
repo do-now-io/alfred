@@ -704,6 +704,20 @@ pub fn archive_task(content: &str, id: &str) -> Result<String> {
     Ok(out)
 }
 
+/// Supprime réellement une tâche (ligne + sous-puces/description) — **jamais**
+/// utilisé pour une action utilisateur normale (règle d'or « supprimer = archiver »,
+/// spec/06/22) : réservé au nettoyage du contenu de démarrage (`seed.rs`,
+/// spec/13), où retirer les tâches semées PAR TITRE EXACT (même identité que
+/// partout ailleurs — `normalize_title`) est strictement plus sûr qu'un simple
+/// filtre de lignes par sous-chaîne. `Ok(())` (pas d'erreur) si `id` n'existe
+/// pas — idempotent, rejouable sans risque.
+pub fn remove_task(content: &str, id: &str) -> Result<String> {
+    match map_task_block(content, id, |_, _, _, _| None) {
+        Ok(next) => Ok(next),
+        Err(_) => Ok(content.to_string()), // déjà absent — no-op
+    }
+}
+
 /// Déplace une tâche vers `## section`, à `position` (index 0-based parmi les
 /// TÂCHES de la section ; hors bornes / absent → fin de section). Le bloc entier
 /// (ligne + sous-puces/description) se déplace ensemble ; `@responsable`,

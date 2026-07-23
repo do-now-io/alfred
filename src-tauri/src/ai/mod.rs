@@ -441,9 +441,23 @@ async fn run_ingestion_core(
                     body.push_str(&format!("- [{}](task:{})\n", task.titre, urlencoding::encode(&id)));
                 }
             }
-            match crate::notes::vault::create_intelligence_note(&folder, &report_title, metadata, &body).await {
+            // Ré-vérification/ré-ingestion d'un enregistrement qui a déjà un
+            // compte-rendu (spec/17 §3, feedback tests) : METTRE À JOUR la note
+            // existante plutôt que d'en créer une seconde (`create_intelligence_note`
+            // suffixe le nom sur collision — "Réunion 2.md" — au lieu d'écraser).
+            let existing = recording_id.and_then(|rid| crate::notes::vault::find_intelligence_note_by_recording_id(&folder, rid));
+            let was_update = existing.is_some();
+            let write_result = match existing {
+                Some(path) => crate::notes::vault::update_note_file(&path, metadata, &body).await,
+                None => crate::notes::vault::create_intelligence_note(&folder, &report_title, metadata, &body).await,
+            };
+            match write_result {
                 Ok(ref note) => {
-                    eprintln!("[ingestion] compte-rendu created: {}", report_title);
+                    eprintln!(
+                        "[ingestion] compte-rendu {}: {}",
+                        if was_update { "updated" } else { "created" },
+                        report_title
+                    );
                     // Pastille (spec/10, feedback tests) : déplace la cible —
                     // et donc le point ambre — de la note brute vers le
                     // compte-rendu maintenant qu'il existe. Émission dédiée
@@ -1351,11 +1365,15 @@ pub async fn generate_daily_brief(db: &SqlitePool, vault_root: Option<&Path>) ->
 
     let recents_text = match vault_root {
         Some(root) => {
-            // Exclut `Contexte Alfred.md` (spec/07/16, feedback tests) — pas une
-            // note d'activité, son inclusion dans le brief serait du bruit.
-            let context_path = root.join(crate::notes::context::context_note_path(db).await);
+            // Exclut `Contexte Alfred.md` et `Todo.md` (spec/07/16, feedback
+            // tests) — ni l'un ni l'autre n'est une note d'activité, leur
+            // inclusion dans le brief serait du bruit.
+            let exclude_paths = vec![
+                root.join(crate::notes::context::context_note_path(db).await),
+                root.join(crate::todos::todo_file_path(db).await),
+            ];
             let root = root.to_path_buf();
-            let recents = tokio::task::spawn_blocking(move || crate::notes::vault::list_recent_notes(&root, 5, Some(&context_path)))
+            let recents = tokio::task::spawn_blocking(move || crate::notes::vault::list_recent_notes(&root, 5, &exclude_paths))
                 .await?
                 .unwrap_or_default();
             if recents.is_empty() {

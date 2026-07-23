@@ -142,17 +142,17 @@ fn stem(filename: &str) -> String {
 
 /// The `limit` most recently *modified* `.md` notes in the vault, excluding
 /// archived ones (`status: archived`, spec/07) — a raw transcription archived
-/// right after ingestion must not clutter Récents. `exclude_path` (spec/07/16,
-/// feedback tests) additionally drops `Contexte Alfred.md` : ingestion (with
-/// or without clarifications) auto-writes accepted `context_additions` there
-/// almost every time (`finalize_ingestion`), which bumped its mtime ahead of
-/// the compte-rendu that had just been written — a note the user "should
-/// basically never open" was crowding out the one they actually want to see.
+/// right after ingestion must not clutter Récents. `exclude_paths` (spec/07/16,
+/// feedback tests) additionally drops utility notes that aren't "activity" —
+/// `Contexte Alfred.md` (ingestion auto-writes `context_additions` there
+/// almost every time, which bumped its mtime ahead of the compte-rendu that
+/// had just been written) and `Todo.md` (reached via the Tâches page or its
+/// own shortcuts, never meant to surface here either).
 ///
 /// Ordering is by filesystem mtime, which advances when a file is written
 /// (saved/edited) but never when it is merely read — so opening a note to view
 /// it does not bump it up this list.
-pub fn list_recent_notes(root: &Path, limit: usize, exclude_path: Option<&Path>) -> Result<Vec<RecentNote>> {
+pub fn list_recent_notes(root: &Path, limit: usize, exclude_paths: &[PathBuf]) -> Result<Vec<RecentNote>> {
     if !root.exists() {
         return Err(anyhow!("Vault folder does not exist: {:?}", root));
     }
@@ -172,7 +172,7 @@ pub fn list_recent_notes(root: &Path, limit: usize, exclude_path: Option<&Path>)
                     .path()
                     .components()
                     .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
-                && exclude_path.map(|ex| e.path() != ex).unwrap_or(true)
+                && !exclude_paths.iter().any(|ex| e.path() == ex)
         })
         .filter_map(|e| {
             let modified = e.metadata().ok()?.modified().ok()?;
@@ -394,14 +394,16 @@ pub async fn update_note_file(
     get_note_file(path).await
 }
 
-/// Archive la note brute de transcription (`recording_folder`) liée à
-/// `recording_id`, une fois son compte-rendu écrit (spec/05/07) — `status:
-/// archived`, rien n'est supprimé, le WAV reste réécoutable. Best-effort et
-/// silencieux : une erreur ici ne doit jamais faire échouer l'ingestion, qui
-/// a déjà réussi son travail principal (compte-rendu + tâches).
-pub async fn archive_raw_note_by_recording_id(vault_root: &Path, recording_folder: &str, recording_id: &str) {
-    let folder = vault_root.join(recording_folder);
-    let found = WalkDir::new(&folder)
+/// Cherche, dans `folder` (non récursif au sens vault — en réalité `WalkDir`
+/// descend, donc couvre les sous-dossiers), la note `.md` dont le frontmatter
+/// porte ce `recording_id`. Réutilisé pour retrouver la transcription brute
+/// (archivage **et** réécoute WAV, spec/17 §3 — fonctionne même une fois la
+/// note archivée : le fichier n'est jamais déplacé/renommé par l'archivage,
+/// contrairement à une résolution par TITRE qui casse dès que ce n'est plus la
+/// note brute qui est ouverte) **et** un compte-rendu déjà existant (spec/17
+/// §3, feedback tests — évite qu'une ré-vérification en crée un doublon).
+pub(crate) fn find_note_by_recording_id(folder: &Path, recording_id: &str) -> Option<PathBuf> {
+    WalkDir::new(folder)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file() && e.path().extension().map(|x| x == "md").unwrap_or(false))
@@ -411,7 +413,27 @@ pub async fn archive_raw_note_by_recording_id(vault_root: &Path, recording_folde
             let raw = std::fs::read_to_string(path).ok()?;
             let meta = frontmatter::parse(&raw, &stem).0;
             (meta.recording_id.as_deref() == Some(recording_id)).then(|| path.to_path_buf())
-        });
+        })
+}
+
+/// Cherche un compte-rendu déjà écrit pour ce `recording_id`, dans le dossier
+/// `alfred-intelligence` (spec/17 §3, feedback tests) — pour que
+/// `run_ingestion_core` **mette à jour** la note existante au lieu d'en créer
+/// un doublon (`create_intelligence_note` suffixe le nom sur collision) quand
+/// une ré-vérification/ré-ingestion produit un nouveau compte-rendu pour un
+/// enregistrement qui en a déjà un.
+pub fn find_intelligence_note_by_recording_id(intelligence_folder: &Path, recording_id: &str) -> Option<PathBuf> {
+    find_note_by_recording_id(intelligence_folder, recording_id)
+}
+
+/// Archive la note brute de transcription (`recording_folder`) liée à
+/// `recording_id`, une fois son compte-rendu écrit (spec/05/07) — `status:
+/// archived`, rien n'est supprimé, le WAV reste réécoutable. Best-effort et
+/// silencieux : une erreur ici ne doit jamais faire échouer l'ingestion, qui
+/// a déjà réussi son travail principal (compte-rendu + tâches).
+pub async fn archive_raw_note_by_recording_id(vault_root: &Path, recording_folder: &str, recording_id: &str) {
+    let folder = vault_root.join(recording_folder);
+    let found = find_note_by_recording_id(&folder, recording_id);
 
     let Some(path) = found else {
         eprintln!("[ingestion] raw note for recording_id={} not found, skipping archive", recording_id);

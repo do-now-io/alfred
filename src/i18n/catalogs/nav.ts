@@ -35,7 +35,7 @@ export default {
       pointsToCheckPlural: "J'ai {count} points à vérifier",
       ready: "Votre compte-rendu est prêt à valider",
       checkNow: "Vérifier maintenant",
-      dismissTitle: "Ignorer et rédiger directement le compte-rendu",
+      dismissTitle: "Masquer — reste accessible depuis la note (icône « à vérifier »)",
     },
     ingestError: {
       title: "Le compte-rendu n'a pas pu être rédigé",
@@ -77,7 +77,7 @@ export default {
       pointsToCheckPlural: "I have {count} points to check",
       ready: "Your summary is ready to validate",
       checkNow: "Check now",
-      dismissTitle: "Ignore and write the summary directly",
+      dismissTitle: "Hide — still reachable from the note (« needs review » icon)",
     },
     ingestError: {
       title: "The summary could not be written",

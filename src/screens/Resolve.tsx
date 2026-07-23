@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { MdCheck, MdClose, MdVolumeUp, MdAutoFixHigh, MdPersonOutline, MdHelpOutline, MdLightbulbOutline } from "react-icons/md";
+import { MdCheck, MdClose, MdVolumeUp, MdPause, MdReplay, MdAutoFixHigh, MdPersonOutline, MdHelpOutline, MdLightbulbOutline } from "react-icons/md";
 import { useResolveStore } from "../store/resolveStore";
 import { useTourStore } from "../store/tourStore";
 import type { NoteFile } from "../bindings/NoteFile";
@@ -27,19 +27,28 @@ function replaceOnce(text: string, needle: string, replacement: string): { text:
   return { text, applied: false };
 }
 
-/** Lazily load the recording's WAV once and play arbitrary [start, end] windows. */
-function useSegmentPlayer(noteTitle: string) {
+/** Lazily load the recording's WAV once (by `recordingId` — spec/17 §3,
+ *  feedback tests: a title-based lookup broke as soon as the raw note got
+ *  archived/wasn't the note open) and play arbitrary [start, end] windows.
+ *  Tracks which window is currently active so its own button (and only that
+ *  one) can show Pause + a restart control (feedback tests — the audio used
+ *  to just play through with no way to stop it). */
+function useSegmentPlayer(recordingId: string) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
   const stopAtRef = useRef<number | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  // Identifies which button's window is loaded (its `start`) — `null` once
+  // paused/ended, so no button shows the active Pause/restart state.
+  const [activeStart, setActiveStart] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const buf = await invoke<ArrayBuffer>("read_recording_wav", { noteTitle });
+        const buf = await invoke<ArrayBuffer>("read_recording_wav", { recordingId });
         if (cancelled) return;
         const url = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
         urlRef.current = url;
@@ -50,6 +59,9 @@ function useSegmentPlayer(noteTitle: string) {
             stopAtRef.current = null;
           }
         });
+        audio.addEventListener("pause", () => setPlaying(false));
+        audio.addEventListener("play", () => setPlaying(true));
+        audio.addEventListener("ended", () => setActiveStart(null));
         audioRef.current = audio;
         setReady(true);
       } catch {
@@ -61,7 +73,7 @@ function useSegmentPlayer(noteTitle: string) {
       audioRef.current?.pause();
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     };
-  }, [noteTitle]);
+  }, [recordingId]);
 
   const play = useCallback((start: number, end: number | null) => {
     const audio = audioRef.current;
@@ -69,10 +81,15 @@ function useSegmentPlayer(noteTitle: string) {
     audio.pause();
     audio.currentTime = Math.max(0, start - 0.15); // tiny lead-in
     stopAtRef.current = end;
+    setActiveStart(start);
     audio.play().catch(() => {});
   }, []);
 
-  return { play, ready, error };
+  const pause = useCallback(() => {
+    audioRef.current?.pause();
+  }, []);
+
+  return { play, pause, playing, activeStart, ready, error };
 }
 
 const card: React.CSSProperties = {
@@ -102,18 +119,43 @@ function GroupLabel({ icon, label, count }: { icon: React.ReactNode; label: stri
   );
 }
 
-function ReplayButton({ start, end, play, ready }: { start: number | null; end: number | null; play: (s: number, e: number | null) => void; ready: boolean }) {
+/** One "🔊 réécouter" button — becomes Pause + a circular "start over" button
+ *  while ITS window is the one playing (feedback tests: previously the audio
+ *  just played through to the end with no way to stop it). `isActive` decides
+ *  which of the (possibly several) replay buttons on screen this is. */
+function ReplayButton({
+  start, end, play, pause, ready, playing, isActive, label,
+}: {
+  start: number | null; end: number | null;
+  play: (s: number, e: number | null) => void;
+  pause: () => void;
+  ready: boolean; playing: boolean; isActive: boolean;
+  /** Override the idle label — e.g. "Play from the start" for the header button. */
+  label?: string;
+}) {
   const t = useT();
   if (start == null) return null;
+  const showPause = isActive && playing;
   return (
-    <button
-      onClick={() => play(start, end)}
-      disabled={!ready}
-      title={t("resolve.replay.title")}
-      style={{ ...actionBtn(), opacity: ready ? 1 : 0.5, padding: "5px 8px" }}
-    >
-      <MdVolumeUp /> {t("resolve.replay.button")}
-    </button>
+    <div style={{ display: "inline-flex", gap: 4 }}>
+      <button
+        onClick={() => (showPause ? pause() : play(start, end))}
+        disabled={!ready}
+        title={showPause ? t("resolve.replay.pauseTitle") : t("resolve.replay.title")}
+        style={{ ...actionBtn(), opacity: ready ? 1 : 0.5, padding: "5px 8px" }}
+      >
+        {showPause ? <MdPause /> : <MdVolumeUp />} {showPause ? t("resolve.replay.pauseButton") : (label ?? t("resolve.replay.button"))}
+      </button>
+      {showPause && (
+        <button
+          onClick={() => play(start, end)}
+          title={t("resolve.replay.restartTitle")}
+          style={{ ...actionBtn(), padding: "5px 8px" }}
+        >
+          <MdReplay />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -134,7 +176,7 @@ export default function Resolve() {
   const clear = useResolveStore((s) => s.clear);
 
   const [text, setText] = useState(session?.text ?? "");
-  const { play, ready } = useSegmentPlayer(session?.noteTitle ?? "");
+  const { play, pause, playing, activeStart, ready } = useSegmentPlayer(session?.recordingId ?? "");
   const isContext = session?.mode === "context";
 
   const fixes = session?.clarifications.transcription_fixes ?? [];
@@ -294,9 +336,12 @@ export default function Resolve() {
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
                 <MdVolumeUp /> {isContext ? t("resolve.replay.sectionContext") : t("resolve.replay.sectionMeeting")}
               </div>
-              <button onClick={() => play(0, null)} disabled={!ready} style={{ ...actionBtn(), opacity: ready ? 1 : 0.5, alignSelf: "flex-start" }}>
-                <MdVolumeUp /> {t("resolve.replay.fromStart")}
-              </button>
+              <div style={{ alignSelf: "flex-start" }}>
+                <ReplayButton
+                  start={0} end={null} play={play} pause={pause} ready={ready} playing={playing}
+                  isActive={activeStart === 0} label={t("resolve.replay.fromStart")}
+                />
+              </div>
             </div>
           )}
 
@@ -318,7 +363,7 @@ export default function Resolve() {
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                   <button onClick={() => applyFix(i, f)} style={actionBtn(true)}><MdCheck /> {t("resolve.fixes.apply")}</button>
                   <button onClick={() => setFixStatus((s) => ({ ...s, [i]: "skipped" }))} style={actionBtn()}><MdClose /> {t("resolve.fixes.ignore")}</button>
-                  <ReplayButton start={f.start} end={f.end} play={play} ready={ready} />
+                  <ReplayButton start={f.start} end={f.end} play={play} pause={pause} ready={ready} playing={playing} isActive={activeStart === f.start} />
                   {f.confidence != null && (
                     <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>{t("resolve.fixes.confidence", { value: Math.round(f.confidence * 100) })}</span>
                   )}
@@ -338,7 +383,7 @@ export default function Resolve() {
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                   <button onClick={() => replaceUnclear(i, u)} style={actionBtn(true)}><MdCheck /> {t("resolve.unclear.reformulate")}</button>
                   <button onClick={() => setUnclearStatus((s) => ({ ...s, [i]: "skipped" }))} style={actionBtn()}><MdClose /> {t("resolve.unclear.leave")}</button>
-                  <ReplayButton start={u.start} end={u.end} play={play} ready={ready} />
+                  <ReplayButton start={u.start} end={u.end} play={play} pause={pause} ready={ready} playing={playing} isActive={activeStart === u.start} />
                 </div>
               </div>
             );

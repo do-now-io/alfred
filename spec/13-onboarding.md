@@ -277,6 +277,13 @@ Une fois que l'utilisateur a **joué** avec les données de démo, il doit pouvo
   garde la langue dans laquelle il a été écrit). Pour le chat, l'id de la
   conversation de démo est retenu en config (`starter_content_chat_conversation_id`)
   et supprimé via `chat_history::delete_conversation`.
+  > **Bug corrigé (feedback tests)** : le retrait des tâches semées comparait par
+  > **sous-chaîne** (`ligne.contains(titre_semé)`) — un titre réel qui contenait
+  > par coïncidence un des 10 titres semés (dans l'une des deux langues) se
+  > retrouvait supprimé avec eux. `delete_starter_content` retire désormais
+  > chaque tâche semée par **identité exacte** (`todo_md::remove_task`, même
+  > `normalize_title` que partout ailleurs dans l'app) — plus jamais une
+  > correspondance de fragment de texte.
 - **One-shot** : `has_starter_content()` fait une **vérification en direct** des 3
   sources plutôt que de dépendre d'un drapeau figé au semis — couvre nativement le
   cas « l'utilisateur a tout supprimé à la main » sans logique séparée. Le bandeau

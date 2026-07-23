@@ -27,6 +27,9 @@ export default {
     replay: {
       title: "Réécouter ce passage",
       button: "Réécouter",
+      pauseTitle: "Mettre en pause",
+      pauseButton: "Pause",
+      restartTitle: "Reprendre depuis le début du passage",
       sectionContext: "Réécouter votre présentation",
       sectionMeeting: "Réécouter l'enregistrement",
       fromStart: "Lecture depuis le début",
@@ -93,6 +96,9 @@ export default {
     replay: {
       title: "Replay this passage",
       button: "Replay",
+      pauseTitle: "Pause",
+      pauseButton: "Pause",
+      restartTitle: "Start this passage over",
       sectionContext: "Replay your presentation",
       sectionMeeting: "Replay the recording",
       fromStart: "Play from the start",

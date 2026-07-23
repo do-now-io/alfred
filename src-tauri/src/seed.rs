@@ -301,25 +301,28 @@ pub async fn has_starter_content(db: &SqlitePool, vault_root: Option<&Path>) -> 
 pub async fn delete_starter_content(db: &SqlitePool, vault_root: Option<&Path>) -> Result<()> {
     let Some(vault_root) = vault_root else { return Ok(()) };
 
-    // 1. Tâches — retire toute ligne de case à cocher dont le texte contient
-    //    un des titres semés (les deux langues : le fichier garde la langue
-    //    dans laquelle il a été écrit, indépendamment de `app_language`
-    //    aujourd'hui).
+    // 1. Tâches — retire PAR IDENTITÉ EXACTE (titre normalisé, même règle que
+    //    partout ailleurs dans l'app — spec/06) chacune des tâches semées, dans
+    //    les deux langues (le fichier garde la langue dans laquelle il a été
+    //    écrit, indépendamment de `app_language` aujourd'hui). Correctif
+    //    (feedback tests) : l'ancien filtre par sous-chaîne (`ligne.contains(titre)`)
+    //    pouvait accrocher une tâche réelle dont le texte contenait par
+    //    coïncidence un des titres semés — `remove_task` matche l'identité
+    //    exacte de la tâche (bloc entier : ligne + sous-puces/description),
+    //    jamais un fragment de texte.
     {
         let todo_rel = crate::todos::todo_file_path(db).await;
         let path = vault_root.join(&todo_rel);
         if let Ok(content) = tokio::fs::read_to_string(&path).await {
-            let titles = seed_task_titles();
-            let filtered: String = content
-                .lines()
-                .filter(|l| {
-                    let is_task = l.trim_start().starts_with("- [");
-                    !(is_task && titles.iter().any(|t| l.contains(*t)))
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            if filtered != content {
-                tokio::fs::write(&path, filtered).await?;
+            let mut current = content.clone();
+            for title in seed_task_titles() {
+                let id = crate::notes::todo_md::normalize_title(title);
+                if let Ok(next) = crate::notes::todo_md::remove_task(&current, &id) {
+                    current = next;
+                }
+            }
+            if current != content {
+                tokio::fs::write(&path, current).await?;
             }
         }
     }

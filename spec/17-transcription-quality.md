@@ -141,7 +141,33 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
 2. **Résolution — un écran, pas un chat** : accepter / rejeter / éditer. Chaque
    `transcription_fix` a un bouton **« 🔊 réécouter »** (WAV `alfred-raw/` +
    timestamps `segments_json`) → tranche à l'oreille.
+   - **✅ Corrigé (feedback tests) — lecture/pause/reprise.** Le clic lançait le
+     WAV en entier sans aucun moyen de l'arrêter. `useSegmentPlayer`
+     (`Resolve.tsx`) suit maintenant l'état de lecture réel de l'`<audio>` : un
+     bouton actif (celui dont la fenêtre joue) devient **Pause**, accompagné
+     d'un second bouton **reprendre depuis le début** (flèche circulaire) —
+     les autres boutons de réécoute restent inchangés (un seul `<audio>`
+     partagé, mais une seule fenêtre « active » à la fois).
+   - **✅ Corrigé (feedback tests) — réécoute cassée une fois la note
+     archivée.** `read_recording_wav` résolvait le nom du fichier `.wav` à
+     partir du TITRE de la note actuellement ouverte — qui n'est le bon titre
+     que lorsque c'est la transcription brute elle-même qui est ouverte.
+     Une fois le compte-rendu écrit, la brute est archivée (jamais renommée)
+     mais l'utilisateur rouvre naturellement le **compte-rendu**, dont le
+     titre diffère → chemin `.wav` inexistant, réécoute cassée. Corrigé en
+     résolvant désormais par **`recording_id`** (`find_note_by_recording_id`,
+     déjà utilisé pour l'archivage) plutôt que par titre — fonctionne quelle
+     que soit la note ouverte et quel que soit le statut `archived`.
 3. **Finalisation** — `submit_ingestion` sur le texte corrigé + réponses.
+   - **✅ Corrigé (feedback tests) — doublon de compte-rendu.** Une
+     ré-vérification (« Vérifier / corriger », ou la validation d'une
+     vérification persistée) sur un enregistrement qui a déjà un compte-rendu
+     en créait un **second** (`create_intelligence_note` suffixe le nom sur
+     collision : « Réunion 2.md »). `run_ingestion_core` cherche désormais un
+     compte-rendu existant par `recording_id`
+     (`find_intelligence_note_by_recording_id`) avant d'écrire : trouvé →
+     **mise à jour en place** (`update_note_file`, même chemin/nom) ; sinon →
+     création comme avant.
 
 **Jamais d'auto-application** d'une correction.
 
@@ -209,6 +235,14 @@ a un coût (appel Claude) : on ne veut pas la refaire.
 - Après **Valider** → `finalize_ingestion` écrit le compte-rendu + tâches,
   **supprime** la ligne `pending_clarifications` (l'icône « à vérifier »
   disparaît) et archive la transcription (spec/07).
+- **Croix de la pop-up/bannière = masquer, jamais finaliser — ✅ corrigé
+  (feedback tests).** La bannière (`App.tsx`, `ResolveBanner`) appelait
+  `finalize_ingestion` sur sa croix « ✕ » (lent, et ça écrivait le compte-rendu
+  sans revue) puis vidait la session — perdant l'accès à `/resolve` pour de bon
+  puisque `finalize_ingestion` supprime aussi la ligne `pending_clarifications`.
+  La croix **masque désormais seulement la bannière** (`clear()` sur le store
+  local) : la ligne persistée n'est jamais touchée, l'icône « à vérifier » sur
+  la note reste le chemin pour rouvrir `/resolve` plus tard.
 
 > **Implémentation faite** : `src-tauri/src/ai/pending_clarifications.rs`
 > (`save`/`get`/`list_recording_ids`/`delete`) + commandes

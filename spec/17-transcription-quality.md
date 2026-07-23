@@ -137,6 +137,13 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
      + confiance. Seulement si Claude a un **référent** dans le contexte.
    - `unassigned_task` : tâche sans responsable → « qui ? ».
    - `unclear_sentence` : phrase **importante** floue → compréhension proposée.
+     **`proposed` est UNIQUEMENT le texte de remplacement** (même registre/
+     longueur que la citation), **jamais** un avis ni une reformulation façon
+     « je pense que l'interlocuteur parle de… » (✅ corrigé, feedback tests —
+     ce texte remplace directement la citation dans la transcription, un
+     commentaire de Claude n'y a pas sa place). Exactement `?` si Claude n'a
+     aucune proposition fiable — l'écran `/resolve` part alors d'un champ
+     **vide** avec un indice, plutôt que de pré-remplir le `?` littéral.
    - `context_addition` : fait appris (ex. « Marie = cheffe de projet »).
 2. **Résolution — un écran, pas un chat** : accepter / rejeter / éditer. Chaque
    `transcription_fix` a un bouton **« 🔊 réécouter »** (WAV `alfred-raw/` +

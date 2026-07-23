@@ -53,6 +53,7 @@ export default {
       skipped: "Laissé tel quel",
       reformulate: "Reformuler",
       leave: "Laisser",
+      unsurePlaceholder: "Alfred n'est pas sûr — proposez votre correction",
     },
     tasks: {
       group: "Responsable manquant",
@@ -122,6 +123,7 @@ export default {
       skipped: "Left as is",
       reformulate: "Rephrase",
       leave: "Leave",
+      unsurePlaceholder: "Alfred isn't sure — suggest your own correction",
     },
     tasks: {
       group: "Missing owner",

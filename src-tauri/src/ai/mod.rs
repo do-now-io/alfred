@@ -716,7 +716,7 @@ Sois SÉLECTIF : ne remonte que ce qui est vraiment utile (haute confiance ou vr
 
 - `transcription_fixes` : un passage probablement MAL TRANSCRIT que tu sais corriger UNIQUEMENT parce que le contexte interne te donne le bon référent (ex. un prénom, un nom de projet, un terme métier). `quote` = le passage douteux recopié mot pour mot depuis la transcription ; `correction` = la version corrigée ; `confidence` entre 0 et 1. N'invente JAMAIS une correction sans référent dans le contexte.
 - `unassigned_tasks` : une tâche à faire clairement énoncée mais SANS responsable identifiable. `task` = la tâche ; `question` = la question à poser (ex. « Qui s'en charge ? »).
-- `unclear_sentences` : une phrase IMPORTANTE mais floue/ambiguë. `quote` = la phrase ; `proposed` = ta compréhension proposée.
+- `unclear_sentences` : une phrase IMPORTANTE mais floue/ambiguë. `quote` = la phrase ; `proposed` = UNIQUEMENT le texte de remplacement prêt à insérer tel quel dans la transcription (même registre, longueur comparable à la citation) — JAMAIS ton avis, une explication ou une reformulation façon « je pense que l'interlocuteur parle de… » : ce texte remplace directement la citation, un commentaire de ta part n'a rien à y faire. Si tu n'as AUCUNE proposition fiable, mets exactement `?` — l'humain complètera lui-même.
 - `context_additions` : un fait durable appris sur l'univers de l'utilisateur (ex. « Marie = cheffe de projet », « le projet Atlas concerne le client Dupont »). `fact` = le fait, en une ligne."#;
 
 fn analyze_tool(lang: &str) -> serde_json::Value {
@@ -758,7 +758,14 @@ fn analyze_tool(lang: &str) -> serde_json::Value {
                         "type": "object",
                         "properties": {
                             "quote": { "type": "string" },
-                            "proposed": { "type": "string" }
+                            "proposed": {
+                                "type": "string",
+                                "description": if en {
+                                    "ONLY the ready-to-insert replacement text (same register, comparable length to the quote) — NEVER your opinion, an explanation, or a paraphrase like \"I think the speaker means...\". Exactly \"?\" if you have no reliable guess."
+                                } else {
+                                    "UNIQUEMENT le texte de remplacement prêt à insérer (même registre, longueur comparable à la citation) — JAMAIS ton avis, une explication ou une reformulation type « je pense que… ». Exactement « ? » si tu n'as aucune proposition fiable."
+                                }
+                            }
                         },
                         "required": ["quote", "proposed"]
                     },

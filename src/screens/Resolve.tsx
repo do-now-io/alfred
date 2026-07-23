@@ -376,12 +376,23 @@ export default function Resolve() {
           {unclear.map((u, i) => {
             const status = unclearStatus[i] ?? "pending";
             if (status !== "pending") return <ResolvedRow key={`u${i}`} label={status === "applied" ? t("resolve.unclear.applied") : t("resolve.unclear.skipped")} onUndo={() => setUnclearStatus((s) => ({ ...s, [i]: "pending" }))} />;
+            // Claude renvoie exactement "?" quand il n'a aucune proposition
+            // fiable (consigne côté analyse, feedback tests) — pré-remplir le
+            // champ avec ce "?" littéral inviterait à l'insérer par erreur ;
+            // on part d'un champ vide avec un indice à la place.
+            const isUnsure = u.proposed.trim() === "?";
+            const value = unclearEdit[i] ?? (isUnsure ? "" : u.proposed);
             return (
               <div key={`u${i}`} style={card}>
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", fontStyle: "italic" }}>« {u.quote} »</div>
-                <input value={unclearEdit[i] ?? u.proposed} onChange={(e) => setUnclearEdit((s) => ({ ...s, [i]: e.target.value }))} style={smallInput} />
+                <input
+                  value={value}
+                  onChange={(e) => setUnclearEdit((s) => ({ ...s, [i]: e.target.value }))}
+                  placeholder={isUnsure ? t("resolve.unclear.unsurePlaceholder") : undefined}
+                  style={smallInput}
+                />
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <button onClick={() => replaceUnclear(i, u)} style={actionBtn(true)}><MdCheck /> {t("resolve.unclear.reformulate")}</button>
+                  <button onClick={() => replaceUnclear(i, u)} disabled={!value.trim()} style={{ ...actionBtn(true), opacity: value.trim() ? 1 : 0.5 }}><MdCheck /> {t("resolve.unclear.reformulate")}</button>
                   <button onClick={() => setUnclearStatus((s) => ({ ...s, [i]: "skipped" }))} style={actionBtn()}><MdClose /> {t("resolve.unclear.leave")}</button>
                   <ReplayButton start={u.start} end={u.end} play={play} pause={pause} ready={ready} playing={playing} isActive={activeStart === u.start} />
                 </div>

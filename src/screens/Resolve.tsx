@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { MdCheck, MdClose, MdVolumeUp, MdPause, MdReplay, MdAutoFixHigh, MdPersonOutline, MdHelpOutline, MdLightbulbOutline } from "react-icons/md";
+import { MdCheck, MdClose, MdVolumeUp, MdPause, MdReplay, MdAutoFixHigh, MdPersonOutline, MdHelpOutline, MdLightbulbOutline, MdInfoOutline } from "react-icons/md";
 import { useResolveStore } from "../store/resolveStore";
 import { useTourStore } from "../store/tourStore";
 import type { NoteFile } from "../bindings/NoteFile";
@@ -385,6 +385,19 @@ export default function Resolve() {
             return (
               <div key={`u${i}`} style={card}>
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", fontStyle: "italic" }}>« {u.quote} »</div>
+                {u.comment && (
+                  <div
+                    title={t("resolve.unclear.commentTitle")}
+                    style={{
+                      display: "flex", alignItems: "flex-start", gap: 5,
+                      fontSize: 11.5, color: "var(--text-secondary)", lineHeight: 1.4,
+                      background: "var(--active-bg)", borderRadius: 6, padding: "4px 7px",
+                    }}
+                  >
+                    <MdInfoOutline size={13} style={{ flexShrink: 0, marginTop: 1, color: "var(--accent)" }} />
+                    <span>{u.comment}</span>
+                  </div>
+                )}
                 <input
                   value={value}
                   onChange={(e) => setUnclearEdit((s) => ({ ...s, [i]: e.target.value }))}

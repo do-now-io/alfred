@@ -3,4 +3,12 @@
 /**
  * An important but unclear sentence → proposed understanding to confirm.
  */
-export type UnclearSentence = { quote: string, proposed: string, start: number | null, end: number | null, };
+export type UnclearSentence = { quote: string, proposed: string, 
+/**
+ * Le RAISONNEMENT de Claude (spec/17 §3, feedback tests) — séparé de
+ * `proposed` (qui reste un texte de remplacement propre, sans commentaire)
+ * pour aider l'humain à trancher sans polluer ce qui serait inséré dans
+ * la transcription si on clique « Reformuler ». Affiché en indice, pas
+ * pré-rempli dans le champ éditable.
+ */
+comment: string | null, start: number | null, end: number | null, };

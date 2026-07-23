@@ -54,6 +54,7 @@ export default {
       reformulate: "Reformuler",
       leave: "Laisser",
       unsurePlaceholder: "Alfred n'est pas sûr — proposez votre correction",
+      commentTitle: "Raisonnement d'Alfred — jamais inséré dans le texte",
     },
     tasks: {
       group: "Responsable manquant",
@@ -124,6 +125,7 @@ export default {
       reformulate: "Rephrase",
       leave: "Leave",
       unsurePlaceholder: "Alfred isn't sure — suggest your own correction",
+      commentTitle: "Alfred's reasoning — never inserted into the text",
     },
     tasks: {
       group: "Missing owner",

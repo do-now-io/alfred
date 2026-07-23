@@ -144,6 +144,11 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
      commentaire de Claude n'y a pas sa place). Exactement `?` si Claude n'a
      aucune proposition fiable — l'écran `/resolve` part alors d'un champ
      **vide** avec un indice, plutôt que de pré-remplir le `?` littéral.
+     **`comment` (optionnel, feedback tests)** : le raisonnement de Claude en
+     une phrase (ex. « Contexte technique + prononciation proche : probablement
+     "Kube" plutôt que "cube" ») — affiché à part, en petite info-bulle
+     au-dessus du champ éditable (aide à la décision), **jamais** inséré dans
+     `proposed` ni dans la transcription.
    - `context_addition` : fait appris (ex. « Marie = cheffe de projet »).
 2. **Résolution — un écran, pas un chat** : accepter / rejeter / éditer. Chaque
    `transcription_fix` a un bouton **« 🔊 réécouter »** (WAV `alfred-raw/` +

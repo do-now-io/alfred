@@ -127,6 +127,36 @@ Recording → (Annuler) → Idle (WAV jeté, rien en aval)
 (Plus de panneau de sélection post-arrêt — feedback tests ; voir §Arrêt. La prise
 de **contexte** garde sa revue « Recommencer / Continuer », spec/13.)
 
+### Enregistrer pendant qu'Alfred transcrit/analyse — 📝 à faire (feedback tests)
+
+Constat : impossible de **lancer une nouvelle prise** tant qu'Alfred transcrit ou
+« cogite ». On veut pouvoir **enchaîner** (réunion 2 pendant que la réunion 1 se
+traite).
+
+**Bonne nouvelle : le backend le permet déjà.** `start_recording` ne bloque que
+pendant une **dictée** (pas la transcription) ; la transcription tourne dans un
+**worker en file** (mpsc) → une 2ᵉ prise **s'enfile** derrière (séquentiel, adapté au
+Whisper CPU) ; la capture de la prise 1 est terminée au `stop` (micro libre) et son
+`recording_id` est enfilé **avant** de rendre la main (pas de collision sur le slot
+`active_recording_id`).
+
+**Le blocage est côté front** : l'état d'enregistrement **confond « capture » et
+« traitement »**. Au `stop`, `recording-status-changed` émet `"stopped"` puis l'état
+reste non-`idle` pendant toute la transcription, et le déclencheur
+(`AlfredLogo.handleClick`) **ne démarre que si `recStatus === "idle"`**.
+
+**Correctif (léger, faible risque)** :
+- **Découpler capture ↔ traitement** : l'état de **capture** revient à `idle` **dès
+  que le WAV est capturé** ; la progression transcription/ingestion vit dans
+  l'indicateur **séparé** `alfredStatusStore` (déjà le cas, spec/10). Le déclencheur
+  démarre **dès qu'aucune capture n'est active** (`!isRecording`), même si Alfred
+  « cogite ».
+- **Deux indicateurs coexistent** : la pastille « où Alfred travaille » (prise 1 en
+  traitement) reste visible pendant que la prise 2 enregistre.
+- **Séquentiel assumé** : les transcriptions restent traitées **une par une** (file) ;
+  la parallélisation réelle de Whisper (plusieurs contextes) est **hors v1**, non
+  nécessaire.
+
 Événement émis : `recording-status-changed { status, duration_seconds, volume? }`.
 ✅ Pour la capture micro (`mic_only` et le volet micro de `mixed`), `duration_seconds`
 et `volume` (RMS 0..1) sont émis en direct toutes les ~250 ms — plus de `0` figé.

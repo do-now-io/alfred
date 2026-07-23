@@ -50,16 +50,27 @@ function AlfredLogo() {
   const selectFile = useNotesStore((s) => s.selectFile);
 
   const isRecording = recStatus === "recording" || recStatus === "paused";
+  // Enchaîner pendant qu'Alfred transcrit/analyse (spec/03 § « Enregistrer
+  // pendant qu'Alfred transcrit/analyse », feedback tests) : le backend enfile
+  // déjà une 2e prise sans bloquer (voir `audio::stop_recording`/
+  // `enqueue_processing` dans `lib.rs` — le micro est libre dès le `stop`, la
+  // transcription tourne dans un worker en file). Le seul blocage était ici :
+  // `recStatus` confondait CAPTURE et TRAITEMENT, donc `handleClick` ne
+  // démarrait que si `idle`. Une capture n'est active que sur "recording"/
+  // "paused" — "processing"/"error" ("Alfred transcrit/cogite") n'empêchent
+  // plus de relancer ; "stopping"/"stopped" restent bloquants (transition très
+  // brève, ou revue contexte en attente d'une décision explicite).
+  const canStartNewTake = recStatus === "idle" || recStatus === "processing" || recStatus === "error";
   const busy = butler !== "idle";
 
   const handleClick = () => {
     if (isRecording) {
       stopRecording();
-    } else if (recStatus === "idle") {
+    } else if (canStartNewTake) {
       startRecording();
       navigate("/recording");
     } else {
-      navigate("/recording"); // transcription/ingestion en cours — voir la progression
+      navigate("/recording"); // "stopping"/"stopped" — voir où ça en est
     }
   };
 
@@ -84,7 +95,7 @@ function AlfredLogo() {
 
   const title = isRecording
     ? t("nav.logo.stopRecording")
-    : recStatus === "idle"
+    : canStartNewTake
       ? t("nav.logo.startRecording")
       : t("nav.logo.seeProgress");
 
@@ -130,7 +141,7 @@ function AlfredLogo() {
           }}>
             {hover ? <MdStop /> : <MdMic />}
           </span>
-        ) : hover && recStatus === "idle" ? (
+        ) : hover && canStartNewTake ? (
           <span style={{
             position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
             color: "#fff", fontSize: 34, animation: "alfred-pop 0.15s ease",

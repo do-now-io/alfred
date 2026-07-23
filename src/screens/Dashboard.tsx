@@ -36,6 +36,11 @@ function HeroCard() {
   // Cette carte ne lance que des prises "meeting" (spec/03) : stop_recording les
   // envoie directement en traitement, "stopped" (revue) ne s'y produit jamais.
   const isProcessing = status === "stopping" || status === "processing";
+  // Enchaîner pendant la transcription (spec/03 § « Enregistrer pendant
+  // qu'Alfred transcrit/analyse », feedback tests, même correctif que
+  // `AlfredLogo` dans `App.tsx`) : seule une capture réelle (recording/paused)
+  // doit bloquer une nouvelle prise — "processing"/"error" ne bloquent plus.
+  const canStartNewTake = isIdle || status === "processing" || status === "error";
 
   // Same trigger + destination as the sidebar logo (spec/03): start, then hand
   // off to the guidance page for live feedback + capture tips.
@@ -47,13 +52,13 @@ function HeroCard() {
   return (
     <div
       ref={tourRef}
-      onClick={isIdle ? handleStart : undefined}
+      onClick={canStartNewTake ? handleStart : undefined}
       style={{
         position: "relative",
         background: isRecording ? "#3D0A0A" : "var(--dark-card)",
         borderRadius: 16, padding: "20px 28px",
         display: "flex", alignItems: "center", gap: 20,
-        cursor: isIdle ? "pointer" : "default",
+        cursor: canStartNewTake ? "pointer" : "default",
         transition: "background 0.3s",
       }}
     >

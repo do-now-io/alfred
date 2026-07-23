@@ -127,35 +127,48 @@ Recording → (Annuler) → Idle (WAV jeté, rien en aval)
 (Plus de panneau de sélection post-arrêt — feedback tests ; voir §Arrêt. La prise
 de **contexte** garde sa revue « Recommencer / Continuer », spec/13.)
 
-### Enregistrer pendant qu'Alfred transcrit/analyse — 📝 à faire (feedback tests)
+### Enregistrer pendant qu'Alfred transcrit/analyse — ✅ corrigé (feedback tests)
 
 Constat : impossible de **lancer une nouvelle prise** tant qu'Alfred transcrit ou
 « cogite ». On veut pouvoir **enchaîner** (réunion 2 pendant que la réunion 1 se
 traite).
 
-**Bonne nouvelle : le backend le permet déjà.** `start_recording` ne bloque que
-pendant une **dictée** (pas la transcription) ; la transcription tourne dans un
+**Le backend le permettait déjà**, aucun changement nécessaire côté Rust :
+`audio::start_recording`/`lib.rs::start_recording` ne bloquent que pendant une
+**dictée** (pas la transcription) ; `transcription::enqueue_job` empile dans un
 **worker en file** (mpsc) → une 2ᵉ prise **s'enfile** derrière (séquentiel, adapté au
 Whisper CPU) ; la capture de la prise 1 est terminée au `stop` (micro libre) et son
 `recording_id` est enfilé **avant** de rendre la main (pas de collision sur le slot
 `active_recording_id`).
 
-**Le blocage est côté front** : l'état d'enregistrement **confond « capture » et
-« traitement »**. Au `stop`, `recording-status-changed` émet `"stopped"` puis l'état
-reste non-`idle` pendant toute la transcription, et le déclencheur
-(`AlfredLogo.handleClick`) **ne démarre que si `recStatus === "idle"`**.
+**Diagnostic exact (le blocage était côté front)** : `recordingStore.status`
+(`src/store/recordingStore.ts`) confondait **capture** et **traitement**. Au `stop`,
+`audio::stop_recording` émet `recording-status-changed{status:"stopped"}`, puis
+`lib.rs::stop_recording` (purpose `"meeting"`) enfile `enqueue_processing` qui émet
+`{status:"processing"}` — état qui persiste jusqu'à l'event `transcription-complete`
+(qui, lui, ramène `recordingStore.status` à `"idle"` dans `App.tsx`). Deux
+déclencheurs testaient une égalité stricte sur `"idle"` et bloquaient donc pendant
+toute la fenêtre `"processing"` (= la phase de décodage Whisper — l'ingestion/
+« cogite » qui suit ne touche jamais `recordingStore`, seulement `alfredStatusStore`,
+donc n'était **déjà pas** bloquante) :
+- **`App.tsx` → `AlfredLogo.handleClick`** (logo sidebar) : `else if (recStatus === "idle")`.
+- **`src/screens/Dashboard.tsx` → `HeroCard`** (carte d'accueil) : `onClick={isIdle ? handleStart : undefined}`.
 
-**Correctif (léger, faible risque)** :
-- **Découpler capture ↔ traitement** : l'état de **capture** revient à `idle` **dès
-  que le WAV est capturé** ; la progression transcription/ingestion vit dans
-  l'indicateur **séparé** `alfredStatusStore` (déjà le cas, spec/10). Le déclencheur
-  démarre **dès qu'aucune capture n'est active** (`!isRecording`), même si Alfred
-  « cogite ».
-- **Deux indicateurs coexistent** : la pastille « où Alfred travaille » (prise 1 en
-  traitement) reste visible pendant que la prise 2 enregistre.
-- **Séquentiel assumé** : les transcriptions restent traitées **une par une** (file) ;
-  la parallélisation réelle de Whisper (plusieurs contextes) est **hors v1**, non
-  nécessaire.
+**Correctif appliqué (front uniquement, aucun changement backend/état persisté)** :
+un nouveau dérivé `canStartNewTake` (`recStatus === "idle" || "processing" || "error"`)
+remplace le test `=== "idle"` aux deux endroits ci-dessus — une capture n'est
+réellement active que sur `"recording"`/`"paused"` (`isRecording`, inchangé) ;
+`"stopping"`/`"stopped"` restent bloquants (transition très brève au `stop`, ou revue
+contexte spec/13 en attente d'une décision explicite — pas visés par le constat).
+**Deux indicateurs coexistent déjà** (spec/10) : la pastille « où Alfred travaille »
+(`alfredStatusStore`, alimentée par `transcription-progress`/`ingestion-status-changed`,
+totalement indépendante de `recordingStore`) reste visible sur la prise 1 en
+traitement pendant que la prise 2 enregistre — aucun changement nécessaire là.
+**Séquentiel assumé** : les transcriptions restent traitées **une par une** (file) ;
+la parallélisation réelle de Whisper (plusieurs contextes) est **hors v1**, non
+nécessaire. `src/components/RecordingBar.tsx` et `src/screens/RecordingGuide.tsx`
+n'avaient pas besoin de changement (ils n'affichent la progression que de la prise
+active/en file, jamais de déclencheur bloquant).
 
 Événement émis : `recording-status-changed { status, duration_seconds, volume? }`.
 ✅ Pour la capture micro (`mic_only` et le volet micro de `mixed`), `duration_seconds`

@@ -122,9 +122,9 @@ fn to_todo(t: todo_md::ParsedTask) -> Todo {
 /// Migre le contenu si besoin (spec/06 v2 — anciens en-têtes retirés / tâches
 /// cochées égarées) et persiste le résultat s'il a changé, avant de le
 /// retourner — sans effet une fois le fichier déjà à jour (idempotent).
-async fn read_and_migrate(path: &Path) -> Option<String> {
+async fn read_and_migrate(path: &Path, lang: &str) -> Option<String> {
     let content = read_file(path).await?;
-    let migrated = todo_md::migrate(&content);
+    let migrated = todo_md::migrate(&content, lang);
     if migrated != content {
         let _ = write_file(path, &migrated).await;
     }
@@ -134,7 +134,7 @@ async fn read_and_migrate(path: &Path) -> Option<String> {
 /// Pending tasks: unchecked and not archived, in file order.
 pub async fn get_todos(db: &SqlitePool, vault_root: Option<&Path>) -> Result<Vec<Todo>> {
     let path = resolve_path(db, vault_root).await?;
-    let Some(content) = read_and_migrate(&path).await else {
+    let Some(content) = read_and_migrate(&path, &crate::ai::app_language(db).await).await else {
         return Ok(vec![]); // no Todo.md yet = no tasks
     };
     Ok(todo_md::parse_all(&content)
@@ -161,7 +161,7 @@ pub async fn create_todo(input: &CreateTodoInput, db: &SqlitePool, vault_root: O
         // fiche tâche (`update_todo_fields`).
         project: None,
     };
-    todo_md::append_tasks(root, &rel, std::slice::from_ref(&task), None).await?;
+    todo_md::append_tasks(root, &rel, std::slice::from_ref(&task), None, &crate::ai::app_language(db).await).await?;
 
     // Section cible ≠ « À faire » (ajout rapide Kanban) → déplace la ligne.
     let mut section = "À faire".to_string();
@@ -191,7 +191,7 @@ pub async fn create_todo(input: &CreateTodoInput, db: &SqlitePool, vault_root: O
 /// pour la vue Kanban (spec/06 : colonnes = sections, Archivé compris).
 pub async fn get_all_todos(db: &SqlitePool, vault_root: Option<&Path>) -> Result<Vec<Todo>> {
     let path = resolve_path(db, vault_root).await?;
-    let Some(content) = read_and_migrate(&path).await else {
+    let Some(content) = read_and_migrate(&path, &crate::ai::app_language(db).await).await else {
         return Ok(vec![]);
     };
     Ok(todo_md::parse_all(&content).into_iter().map(to_todo).collect())
@@ -208,7 +208,7 @@ pub async fn move_todo(
 ) -> Result<()> {
     let path = resolve_path(db, vault_root).await?;
     let content = read_file(&path).await.ok_or_else(|| anyhow!("Todo.md introuvable"))?;
-    let new_content = todo_md::move_task(&content, id, section, position)?;
+    let new_content = todo_md::move_task(&content, id, section, position, &crate::ai::app_language(db).await)?;
     write_file(&path, &new_content).await
 }
 
@@ -217,7 +217,7 @@ pub async fn move_todo(
 pub async fn set_todo_checked(id: &str, checked: bool, db: &SqlitePool, vault_root: Option<&Path>) -> Result<()> {
     let path = resolve_path(db, vault_root).await?;
     let content = read_file(&path).await.ok_or_else(|| anyhow!("Todo.md introuvable"))?;
-    let new_content = todo_md::set_checked(&content, id, checked)?;
+    let new_content = todo_md::set_checked(&content, id, checked, &crate::ai::app_language(db).await)?;
     write_file(&path, &new_content).await
 }
 
@@ -225,7 +225,7 @@ pub async fn set_todo_checked(id: &str, checked: bool, db: &SqlitePool, vault_ro
 pub async fn archive_todo(id: &str, db: &SqlitePool, vault_root: Option<&Path>) -> Result<()> {
     let path = resolve_path(db, vault_root).await?;
     let content = read_file(&path).await.ok_or_else(|| anyhow!("Todo.md introuvable"))?;
-    let new_content = todo_md::archive_task(&content, id)?;
+    let new_content = todo_md::archive_task(&content, id, &crate::ai::app_language(db).await)?;
     write_file(&path, &new_content).await
 }
 

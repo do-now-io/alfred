@@ -23,10 +23,11 @@ const SEED_CHAT_CONV_KEY: &str = "starter_content_chat_conversation_id";
 /// `delete_starter_content` scans for it as plain text.
 const SEED_NOTE_MARKER: &str = "alfred_seed: true";
 
-/// Contenu de démarrage par langue (spec/13/21) — le squelette de Todo.md
-/// (`merge_tasks`) reste écrit avec les en-têtes FR internes quel que soit
-/// `app_language` (voir `todo_md.rs`), donc `section` ici reste le libellé FR
-/// stable ; seul le TEXTE (titres de tâches, notes de démo, chat) est localisé.
+/// Contenu de démarrage par langue (spec/13/21) — `section` ici reste le
+/// libellé FR interne stable (identité utilisée par `merge_tasks`/
+/// `insert_in_section`) ; l'en-tête effectivement écrit dans le fichier est
+/// localisé via `todo_md::section_label` au moment de l'insertion (voir
+/// `todo_md.rs` — feedback tests).
 struct SeedContent {
     /// (section FR stable, titre, responsable, cochée) — spec/06.
     tasks: &'static [(&'static str, &'static str, Option<&'static str>, bool)],
@@ -170,7 +171,7 @@ pub async fn seed_starter_content(db: &SqlitePool, vault_root: Option<&Path>) ->
         }
         let existing = tokio::fs::read_to_string(&path).await.ok();
         // Squelette de sections garanti par merge_tasks (aucune tâche ajoutée ici).
-        let (mut content, _) = crate::notes::todo_md::merge_tasks(existing.as_deref(), &[], None);
+        let (mut content, _) = crate::notes::todo_md::merge_tasks(existing.as_deref(), &[], None, &lang);
         for (section, titre, responsable, checked) in seed.tasks {
             let norm = crate::notes::todo_md::normalize_title(titre);
             if content
@@ -179,7 +180,8 @@ pub async fn seed_starter_content(db: &SqlitePool, vault_root: Option<&Path>) ->
             {
                 continue;
             }
-            content = insert_in_section(&content, section, &task_line(titre, *responsable, *checked));
+            let localized_section = crate::notes::todo_md::section_label(section, &lang);
+            content = insert_in_section(&content, &localized_section, &task_line(titre, *responsable, *checked));
         }
         tokio::fs::write(&path, content).await?;
     }

@@ -180,6 +180,17 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
      (`find_intelligence_note_by_recording_id`) avant d'écrire : trouvé →
      **mise à jour en place** (`update_note_file`, même chemin/nom) ; sinon →
      création comme avant.
+   - **✅ Corrigé (feedback tests) — corrections perdues sur la note brute.**
+     Finaliser mettait bien à jour le compte-rendu à partir du texte
+     relu/corrigé, mais ni la note de transcription brute ni
+     `transcriptions.raw_text` n'étaient jamais réécrits avec ce texte —
+     rouvrir la note brute (ou relancer une analyse) montrait encore la
+     sortie Whisper d'origine, corrections perdues. `run_ingestion_core`
+     reporte désormais le texte corrigé sur les deux, dès l'entrée dans la
+     finalisation (avant même l'appel IA) : `transcriptions.raw_text` (UPDATE
+     par `recording_id`) et le corps de la note brute
+     (`update_raw_note_body_by_recording_id`, retrouvée par `recording_id` —
+     fonctionne aussi une fois archivée).
 
 **Jamais d'auto-application** d'une correction.
 

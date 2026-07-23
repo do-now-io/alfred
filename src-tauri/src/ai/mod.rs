@@ -378,6 +378,20 @@ async fn run_ingestion_core(
         return Ok(());
     }
 
+    // Reporte le texte relu/corrigé sur `/resolve` avant tout : sans ça, la
+    // note de transcription brute et `transcriptions.raw_text` gardaient la
+    // sortie Whisper d'origine même après finalisation (spec/17 §3, feedback
+    // tests) — une note rouverte, ou une ré-analyse, perdait les corrections.
+    if let (Some(rid), Some(root)) = (recording_id, vault_root) {
+        let _ = sqlx::query("UPDATE transcriptions SET raw_text = ? WHERE recording_id = ?")
+            .bind(text)
+            .bind(rid)
+            .execute(db)
+            .await;
+        let recording_folder = crate::transcription::recording_folder(db).await;
+        crate::notes::vault::update_raw_note_body_by_recording_id(root, &recording_folder, rid, text).await;
+    }
+
     emit_status("running", "analyzing", None);
 
     // Contexte interne (spec/16) : helps the ingestion spell names/teams right.
@@ -510,7 +524,7 @@ async fn run_ingestion_core(
             // (toujours écrite) — jamais un lien mort.
             let provenance_title = if summary { report_title.as_str() } else { note_title };
             let provenance = Some((provenance_title, report_date.as_str()));
-            match crate::notes::todo_md::append_tasks(vault_root, &todo_rel_path, &tasks, provenance).await {
+            match crate::notes::todo_md::append_tasks(vault_root, &todo_rel_path, &tasks, provenance, &app_language(db).await).await {
                 Ok(n) => {
                     eprintln!("[ingestion] {} task(s) added to {}", n, todo_rel_path);
                     if n > 0 {

@@ -88,6 +88,8 @@ pub struct TaskBlock {
 const SECTIONS: [&str; 4] = ["À faire", "En cours", "Fait", "Archivé"];
 const SECTIONS_EN: [&str; 4] = ["To Do", "In Progress", "Done", "Archived"];
 const TARGET_SECTION: &str = "À faire";
+const NO_PROJECT_FR: &str = "Sans projet";
+const NO_PROJECT_EN: &str = "No project";
 /// Nom interne de la section « fait » (spec/06 v2) — cocher/décocher une
 /// tâche revient à la déplacer entre `TARGET_SECTION` et cette section.
 const DONE_SECTION: &str = "Fait";
@@ -100,6 +102,26 @@ fn canonical_section(name: &str) -> Option<&'static str> {
     SECTIONS.iter().position(|s| s.eq_ignore_ascii_case(name))
         .or_else(|| SECTIONS_EN.iter().position(|s| s.eq_ignore_ascii_case(name)))
         .map(|i| SECTIONS[i])
+}
+
+/// Libellé d'écriture d'une section canonique (FR interne), localisé selon
+/// `app_language` (spec/21, feedback tests) : le fichier prend enfin la
+/// langue de l'appli à l'écriture, pas seulement à la reconnaissance en
+/// lecture (`canonical_section`/`SECTIONS_EN` ci-dessus). Une section perso
+/// (non reconnue) est renvoyée telle quelle, jamais traduite.
+pub(crate) fn section_label(canonical: &str, lang: &str) -> String {
+    if lang == "en" {
+        if let Some(i) = SECTIONS.iter().position(|s| *s == canonical) {
+            return SECTIONS_EN[i].to_string();
+        }
+    }
+    canonical.to_string()
+}
+
+/// Libellé du groupe « sans projet » (spec/06 structuration), localisé comme
+/// `section_label`.
+fn no_project_label(lang: &str) -> &'static str {
+    if lang == "en" { NO_PROJECT_EN } else { NO_PROJECT_FR }
 }
 
 /// Alias de migration (spec/06 v2) : anciens en-têtes **retirés** → section
@@ -323,7 +345,7 @@ fn render_block_lines(block: &TaskBlock) -> Vec<String> {
 /// `provenance` is `Some((source_note, source_date))` (spec/05/06), every
 /// appended task is stamped with it — the ingestion call that produced them.
 /// Returns the new full file content and how many tasks were actually added.
-pub fn merge_tasks(existing: Option<&str>, tasks: &[IngestTask], provenance: Option<(&str, &str)>) -> (String, usize) {
+pub fn merge_tasks(existing: Option<&str>, tasks: &[IngestTask], provenance: Option<(&str, &str)>, lang: &str) -> (String, usize) {
     // section name -> lines already in that section (in original order).
     let mut sections: Vec<(String, Vec<String>)> =
         SECTIONS.iter().map(|s| (s.to_string(), Vec::new())).collect();
@@ -388,13 +410,13 @@ pub fn merge_tasks(existing: Option<&str>, tasks: &[IngestTask], provenance: Opt
     // laissées telles quelles, non concernées par ce regroupement.
     for (name, lines) in sections.iter_mut() {
         if SECTIONS.contains(&name.as_str()) {
-            *lines = group_lines_by_project(lines);
+            *lines = group_lines_by_project(lines, lang);
         }
     }
 
     let mut out = String::new();
     for (name, lines) in &sections {
-        out.push_str(&format!("## {}\n", name));
+        out.push_str(&format!("## {}\n", section_label(name, lang)));
         for line in lines {
             if !line.trim().is_empty() {
                 out.push_str(line);
@@ -420,7 +442,7 @@ pub fn merge_tasks(existing: Option<&str>, tasks: &[IngestTask], provenance: Opt
 /// (jamais préservé tel quel), ce qui rend le résultat auto-cohérent même
 /// après une édition manuelle dans Obsidian qui aurait déplacé une tâche
 /// sous le mauvais groupe sans changer son marqueur `+Projet`.
-fn group_lines_by_project(lines: &[String]) -> Vec<String> {
+fn group_lines_by_project(lines: &[String], lang: &str) -> Vec<String> {
     if lines.is_empty() {
         return Vec::new();
     }
@@ -479,7 +501,7 @@ fn group_lines_by_project(lines: &[String]) -> Vec<String> {
         let mut group: Vec<&Block> = blocks.iter().filter(|b| &b.project == project).collect();
         group.sort_by_key(|b| priority_rank(&b.priority)); // tri stable : ordre d'origine conservé entre égalités
         if show_headers {
-            out.push(format!("### {}", if project.is_empty() { "Sans projet" } else { project }));
+            out.push(format!("### {}", if project.is_empty() { no_project_label(lang) } else { project }));
         }
         for b in group {
             out.extend(b.lines.iter().cloned());
@@ -536,8 +558,8 @@ fn migrate_stray_checked(sections: &mut Vec<(String, Vec<String>)>) {
 /// égarées → `## Fait`) sans ajouter de tâche — appelé au chargement pour que
 /// les fichiers écrits avant spec/06 v2 se corrigent tout seuls dès la
 /// première lecture après mise à jour. Sans effet (idempotent) une fois migré.
-pub fn migrate(content: &str) -> String {
-    merge_tasks(Some(content), &[], None).0
+pub fn migrate(content: &str, lang: &str) -> String {
+    merge_tasks(Some(content), &[], None, lang).0
 }
 
 /// Read `{vault_root}/{todo_rel_path}` (missing file = empty doc), merge `tasks`
@@ -548,6 +570,7 @@ pub async fn append_tasks(
     todo_rel_path: &str,
     tasks: &[IngestTask],
     provenance: Option<(&str, &str)>,
+    lang: &str,
 ) -> Result<usize> {
     if tasks.is_empty() {
         return Ok(0);
@@ -559,7 +582,7 @@ pub async fn append_tasks(
     }
 
     let existing = tokio::fs::read_to_string(&path).await.ok();
-    let (new_content, added) = merge_tasks(existing.as_deref(), tasks, provenance);
+    let (new_content, added) = merge_tasks(existing.as_deref(), tasks, provenance, lang);
 
     if added > 0 {
         tokio::fs::write(&path, new_content).await?;
@@ -680,13 +703,13 @@ fn set_checkbox_only(content: &str, id: &str, checked: bool) -> Result<String> {
 /// `## Fait`, décocher la renvoie dans `## À faire` — plus un simple marqueur
 /// laissé en place. Délègue à `move_task`, qui applique la même bijection
 /// pour le glisser-déposer Kanban (déposer dans `Fait` coche ; en sortir décoche).
-pub fn set_checked(content: &str, id: &str, checked: bool) -> Result<String> {
-    move_task(content, id, if checked { DONE_SECTION } else { TARGET_SECTION }, None)
+pub fn set_checked(content: &str, id: &str, checked: bool, lang: &str) -> Result<String> {
+    move_task(content, id, if checked { DONE_SECTION } else { TARGET_SECTION }, None, lang)
 }
 
 /// Move a task to `## Archivé` (spec/06 "archiver" — nothing is ever deleted).
 /// The whole block (task line + sous-puces/description) moves together.
-pub fn archive_task(content: &str, id: &str) -> Result<String> {
+pub fn archive_task(content: &str, id: &str, lang: &str) -> Result<String> {
     let mut captured: Option<Vec<String>> = None;
     let without = map_task_block(content, id, |block, _, _, _| {
         captured = Some(block.to_vec());
@@ -695,8 +718,8 @@ pub fn archive_task(content: &str, id: &str) -> Result<String> {
     let block = captured.expect("map_task_block found the task");
 
     // Re-parse sections and append to Archivé (created by merge_tasks if absent).
-    let (mut out, _) = merge_tasks(Some(&without), &[], None);
-    if let Some(pos) = out.find("## Archivé") {
+    let (mut out, _) = merge_tasks(Some(&without), &[], None, lang);
+    if let Some(pos) = out.find("## Archivé").or_else(|| out.find("## Archived")) {
         let insert_at = out[pos..].find('\n').map(|i| pos + i + 1).unwrap_or(out.len());
         let inserted = block.iter().map(|l| format!("{}\n", l)).collect::<String>();
         out.insert_str(insert_at, &inserted);
@@ -729,7 +752,7 @@ pub fn remove_task(content: &str, id: &str) -> Result<String> {
 /// tâche ; en sortir vers une colonne de travail la décoche. `Archivé` est un
 /// cas à part — une tâche y garde son état cochée/non cochée tel qu'il était
 /// (spec/06 : « Archivé ≠ Fait, cochée ou non »).
-pub fn move_task(content: &str, id: &str, section: &str, position: Option<usize>) -> Result<String> {
+pub fn move_task(content: &str, id: &str, section: &str, position: Option<usize>, lang: &str) -> Result<String> {
     let section = section.trim();
     if section.is_empty() {
         return Err(anyhow!("Section cible vide"));
@@ -761,8 +784,8 @@ pub fn move_task(content: &str, id: &str, section: &str, position: Option<usize>
     let block = captured.expect("map_task_block found the task");
 
     // 2. Normaliser les sections (squelette garanti), puis insérer dans la cible.
-    let (normalized, _) = merge_tasks(Some(&without), &[], None);
-    let heading = format!("## {}", target_canonical);
+    let (normalized, _) = merge_tasks(Some(&without), &[], None, lang);
+    let heading = format!("## {}", section_label(target_canonical, lang));
     let mut out: Vec<String> = Vec::new();
     let mut inserted = false;
     let mut in_target = false;
@@ -781,7 +804,15 @@ pub fn move_task(content: &str, id: &str, section: &str, position: Option<usize>
                 out.push(String::new());
                 inserted = true;
             }
-            in_target = l.trim() == heading;
+            // Comparaison via `canonical_section` (pas la chaîne littérale) :
+            // `normalized` porte les en-têtes localisés (spec/21, feedback
+            // tests), donc seul l'identifiant FR interne est stable ici.
+            in_target = l
+                .trim()
+                .strip_prefix("## ")
+                .map(|n| canonical_section(n.trim()).or_else(|| migration_alias(n.trim())).unwrap_or(n.trim()))
+                .map(|c| c == target_canonical)
+                .unwrap_or(false);
             task_index = 0;
             out.push(l.to_string());
             continue;
@@ -854,7 +885,7 @@ mod tests {
 
     #[test]
     fn creates_skeleton_when_missing() {
-        let (out, added) = merge_tasks(None, &[task("Relire le contrat", Some("Jean"), Some("2026-07-10"))], None);
+        let (out, added) = merge_tasks(None, &[task("Relire le contrat", Some("Jean"), Some("2026-07-10"))], None, "fr");
         assert_eq!(added, 1);
         assert!(out.contains("## Fait\n"));
         assert!(out.contains("## À faire\n"));
@@ -863,11 +894,42 @@ mod tests {
     }
 
     #[test]
+    fn writes_headers_localized_to_app_language() {
+        // Feedback tests : le fichier doit enfin prendre la langue de l'appli
+        // à l'écriture, pas seulement la reconnaître en lecture.
+        let (out, _) = merge_tasks(None, &[task("Read the contract", Some("Jean"), None)], None, "en");
+        assert!(out.contains("## To Do\n"), "should write the EN header:\n{out}");
+        assert!(out.contains("## In Progress\n"));
+        assert!(out.contains("## Done\n"));
+        assert!(out.contains("## Archived\n"));
+        assert!(!out.contains("À faire"), "no FR header should leak through:\n{out}");
+
+        // Round-trip : un fichier déjà écrit en anglais reste stable
+        // (`canonical_section` le reconnaît, `section_label` le réécrit pareil).
+        assert_eq!(migrate(&out, "en"), out);
+
+        // Move/archive/set_checked must localize the SAME way, not just merge_tasks.
+        let id = normalize_title("Read the contract");
+        let moved = move_task(&out, &id, "En cours", None, "en").unwrap();
+        assert!(moved.contains("## In Progress\n"));
+        let checked_pos = moved.find("- [ ] Read the contract").unwrap();
+        let in_progress_pos = moved.find("## In Progress").unwrap();
+        assert!(checked_pos > in_progress_pos, "task should sit under In Progress:\n{moved}");
+
+        let archived = archive_task(&out, &id, "en").unwrap();
+        assert!(archived.contains("## Archived\n"));
+        let archive_pos = archived.find("## Archived").unwrap();
+        let task_pos = archived.find("Read the contract").unwrap();
+        assert!(task_pos > archive_pos, "task should sit under Archived:\n{archived}");
+    }
+
+    #[test]
     fn stamps_provenance_on_ingested_tasks() {
         let (out, added) = merge_tasks(
             None,
             &[task("Envoyer le rapport", None, None)],
             Some(("Réunion Flexiflit — migration GKE", "2026-07-01")),
+            "fr",
         );
         assert_eq!(added, 1);
         assert!(out.contains("- [ ] Envoyer le rapport — [[Réunion Flexiflit — migration GKE]] (2026-07-01)"));
@@ -881,7 +943,7 @@ mod tests {
             echeance: None,
             project: Some("Refonte Site".into()),
         };
-        let (out, added) = merge_tasks(None, &[ingested], Some(("Réunion kickoff", "2026-07-21")));
+        let (out, added) = merge_tasks(None, &[ingested], Some(("Réunion kickoff", "2026-07-21")), "fr");
         assert_eq!(added, 1);
         assert!(out.contains("- [ ] Envoyer le rapport — @Jean — +Refonte Site — [[Réunion kickoff]] (2026-07-21)"));
         // Round-trip : la ligne écrite doit se relire avec le même projet.
@@ -892,7 +954,7 @@ mod tests {
     #[test]
     fn dedups_across_sections_by_normalized_title() {
         let existing = "## En cours\n- [ ] Relire   le contrat — @Jean\n\n## À faire\n\n## Fait\n\n## Archivé\n";
-        let (out, added) = merge_tasks(Some(existing), &[task("relire le contrat", None, None)], None);
+        let (out, added) = merge_tasks(Some(existing), &[task("relire le contrat", None, None)], None, "fr");
         assert_eq!(added, 0);
         assert_eq!(out.matches("relire le contrat").count() + out.matches("Relire   le contrat").count(), 1);
     }
@@ -950,13 +1012,13 @@ mod tests {
     #[test]
     fn checking_moves_to_fait_and_unchecking_moves_back_to_a_faire() {
         let content = "## À faire\n- [ ] Relire le contrat — @Jean\n";
-        let done = set_checked(content, &normalize_title("Relire le contrat"), true).unwrap();
+        let done = set_checked(content, &normalize_title("Relire le contrat"), true, "fr").unwrap();
         assert!(done.contains("- [x] Relire le contrat — @Jean"));
         let fait_pos = done.find("## Fait").unwrap();
         let task_pos = done.find("- [x] Relire le contrat").unwrap();
         assert!(task_pos > fait_pos, "checked task should now live under Fait:\n{done}");
 
-        let undone = set_checked(&done, &normalize_title("Relire le contrat"), false).unwrap();
+        let undone = set_checked(&done, &normalize_title("Relire le contrat"), false, "fr").unwrap();
         assert!(undone.contains("- [ ] Relire le contrat — @Jean"));
         let a_faire_pos = undone.find("## À faire").unwrap();
         let task_pos = undone.find("- [ ] Relire le contrat").unwrap();
@@ -966,7 +1028,7 @@ mod tests {
     #[test]
     fn archives_to_archive_section_with_block() {
         let content = "## À faire\n- [ ] Relire le contrat\n  - une sous-puce\n\n## Archivé\n- [ ] Déjà là\n";
-        let out = archive_task(content, &normalize_title("Relire le contrat")).unwrap();
+        let out = archive_task(content, &normalize_title("Relire le contrat"), "fr").unwrap();
         let archive_pos = out.find("## Archivé").unwrap();
         let task_pos = out.find("- [ ] Relire le contrat").unwrap();
         assert!(task_pos > archive_pos, "task should now live under Archivé:\n{out}");
@@ -1002,7 +1064,7 @@ mod tests {
     #[test]
     fn moves_between_sections_keeping_fields_and_block() {
         let content = "## Fait\n\n## En cours\n\n## À faire\n- [x] Relire le contrat — @Jean — 📅 2026-07-10\n  - une note\n- [ ] Autre tâche\n\n## Archivé\n";
-        let out = move_task(content, &normalize_title("Relire le contrat"), "En cours", None).unwrap();
+        let out = move_task(content, &normalize_title("Relire le contrat"), "En cours", None, "fr").unwrap();
         let en_cours = out.find("## En cours").unwrap();
         let fait = out.find("## Fait").unwrap();
         let pos = out.find("- [x] Relire le contrat — @Jean — 📅 2026-07-10").unwrap();
@@ -1016,7 +1078,7 @@ mod tests {
     #[test]
     fn moves_to_position_within_section() {
         let content = "## En cours\n- [ ] A\n- [ ] B\n\n## À faire\n- [ ] C\n";
-        let out = move_task(content, &normalize_title("C"), "En cours", Some(1)).unwrap();
+        let out = move_task(content, &normalize_title("C"), "En cours", Some(1), "fr").unwrap();
         let a = out.find("- [ ] A").unwrap();
         let b = out.find("- [ ] B").unwrap();
         let c = out.find("- [ ] C").unwrap();
@@ -1026,7 +1088,7 @@ mod tests {
     #[test]
     fn move_to_same_section_reorders() {
         let content = "## À faire\n- [ ] A\n- [ ] B\n- [ ] C\n";
-        let out = move_task(content, &normalize_title("C"), "À faire", Some(0)).unwrap();
+        let out = move_task(content, &normalize_title("C"), "À faire", Some(0), "fr").unwrap();
         let a = out.find("- [ ] A").unwrap();
         let c = out.find("- [ ] C").unwrap();
         assert!(c < a, "C should now be first:\n{out}");
@@ -1035,7 +1097,7 @@ mod tests {
     #[test]
     fn unknown_id_errors() {
         let content = "## À faire\n- [ ] Une tâche\n";
-        assert!(set_checked(content, "inexistante", true).is_err());
+        assert!(set_checked(content, "inexistante", true, "fr").is_err());
     }
 
     #[test]
@@ -1045,7 +1107,7 @@ mod tests {
         // ci-dessous), sans que "Notes perso" (section perso, jamais reconnue)
         // n'en soit affectée.
         let existing = "## Prioritaire\n- [x] Déjà fait\n\n## En cours\n\n## À faire\n- [ ] Ancienne tâche\n\n## Archivé\n\n## Notes perso\n- pense-bête\n";
-        let (out, added) = merge_tasks(Some(existing), &[task("Nouvelle tâche", None, None)], None);
+        let (out, added) = merge_tasks(Some(existing), &[task("Nouvelle tâche", None, None)], None, "fr");
         assert_eq!(added, 1);
         assert!(out.contains("- [x] Déjà fait"));
         assert!(out.contains("- [ ] Ancienne tâche"));
@@ -1061,7 +1123,7 @@ mod tests {
         // présente, et une tâche cochée oubliée dans En cours (jamais déplacée,
         // faute de notion de section Fait à l'époque).
         let old = "## Prioritaire\n- [ ] Faire le tour d'Alfred — !haute\n\n## En cours\n- [x] Tâche cochée égarée\n\n## À faire\n- [ ] Tâche normale\n\n## Archivé\n- [x] Déjà archivée, cochée\n";
-        let out = migrate(old);
+        let out = migrate(old, "fr");
 
         assert!(!out.contains("## Prioritaire"), "Prioritaire should be gone:\n{out}");
         // "Faire le tour d'Alfred" merges into À faire, keeping its priority.
@@ -1079,7 +1141,7 @@ mod tests {
         assert!(archived_task_pos > archive_pos, "archived task should stay in Archivé:\n{out}");
 
         // Idempotent — migrating twice changes nothing further.
-        assert_eq!(migrate(&out), out);
+        assert_eq!(migrate(&out, "fr"), out);
     }
 
     #[test]
@@ -1090,7 +1152,7 @@ mod tests {
             - [ ] Atlas priorité haute — +Atlas — !haute\n\
             - [ ] Tâche libre sans priorité\n\
             - [ ] Refonte urgente — +Refonte Site — !haute\n";
-        let out = migrate(content);
+        let out = migrate(content, "fr");
 
         let atlas = out.find("### Atlas").unwrap();
         let refonte = out.find("### Refonte Site").unwrap();
@@ -1111,7 +1173,7 @@ mod tests {
         assert!(libre_basse < libre_sans_prio, "basse should sort before no-priority:\n{out}");
 
         // Idempotent.
-        assert_eq!(migrate(&out), out);
+        assert_eq!(migrate(&out, "fr"), out);
     }
 
     #[test]
@@ -1120,7 +1182,7 @@ mod tests {
         // perso qui ne tague jamais de projet) ne doit pas se retrouver
         // encombrée d'un unique en-tête "### Sans projet" inutile.
         let content = "## À faire\n- [ ] Tâche A — !haute\n- [ ] Tâche B — !basse\n";
-        let out = migrate(content);
+        let out = migrate(content, "fr");
         assert!(!out.contains("###"), "single-group section should have no ### header:\n{out}");
         // Priority sort still applies.
         let a = out.find("Tâche A").unwrap();
@@ -1129,7 +1191,7 @@ mod tests {
 
         // Same when every task shares the SAME named project (single group too).
         let content2 = "## À faire\n- [ ] Tâche A — +Atlas — !basse\n- [ ] Tâche B — +Atlas — !haute\n";
-        let out2 = migrate(content2);
+        let out2 = migrate(content2, "fr");
         assert!(!out2.contains("###"), "single-project section should have no ### header:\n{out2}");
     }
 
@@ -1138,7 +1200,7 @@ mod tests {
         let content = "## À faire\n\
             - [ ] Tâche Atlas — +Atlas\n  - une sous-puce\n\
             - [ ] Tâche libre\n";
-        let out = migrate(content);
+        let out = migrate(content, "fr");
         let task_pos = out.find("- [ ] Tâche Atlas").unwrap();
         let sub_pos = out.find("  - une sous-puce").unwrap();
         assert!(sub_pos > task_pos && sub_pos < task_pos + 40, "sub-bullet should stay right after its task:\n{out}");

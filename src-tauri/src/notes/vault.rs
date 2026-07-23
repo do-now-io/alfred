@@ -453,6 +453,37 @@ pub async fn archive_raw_note_by_recording_id(vault_root: &Path, recording_folde
     }
 }
 
+/// Réécrit le CORPS de la note brute de transcription liée à `recording_id`
+/// avec le texte relu/corrigé sur `/resolve` (spec/17 §3, feedback tests) —
+/// sans ça, finaliser une correction mettait bien à jour le compte-rendu mais
+/// rouvrir la note de transcription montrait encore le texte Whisper
+/// d'origine. Statut/frontmatter inchangés (`archive_raw_note_by_recording_id`
+/// s'en occupe séparément) ; no-op silencieux si la note est introuvable.
+pub async fn update_raw_note_body_by_recording_id(
+    vault_root: &Path,
+    recording_folder: &str,
+    recording_id: &str,
+    corrected_body: &str,
+) {
+    let folder = vault_root.join(recording_folder);
+    let Some(path) = find_note_by_recording_id(&folder, recording_id) else {
+        eprintln!("[ingestion] raw note for recording_id={} not found, skipping body update", recording_id);
+        return;
+    };
+
+    match get_note_file(&path).await {
+        Ok(note) => {
+            if note.body.trim() == corrected_body.trim() {
+                return; // rien à changer
+            }
+            if let Err(e) = update_note_file(&path, note.metadata, corrected_body).await {
+                eprintln!("[ingestion] failed to persist corrected text on raw note {:?}: {}", path, e);
+            }
+        }
+        Err(e) => eprintln!("[ingestion] failed to read raw note {:?} for correction: {}", path, e),
+    }
+}
+
 pub async fn rename_note_file(old_path: &Path, new_name: &str) -> Result<NoteFile> {
     let safe = sanitize_filename(new_name);
     let new_path = old_path
@@ -558,6 +589,7 @@ pub async fn scaffold_vault(
     recording_folder: &str,
     intelligence_folder: &str,
     todo_rel_path: &str,
+    lang: &str,
 ) -> Result<()> {
     // Nettoyage vestige (spec/07/11, feedback tests) : les vaults réutilisés
     // d'une version antérieure gardent un `raw/` (`raw/audios/`) et parfois
@@ -580,7 +612,7 @@ pub async fn scaffold_vault(
         if let Some(parent) = todo_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        let (skeleton, _) = crate::notes::todo_md::merge_tasks(None, &[], None);
+        let (skeleton, _) = crate::notes::todo_md::merge_tasks(None, &[], None, lang);
         tokio::fs::write(&todo_path, skeleton).await?;
     }
 

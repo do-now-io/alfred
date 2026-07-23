@@ -1,6 +1,6 @@
 [package]
 name = "alfred"
-version = "0.1.0"
+version = "0.2.0"
 description = "Alfred — personal assistant desktop app"
 authors = ["Tanguy"]
 edition = "2021"

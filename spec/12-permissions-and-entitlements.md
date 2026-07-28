@@ -45,20 +45,32 @@ loopback AlfredIA / Stripe).
 
 - **macOS** : « Developer ID Application » + **notarisation** + staple (hors App Store).
   **Reste à faire.**
-- **Windows** : ✅ **fait.** Certificat OV **DONOW** (SSL.com, validé Kbis) signé via
-  **eSigner** — signature **cloud HSM**, la clé privée ne quitte jamais SSL.com (pas
-  de token USB/fichier `.pfx`, requis depuis juin 2023 par le CA/Browser Forum pour
-  tout certificat de signature de code). Câblé dans `bundle.windows.signCommand`
-  (`tauri.conf.json`) → `scripts/sign-windows.ps1` (télécharge/appelle `CodeSignTool`,
-  l'outil officiel SSL.com) sur chaque binaire produit (exe app + installeur NSIS/MSI).
+- **Windows** : ✅ **fait, vérifié en réel.** Certificat OV **DONOW** (SSL.com, validé
+  Kbis) signé via **eSigner** — signature **cloud HSM**, la clé privée ne quitte
+  jamais SSL.com (pas de token USB/fichier `.pfx`, requis depuis juin 2023 par le
+  CA/Browser Forum pour tout certificat de signature de code).
+
+  **Étape CI à part** (`scripts/sign-windows.ps1`, appelé juste après `tauri build`
+  dans `desktop-build.yml`) plutôt qu'un hook `bundle.windows.signCommand` de
+  `tauri.conf.json` — abandonné après plusieurs échecs opaques en CI (`failed to run
+  powershell`, identique sur 4 configurations différentes, sans log exploitable ;
+  probable bug/mauvaise remontée d'erreur du hook interne de Tauri). Le script
+  télécharge/appelle `CodeSignTool` (outil officiel SSL.com, résolution dynamique de
+  l'asset via l'API GitHub releases — embarque son propre JDK) sur chaque binaire
+  produit (exe app + installeur NSIS/MSI), **dans un dossier de staging séparé**
+  (CodeSignTool refuse de signer si `output_dir_path` == le dossier du fichier
+  d'entrée) puis écrase l'original. Détection d'échec par **hash SHA256 avant/après**
+  plutôt que le code de sortie : `CodeSignTool.bat` renvoie **exit 0 même en échec**
+  (testé avec identifiants invalides et format non supporté).
+
   Piloté par 4 secrets GitHub Actions (`ESIGNER_USERNAME`/`PASSWORD`/`TOTP_SECRET`/
-  `CREDENTIAL_ID`) injectés dans `desktop-build.yml` — **no-op silencieux** si absents
-  (build local non signé, comportement inchangé pour les contributeurs sans accès aux
-  secrets). Avec un certificat **OV** (pas EV), SmartScreen affiche encore un
-  avertissement (avec le nom de l'éditeur, plus « Unknown publisher ») jusqu'à ce que
-  l'exécutable accumule assez de téléchargements — compromis de coût accepté (spec/12,
-  décision explicite). **Premier run CI signé pas encore vérifié** — à confirmer au
-  prochain build déclenché.
+  `CREDENTIAL_ID`) — **no-op silencieux** si absents (build local non signé,
+  comportement inchangé pour les contributeurs sans accès aux secrets). Avec un
+  certificat **OV** (pas EV), SmartScreen affiche encore un avertissement — **vérifié**
+  sur l'installeur `v0.2.8` : l'éditeur affiché est bien **« DONOW »** (plus « Unknown
+  publisher ») ; l'avertissement lui-même disparaîtra progressivement avec
+  l'accumulation de réputation (téléchargements/exécutions) — compromis de coût
+  accepté (décision explicite, pas un certificat EV).
 
 ## Note bug — ✅ fait
 

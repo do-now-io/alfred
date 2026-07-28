@@ -118,13 +118,9 @@ jobs:
       # `bundle.windows.signCommand` (tauri.conf.json) invoque
       # scripts/sign-windows.ps1 sur chaque binaire produit, no-op si absents
       # (Linux/macOS n'en ont pas besoin, le script ne s'exécute pas sur ces OS).
-      # Pas de `shell: bash` forcé ici (contrairement aux autres étapes) : sous
-      # Git Bash, PATH est réécrit en format POSIX et le sous-processus Rust qui
-      # spawn `powershell` (signCommand) ne le résout plus via le PATH Windows
-      # natif ("failed to run powershell", CI v0.2.2/v0.2.3). Le shell par défaut
-      # (pwsh sur Windows, bash sur Linux/macOS) garde un PATH natif partout — la
-      # commande elle-même (`npm run tauri -- build`) ne dépend d'aucune syntaxe
-      # shell spécifique.
+      # Pas de `shell: bash` forcé ici (contrairement aux autres étapes) — la
+      # commande (`npm run tauri -- build`) ne dépend d'aucune syntaxe shell
+      # spécifique, et ça ne coûte rien de garder le shell par défaut de l'OS.
       - name: Build Tauri
         env:
           ALFRED_METRICS_APP_KEY: ${{ secrets.ALFRED_METRICS_APP_KEY }}

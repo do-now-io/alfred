@@ -6,7 +6,7 @@ import { useT } from "../i18n";
 
 // Feedback (spec/14) — text + optional images (paste screenshots) + optional
 // contact email, sent via the `submit_feedback` command (Rust owns the network
-// call — spec/15 §E, stores in Postgres, no email/S3 in v1).
+// call — private alfred-backend repo §E, stores in Postgres, no email/S3 in v1).
 
 type Category = "bug" | "feature" | "praise";
 

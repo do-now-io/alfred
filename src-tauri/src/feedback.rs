@@ -1,5 +1,5 @@
 //! Feedback submission (spec/14) — `POST /feedback` on the AlfredIA backend
-//! (spec/15 §E, stores in Postgres). Backend-owned I/O per architecture
+//! (private alfred-backend repo §E, stores in Postgres). Backend-owned I/O per architecture
 //! principle: the frontend never calls the network directly.
 
 use anyhow::{anyhow, Result};

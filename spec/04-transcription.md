@@ -49,7 +49,7 @@ note dans le vault**, puis déclenche l'IA (ingestion, spec 05).
     message, cancelled }`.
   - **Garde anti-doublon** (registre en mémoire, un téléchargement par modèle) +
     **annulation** via `cancel_model_download(size)` (supprime le `.part`).
-  - Metrics (spec/15) : `model_download_started` / `model_download_completed` /
+  - Metrics (backend privé `alfred-backend`) : `model_download_started` / `model_download_completed` /
     `model_download_failed` `{ model }`.
 - **État des modèles** : `list_whisper_models() -> WhisperModelInfo[]`
   (`{ name, size_mb, recommended, status: "downloaded" | "downloading" |

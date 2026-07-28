@@ -641,7 +641,7 @@ async fn subscribe_alfredia(
         .map_err(|e| e.to_string())
 }
 
-/// Ouvre le portail de gestion d'abonnement Stripe (spec/15/11) — gérer les
+/// Ouvre le portail de gestion d'abonnement Stripe (backend privé alfred-backend, spec/11) — gérer les
 /// moyens de paiement, changer de formule, ou **annuler**.
 #[tauri::command]
 async fn manage_alfredia_subscription(state: tauri::State<'_, AppState>) -> Result<(), String> {
@@ -1444,7 +1444,7 @@ async fn run_ingest(
     .map_err(|e| e.to_string())
 }
 
-/// Frontend-callable anonymous metrics (spec/15 §D) — thin wrapper over
+/// Frontend-callable anonymous metrics (backend privé alfred-backend §D) — thin wrapper over
 /// `metrics::send`, for events only the UI can see (onboarding funnel, guided
 /// tour, `/resolve` outcome). Fire-and-forget, same as the Rust-side call sites.
 #[tauri::command]
@@ -1687,7 +1687,7 @@ pub fn run() {
 
             app.manage(state);
 
-            // Anonymous usage metrics (spec/15): install_id + install_created/app_launched.
+            // Anonymous usage metrics (backend privé alfred-backend): install_id + install_created/app_launched.
             {
                 let db_metrics = db.clone();
                 let app_version = app.package_info().version.to_string();

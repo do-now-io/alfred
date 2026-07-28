@@ -215,7 +215,7 @@ pub async fn run_transcription_worker(mut rx: mpsc::Receiver<TranscriptionJob>) 
                 "message": e.to_string(),
                 "model_missing": model_missing,
             }));
-            // Message tronqué par prudence (anonyme, spec/15 §D) — les erreurs
+            // Message tronqué par prudence (anonyme, backend privé alfred-backend §D) — les erreurs
             // observées ici sont de courts messages internes whisper.cpp, mais
             // on borne quand même la taille au cas où.
             let msg: String = e.to_string().chars().take(200).collect();

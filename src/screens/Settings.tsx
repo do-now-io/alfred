@@ -265,7 +265,7 @@ function SecretInput({
 }
 
 // ─── AI access section (personal key / AlfredIA subscription) ──────────────────
-// Two modes (spec/05, spec/15): "byo" = user's own Anthropic key, "alfredia" =
+// Two modes (spec/05, backend privé alfred-backend): "byo" = user's own Anthropic key, "alfredia" =
 // our subscription proxy. Subscribing opens Stripe Checkout in the browser; the
 // token comes back via loopback (subscribe_alfredia) — zero copy-paste.
 

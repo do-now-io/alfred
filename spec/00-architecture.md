@@ -13,7 +13,7 @@ Le backend desktop est en **Rust**, le frontend est une WebView affichant du
 |---|---|
 | Rust (backend desktop) | OS + réseau : audio, fichiers/vault, SQLite, secrets, HTTP sortant (Claude ou proxy AlfredIA) |
 | Frontend (WebView) | Affichage + état d'UI uniquement — aucune logique métier, aucun secret, aucun appel API externe |
-| Backend Alfred (serveur) | Proxy Claude (AlfredIA) + collecte des metrics (voir spec/15) |
+| Backend Alfred (serveur) | Proxy Claude (AlfredIA) + collecte des metrics (repo privé `alfred-backend`) |
 
 Le frontend dérive ses **données** du backend (via `invoke` + événements) et
 garde un **état d'UI** local (navigation, sélection) via Zustand + react-router.
@@ -38,7 +38,7 @@ Identifiant : **`com.alfred.app`**.
 ## Accès IA — deux modes
 
 - **Clé perso** : l'app appelle `https://api.anthropic.com/v1/messages` avec la clé de l'utilisateur (`secrets.json`).
-- **AlfredIA** : l'app appelle **notre proxy** avec un token AlfredIA ; le proxy détient la vraie clé Anthropic. Corps de requête identique → seuls **l'URL de base + l'en-tête d'auth** changent (voir spec/05 et spec/15).
+- **AlfredIA** : l'app appelle **notre proxy** avec un token AlfredIA ; le proxy détient la vraie clé Anthropic. Corps de requête identique → seuls **l'URL de base + l'en-tête d'auth** changent (voir spec/05 ; le proxy vit dans le repo privé `alfred-backend`).
 
 ## Modèle de processus
 
@@ -53,7 +53,7 @@ Identifiant : **`com.alfred.app`**.
 └───────────┼──────────────────────────────────────────────────────────────┘
             │ HTTPS (clé perso → Anthropic  |  AlfredIA → proxy)
             ▼
-   Anthropic API      ◄──────  Backend Alfred (proxy + metrics, spec/15)
+   Anthropic API      ◄──────  Backend Alfred (proxy + metrics, repo privé alfred-backend)
 ```
 
 ## Convention IPC
@@ -104,7 +104,7 @@ Fichier JSON local (module `keychain`, nom historique). Inventaire v1 :
 | Compte | Contenu |
 |---|---|
 | `claude_api_key` | Clé Anthropic (mode « clé perso ») |
-| `alfredia_token` | Token AlfredIA (mode AlfredIA ; obtenu via Stripe + loopback, spec/15) |
+| `alfredia_token` | Token AlfredIA (mode AlfredIA ; obtenu via Stripe + loopback, repo privé `alfred-backend`) |
 
 > **Compromis v1 :** secrets en quasi-clair dans un fichier. OK pour un petit
 > groupe sur leurs machines. Chiffrement natif OS → « Plus tard ».
@@ -149,7 +149,7 @@ alfred/
 │   └── bindings/
 ├── src/{screens,components,store,bindings}/
 ├── migrations/ · capabilities/ · tauri.conf.json
-└── (backend Alfred = service séparé, spec/15)
+└── (backend Alfred = service séparé, repo privé alfred-backend)
 ```
 
 ## Hors v1 / plus tard

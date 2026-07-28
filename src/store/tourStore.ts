@@ -60,7 +60,7 @@ const persistCompleted = () => {
   invoke("set_config", { key: "tour_completed", value: "true" }).catch(() => {});
 };
 
-/** Metrics (spec/15 §D) — entonnoir de la visite guidée : démarrée, terminée,
+/** Metrics (backend privé alfred-backend §D) — entonnoir de la visite guidée : démarrée, terminée,
  *  ou passée (avec l'étape où elle a été passée, pour voir où on décroche). */
 const track = (event: string, props: Record<string, unknown> = {}) => {
   invoke("track_event", { event, props }).catch(() => {});

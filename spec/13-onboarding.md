@@ -52,8 +52,8 @@ explicitement remis à `false` dans `finishOnboarding`/`finishOnboardingReplay`
    - **Ma clé Claude** → coller la clé (`save_secret('claude_api_key')` + `test_api_key`).
    - **Abonnement AlfredIA** — 20 €/mois (ou annuel), **14 jours d'essai gratuit**
      (✅ fait) → bouton « Commencer l'essai gratuit » → Stripe + loopback
-     (spec/15) → `alfredia_token` récupéré automatiquement. Accès immédiat pendant
-     l'essai ; débit à la fin des 14 jours si non annulé (facturation : spec/15).
+     (backend privé `alfred-backend`) → `alfredia_token` récupéré automatiquement. Accès immédiat pendant
+     l'essai ; débit à la fin des 14 jours si non annulé (facturation gérée par le backend privé).
 7. **Micro** — test de permission (`test_microphone` ; déclenche le prompt macOS ;
    sur Windows, ouverture WASAPI).
 8. **Contexte** (🚧 pas de carte dédiée dans le wizard — l'annonce équivalente
@@ -374,7 +374,7 @@ directement) après validation du contexte en mode visite guidée.
 
 `get_vault_path` / `set_vault_path` / `pick_vault_folder` (+ scaffolding dossiers) ·
 `save_secret` / `get_secret` (`claude_api_key`) · `test_api_key` · `subscribe_alfredia`
-(spec/15) · `test_microphone` · **`list_whisper_models` / `download_model` /
+(backend privé `alfred-backend`) · `test_microphone` · **`list_whisper_models` / `download_model` /
 `cancel_model_download`** (✅ — étape « Modèle de transcription », spec/04) ·
 `get_config` / `set_config` (`onboarding_completed`,
 `tour_completed`) · `start_recording(purpose = "meeting" | "context")` /

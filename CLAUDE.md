@@ -45,6 +45,6 @@ chacun voie en temps réel ce que l'autre fait.
 
 - Identifiant app : `com.alfred.app`.
 - IA : **API Claude uniquement** (jamais de CLI) — `claude-sonnet-5` (ingestion /
-  chat), `claude-haiku-4-5` ; deux modes d'accès (clé perso / proxy AlfredIA). Voir `spec/05` + `spec/15`.
+  chat), `claude-haiku-4-5` ; deux modes d'accès (clé perso / proxy AlfredIA). Voir `spec/05` ; le proxy/backend AlfredIA vit dans le repo privé `alfred-backend`.
 - Vault : `alfred-raw/` (transcriptions), `alfred-intelligence/` (comptes-rendus +
   `Todo.md`). SQLite = config / état local uniquement.

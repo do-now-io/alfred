@@ -1,4 +1,4 @@
-//! AlfredIA subscription via loopback (spec/15, app side).
+//! AlfredIA subscription via loopback (backend privé alfred-backend, app side).
 //!
 //! Mirrors the OAuth loopback pattern (auth/mod.rs): bind 127.0.0.1 on an
 //! ephemeral port, generate a nonce, send the browser to the backend
@@ -46,7 +46,7 @@ pub async fn subscribe(plan: &str, db: &SqlitePool, app: &tauri::AppHandle) -> R
 }
 
 /// Ask the backend for a Stripe Billing Portal session and open it in the
-/// user's default browser (spec/15/11) — the desktop app never sees Stripe
+/// user's default browser (backend privé alfred-backend, spec/11) — the desktop app never sees Stripe
 /// customer/subscription ids, so this always goes through the backend.
 pub async fn open_billing_portal(http: &reqwest::Client) -> Result<()> {
     let token = keychain::get_secret("alfredia_token")?

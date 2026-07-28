@@ -150,12 +150,15 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
      au-dessus du champ éditable (aide à la décision), **jamais** inséré dans
      `proposed` ni dans la transcription.
    - `context_addition` : fait appris **durable** sur l'univers de l'utilisateur.
-     **📝 Critère à resserrer (feedback tests) :** aujourd'hui Claude propose aussi
-     des faits **ponctuels/propres à la réunion**, qui n'ont **rien à faire dans le
+     **✅ Critère resserré (feedback tests) :** Claude proposait aussi des faits
+     **ponctuels/propres à la réunion**, qui n'ont **rien à faire dans le
      contexte général** → seul le **durable, réutilisable dans les futurs
      enregistrements** doit être proposé. Les faits ponctuels **ne sont pas proposés**
      du tout ici (décidé) — ils vivent dans le **compte-rendu** (et deviennent des
-     **tâches** le cas échéant).
+     **tâches** le cas échéant). Correctif purement prompt (`ANALYZE_SYSTEM` +
+     description du champ `context_additions` dans `analyze_tool`, FR/EN,
+     `src-tauri/src/ai/mod.rs`) : distinction durable/ponctuel + les exemples et
+     le test mental ci-dessous portés mot pour mot dans les deux.
      - ✅ **Durable → contexte** : qui sont les personnes / entreprises et leur
        **rôle/relation** (« Toto est un **nouveau prospect** de DoNow »), ce que fait
        l'entreprise (« DoNow fait de l'**infogérance** »), **vocabulaire/jargon**,

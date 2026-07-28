@@ -1,7 +1,7 @@
 # spec/18 — Partage de notes
 
 > **Statut v1 :** 📝 spec à créer, **rien de codé**. Nouvelle feature **v1**.
-> S'appuie sur le **backend AlfredIA existant** (spec/15) — **aucune nouvelle
+> S'appuie sur le **backend AlfredIA existant** (repo privé `alfred-backend`) — **aucune nouvelle
 > infra**. Volontairement **minimal**.
 
 ## Idée directrice
@@ -42,7 +42,7 @@ Note Markdown (vault)
   `manage_token` → l'URL renvoie **404**.
 - Pas d'expiration en v1 (révocation manuelle). **Cap de taille** (~1 Mo).
 
-## Endpoints backend (spec/15 — même service, mêmes principes)
+## Endpoints backend (repo privé `alfred-backend` — même service, mêmes principes)
 
 Auth par **clé applicative embarquée** (en-tête, comme `/feedback` et `/metrics`)
 → marche pour **tous** les utilisateurs (**clé perso ET AlfredIA**) : le partage
@@ -62,7 +62,7 @@ Auth par **clé applicative embarquée** (en-tête, comme `/feedback` et `/metri
   `created_at TIMESTAMPTZ DEFAULT now()`, `updated_at TIMESTAMPTZ`.
 
 Markdown en `TEXT` — trivial pour nos notes ; **cohérent avec « tout en Postgres »**
-du spec/15 (pas de stockage objet en v1).
+du backend privé (pas de stockage objet en v1).
 
 ## Rendu (viewer)
 
@@ -98,7 +98,7 @@ du spec/15 (pas de stockage objet en v1).
   de partages par `install_id`.
 - `manage_token` livré **une seule fois**, stocké **hashé** côté serveur.
 
-## Configuration (variables d'env Coolify — spec/15)
+## Configuration (variables d'env Coolify — repo privé `alfred-backend`)
 
 | Var | Rôle |
 |---|---|

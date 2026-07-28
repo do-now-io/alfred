@@ -30,16 +30,16 @@ d'une note (Properties, spec/07). Édité ici.
 
 > **Signature de partage (spec/18) — pas fait.** Réutilisation envisagée mais non
 > implémentée : nécessiterait de faire voyager le prénom jusqu'au backend AlfredIA
-> (`backend/`, service séparé) et d'en changer le rendu HTML de la page partagée —
+> (repo privé `alfred-backend`, service séparé) et d'en changer le rendu HTML de la page partagée —
 > hors périmètre de cette tâche (front only), signalé pour une itération dédiée.
 
 **Accès IA** (remplace « APIs ») — mode **clé perso** ou **AlfredIA** :
 - *Clé perso* : saisir `claude_api_key` + **Tester** (`test_api_key`).
 - *AlfredIA* : bouton **Commencer l'essai gratuit — 14 jours** (loopback,
-  spec/15) ; une fois le token reçu, statut affiché **« ✓ Activé »** (✅ fait,
+  backend privé `alfred-backend`) ; une fois le token reçu, statut affiché **« ✓ Activé »** (✅ fait,
   léger), avec bouton **« Gérer l'abonnement »** à côté — ouvre le **portail
   Stripe** (hébergé, hors app) dans le navigateur par défaut : moyen de
-  paiement, changement de formule, **annulation** (✅ fait — spec/15
+  paiement, changement de formule, **annulation** (✅ fait — backend privé
   `POST /subscription/portal`). **Pas fait** : distinguer essai/actif et
   afficher les **jours restants** — nécessiterait un endpoint de statut
   détaillé côté backend (`GET /subscription/status`, pas construit).

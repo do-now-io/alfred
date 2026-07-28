@@ -1,4 +1,4 @@
-//! Anonymous usage metrics (spec/15 §D).
+//! Anonymous usage metrics (backend privé alfred-backend §D).
 //!
 //! Fire-and-forget POSTs to the AlfredIA backend. Always on, no PII: a local
 //! random `install_id` (UUID, stored in config) decoupled from any Stripe
@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 
 const METRICS_URL: &str = "https://api.alfred.do-now.io/metrics";
 
-/// Anti-spam key (spec/15 §D) — baked in at **compile time** from the
+/// Anti-spam key (backend privé alfred-backend §D) — baked in at **compile time** from the
 /// `ALFRED_METRICS_APP_KEY` build env var (set in CI, see
 /// `.github/workflows/desktop-build.yml`), sent back as `x-metrics-key`. Must
 /// match the backend's `METRICS_APP_KEY` (Coolify). Empty/unset in local dev

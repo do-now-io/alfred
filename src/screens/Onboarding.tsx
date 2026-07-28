@@ -410,7 +410,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   // (« Passer » reste actif — spec/13).
   const nextDisabled = finishing || (downloadBusy && current.name === "whisper_model");
 
-  // Entonnoir d'onboarding (metrics, spec/15 §D) : un event par étape vue —
+  // Entonnoir d'onboarding (metrics, backend privé alfred-backend §D) : un event par étape vue —
   // permet de voir où les gens décrochent, en comparant au max `step` atteint
   // par install avant `onboarding_finished` (ou son absence).
   useEffect(() => {

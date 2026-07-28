@@ -3,7 +3,7 @@
 > **Statut v1 :** ✅ fait. Widget rapide (topbar) + formulaire détaillé
 > (`/feedback`) pour recueillir les retours (texte + images), **stockés en
 > Postgres** côté backend avec la **vue courante** (consultation par SQL — pas
-> d'email en v1, voir spec/15 §E).
+> d'email en v1 ; backend dans le repo privé `alfred-backend`, §E).
 
 ## Widget rapide (topbar) — ✅ fait
 
@@ -33,7 +33,7 @@ accessible via le lien du popover. Formulaire (`screens/Feedback.tsx`) :
 
 ## Envoi
 
-Destination : **Postgres** (backend, spec/15 §E) — pas d'email en v1. Transport
+Destination : **Postgres** (backend privé `alfred-backend`, §E) — pas d'email en v1. Transport
 via le backend, `POST /feedback` :
 - Corps : `{ category, text, contact_email?, install_id (anonyme), app_version, os, view?, images[] }`
   (images en base64). `category` ∈ `bug | feature | praise | quick` (`quick` =
@@ -54,7 +54,7 @@ via le backend, `POST /feedback` :
 
 ## Données
 
-- `install_id` **anonyme** (corrélation avec les metrics, spec/15) — lu depuis la
+- `install_id` **anonyme** (corrélation avec les metrics, backend privé `alfred-backend`) — lu depuis la
   config locale (le même que celui utilisé par `metrics.rs`).
 - `contact_email` **optionnel** — seule PII, saisie volontairement par l'utilisateur.
 

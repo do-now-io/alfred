@@ -738,7 +738,7 @@ Sois SÉLECTIF : ne remonte que ce qui est vraiment utile (haute confiance ou vr
 - `transcription_fixes` : un passage probablement MAL TRANSCRIT que tu sais corriger UNIQUEMENT parce que le contexte interne te donne le bon référent (ex. un prénom, un nom de projet, un terme métier). `quote` = le passage douteux recopié mot pour mot depuis la transcription ; `correction` = la version corrigée ; `confidence` entre 0 et 1. N'invente JAMAIS une correction sans référent dans le contexte.
 - `unassigned_tasks` : une tâche à faire clairement énoncée mais SANS responsable identifiable. `task` = la tâche ; `question` = la question à poser (ex. « Qui s'en charge ? »).
 - `unclear_sentences` : une phrase IMPORTANTE mais floue/ambiguë. `quote` = la phrase ; `proposed` = UNIQUEMENT le texte de remplacement prêt à insérer tel quel dans la transcription (même registre, longueur comparable à la citation) — JAMAIS ton avis, une explication ou une reformulation façon « je pense que l'interlocuteur parle de… » : ce texte remplace directement la citation, un commentaire de ta part n'a rien à y faire là-dedans. Si tu n'as AUCUNE proposition fiable, mets exactement `?` — l'humain complètera lui-même. `comment` (optionnel) : LÀ tu peux expliquer ton raisonnement en une phrase courte (ex. « Contexte technique + prononciation proche : probablement "Kube" plutôt que "cube" ») — affiché à part, comme aide à la décision, jamais inséré dans la transcription.
-- `context_additions` : un fait durable appris sur l'univers de l'utilisateur (ex. « Marie = cheffe de projet », « le projet Atlas concerne le client Dupont »). `fact` = le fait, en une ligne."#;
+- `context_additions` : UNIQUEMENT un fait DURABLE et réutilisable sur l'univers de l'utilisateur — jamais un fait ponctuel propre à cette réunion (celui-là vit dans le compte-rendu et, le cas échéant, devient une tâche — ne le propose PAS ici). ✅ Durable → contexte : qui sont les personnes/entreprises et leur rôle/relation (« Toto est un nouveau prospect de DoNow »), ce que fait l'entreprise (« DoNow fait de l'infogérance »), le vocabulaire/jargon métier, les projets en cours et leur nature. ❌ Ponctuel → PAS le contexte : planning et rendez-vous (« la prochaine réunion avec Toto se fera avec Hugo »), décisions/actions de CETTE réunion, chiffres ou états du jour — tout ce qui est vrai « aujourd'hui » mais pas durablement. Test mental avant de proposer : « Est-ce encore utile dans 3 mois pour bien traiter un futur enregistrement ? » Si la réponse est non, ne le propose pas. `fact` = le fait, en une ligne."#;
 
 fn analyze_tool(lang: &str) -> serde_json::Value {
     let en = lang == "en";
@@ -807,7 +807,11 @@ fn analyze_tool(lang: &str) -> serde_json::Value {
                         "properties": { "fact": { "type": "string" } },
                         "required": ["fact"]
                     },
-                    "description": if en { "Durable facts learned about the user's world" } else { "Faits durables appris sur l'univers de l'utilisateur" }
+                    "description": if en {
+                        "ONLY durable, reusable facts about the user's world (who/what/role, jargon, ongoing projects) — NEVER a one-off fact specific to this meeting (scheduling, this meeting's decisions, today's figures): those belong in the summary/tasks, not here."
+                    } else {
+                        "UNIQUEMENT des faits DURABLES et réutilisables sur l'univers de l'utilisateur (qui/quoi/rôle, vocabulaire, projets en cours) — JAMAIS un fait ponctuel propre à cette réunion (planning, décisions de cette réunion, chiffres du jour) : ceux-là vivent dans le compte-rendu/les tâches, pas ici."
+                    }
                 }
             },
             "required": ["transcription_fixes", "unassigned_tasks", "unclear_sentences", "context_additions"]

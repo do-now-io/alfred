@@ -13,7 +13,7 @@
 
 Le **corps** de requête est identique dans les deux cas (API Messages Anthropic) :
 seuls l'URL de base et l'en-tête d'auth changent. En-tête commun :
-`anthropic-version: 2023-06-01`. Voir spec/15 pour le proxy.
+`anthropic-version: 2023-06-01`. Le proxy vit dans le repo privé `alfred-backend`.
 
 ## Modèles (alias, sans suffixe de date)
 
@@ -34,7 +34,7 @@ seuls l'URL de base et l'en-tête d'auth changent. En-tête commun :
 - **Thinking désactivé** (`thinking: {type: "disabled"}`) sur toutes les tâches v1
   (coût/latence maîtrisés ; sinon Sonnet 5 raisonne en adaptatif par défaut). Le
   raisonnement adaptatif reste un levier qualité **plus tard** (notamment pour le chat).
-- **Non-streaming** en v1 (cohérent avec le proxy, spec/15).
+- **Non-streaming** en v1 (cohérent avec le proxy, repo privé `alfred-backend`).
 - **Prompt caching** (GA) : cache sur les system prompts (stables).
 - **Retry** : codes retriables `429`, `5xx` ; backoff exponentiel `1→2→4 s`,
   3 tentatives ; `4xx` (hors 429) non retriables. Sur `401` → l'UI propose de
@@ -141,7 +141,7 @@ même note sert de source au **glossaire Whisper** (spec/17).
    fichier du vault comme un autre, son wikilink est résolu par le mécanisme
    standard), et la **fiche tâche** (spec/06) sait **d'où / quand** vient la tâche.
 
-**Événement** : `ingestion_completed { ai_mode }` (metrics, spec/15) + `notes-updated`
+**Événement** : `ingestion_completed { ai_mode }` (metrics, backend privé `alfred-backend`) + `notes-updated`
 (+ `todos-updated` pour la partie SQLite, transitoire).
 
 **Archivage de la transcription (✅ fait, feedback tests, spec/07)** : une fois

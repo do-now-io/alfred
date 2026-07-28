@@ -31,8 +31,6 @@ pub(crate) struct ContextTitles {
     pub projects: &'static str,
     /// spec/17 §4 — section auto-alimentée après ingestion.
     pub learned_auto: &'static str,
-    /// spec/13 — préfixe de l'en-tête daté ajouté par la visite guidée.
-    pub learned_voice: &'static str,
 }
 
 const TITLES_FR: ContextTitles = ContextTitles {
@@ -43,7 +41,6 @@ const TITLES_FR: ContextTitles = ContextTitles {
     vocab: "Vocabulaire maison & noms propres",
     projects: "Projets en cours",
     learned_auto: "Appris automatiquement",
-    learned_voice: "Appris à l'oral",
 };
 
 const TITLES_EN: ContextTitles = ContextTitles {
@@ -54,8 +51,45 @@ const TITLES_EN: ContextTitles = ContextTitles {
     vocab: "House vocabulary & proper nouns",
     projects: "Current projects",
     learned_auto: "Automatically learned",
-    learned_voice: "Learned by voice",
 };
+
+/// Canonical slot (0=company, 1=team, 2=vocab, 3=projects) for a `## ` heading
+/// written in either language — `None` for anything else: `## Appris
+/// automatiquement` (spec/17 §4, a distinct auto-fed section), a leftover
+/// `## Appris à l'oral (date)` block from before this fix, or any section the
+/// user added by hand. The voice rebuild (`write_spoken_context`) never
+/// touches those.
+fn canonical_slot(heading: &str) -> Option<usize> {
+    let h = heading.trim();
+    [
+        (TITLES_FR.company, TITLES_EN.company),
+        (TITLES_FR.team, TITLES_EN.team),
+        (TITLES_FR.vocab, TITLES_EN.vocab),
+        (TITLES_FR.projects, TITLES_EN.projects),
+    ]
+    .iter()
+    .position(|(fr, en)| h.eq_ignore_ascii_case(fr) || h.eq_ignore_ascii_case(en))
+}
+
+/// Splits a note body into the leading preamble (everything before the first
+/// `## ` heading — title + intro) and its ordered `## ` section blocks.
+fn split_sections(body: &str) -> (String, Vec<(String, String)>) {
+    let mut preamble: Vec<&str> = Vec::new();
+    let mut sections: Vec<(String, Vec<&str>)> = Vec::new();
+    for line in body.lines() {
+        if let Some(h) = line.trim_start().strip_prefix("## ") {
+            sections.push((h.trim().to_string(), Vec::new()));
+        } else if let Some(last) = sections.last_mut() {
+            last.1.push(line);
+        } else {
+            preamble.push(line);
+        }
+    }
+    (
+        preamble.join("\n"),
+        sections.into_iter().map(|(h, lines)| (h, lines.join("\n"))).collect(),
+    )
+}
 
 pub(crate) fn titles(lang: &str) -> &'static ContextTitles {
     if lang == "en" { &TITLES_EN } else { &TITLES_FR }
@@ -135,10 +169,17 @@ fn context_has_content(body: &str) -> bool {
     })
 }
 
-/// Write the spoken-onboarding context (spec/13). If the note is still the empty
-/// template, replace its body with the structured version. If it already has
-/// content, never clobber it — append the structured body under a dated
-/// `## Appris à l'oral (date)` heading instead. Frontmatter is preserved.
+/// Write the spoken-onboarding context (spec/13/16). If the note is still the
+/// empty template, replace its body with the structured version. If it already
+/// has content, **replace the 4 canonical sections** (company/team/vocab/
+/// projects) in place with the fresh output — idempotent, a rebuild cleanly
+/// overwrites the previous one instead of stacking a whole new structure under
+/// a dated `## Appris à l'oral` heading (spec/16 bug « empilement en double »).
+/// Everything else — title/intro, `## Appris automatiquement` (spec/17 §4, a
+/// distinct auto-fed flow), any leftover pre-fix `## Appris à l'oral (date)`
+/// block, or a section the user added by hand — is preserved untouched, in its
+/// original relative position. Trade-off (accepted, spec/16): manually edited
+/// canonical sections get overwritten by a voice rebuild.
 pub async fn write_spoken_context(vault_root: &Path, db: &SqlitePool, structured_body: &str) -> Result<()> {
     let path = ensure_context_note(vault_root, db).await?;
     let raw = tokio::fs::read_to_string(&path).await?;
@@ -149,16 +190,41 @@ pub async fn write_spoken_context(vault_root: &Path, db: &SqlitePool, structured
     let (metadata, body) = super::frontmatter::parse(&raw, &stem);
 
     let new_body = if context_has_content(&body) {
-        let date = chrono::Local::now().format("%Y-%m-%d");
-        // Drop the leading "# Contexte Alfred" title from the structured body when
-        // appending, keep just the sections.
-        let sections = structured_body
-            .lines()
-            .skip_while(|l| l.trim().starts_with("# ") || l.trim().is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
-        let heading = titles(&lang(db).await).learned_voice;
-        format!("{}\n\n## {} ({})\n\n{}\n", body.trim_end(), heading, date, sections.trim())
+        let (preamble, existing_sections) = split_sections(&body);
+        // `structured_body` is always assembled by the caller as exactly the 4
+        // canonical sections, in fixed order (company/team/vocab/projects) —
+        // index into it doubles as the canonical slot.
+        let (_, fresh_sections) = split_sections(structured_body);
+        let fresh_content: Vec<&str> = fresh_sections.iter().map(|(_, c)| c.as_str()).collect();
+
+        let mut filled_slots = [false; 4];
+        let mut out_sections: Vec<(String, String)> = Vec::new();
+        for (heading, content) in &existing_sections {
+            match canonical_slot(heading) {
+                Some(slot) if !filled_slots[slot] => {
+                    filled_slots[slot] = true;
+                    out_sections.push((heading.clone(), fresh_content.get(slot).copied().unwrap_or("").to_string()));
+                }
+                // A 2nd/3rd occurrence of the same canonical slot is a leftover
+                // duplicate from before this fix — dropped, self-healing.
+                Some(_) => {}
+                None => out_sections.push((heading.clone(), content.clone())),
+            }
+        }
+        // A canonical slot missing entirely (user deleted that section) is
+        // (re)added at the end, headed in the current UI language.
+        let t = titles(&lang(db).await);
+        for (slot, heading) in [t.company, t.team, t.vocab, t.projects].into_iter().enumerate() {
+            if !filled_slots[slot] {
+                out_sections.push((heading.to_string(), fresh_content.get(slot).copied().unwrap_or("").to_string()));
+            }
+        }
+
+        let mut rebuilt = preamble.trim_end().to_string();
+        for (heading, content) in &out_sections {
+            rebuilt.push_str(&format!("\n\n## {}\n\n{}", heading, content.trim()));
+        }
+        format!("{}\n", rebuilt.trim_start_matches('\n'))
     } else {
         format!("{}\n", structured_body.trim())
     };
@@ -286,6 +352,28 @@ mod tests {
         assert_eq!(titles("en").company, "My company");
         // Le nom de fichier ne dépend jamais de la langue (spec/16).
         assert_eq!(DEFAULT_CONTEXT_NOTE, "Contexte Alfred.md");
+    }
+
+    #[test]
+    fn canonical_slot_matches_either_language() {
+        assert_eq!(canonical_slot("Mon entreprise"), Some(0));
+        assert_eq!(canonical_slot("My company"), Some(0));
+        assert_eq!(canonical_slot("Projets en cours"), Some(3));
+        assert_eq!(canonical_slot("Appris automatiquement"), None);
+        assert_eq!(canonical_slot("Appris à l'oral (2026-07-10)"), None);
+        assert_eq!(canonical_slot("Notes perso"), None);
+    }
+
+    #[test]
+    fn split_sections_separates_preamble_from_headings() {
+        let body = "# Contexte Alfred\n\nIntro.\n\n## Mon entreprise\n\nDoNow.\n\n## Équipe (prénoms & rôles)\n\n- Marie : cheffe de projet\n";
+        let (preamble, sections) = split_sections(body);
+        assert_eq!(preamble.trim_end(), "# Contexte Alfred\n\nIntro.");
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].0, "Mon entreprise");
+        assert_eq!(sections[0].1.trim(), "DoNow.");
+        assert_eq!(sections[1].0, "Équipe (prénoms & rôles)");
+        assert_eq!(sections[1].1.trim(), "- Marie : cheffe de projet");
     }
 }
 

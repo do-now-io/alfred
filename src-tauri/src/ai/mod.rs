@@ -1207,11 +1207,13 @@ async fn store_glossary(db: &SqlitePool, value: &str) -> Result<()> {
 const CONTEXT_BUILD_SYSTEM: &str = r#"Tu es Alfred. L'utilisateur vient de se présenter à voix haute pour t'apprendre son univers de travail (qui il est, son entreprise, son équipe, ses clients, ses projets, son vocabulaire métier). On te donne la transcription. Structure-la dans sa fiche de contexte via l'outil `submit_context`.
 
 Consignes :
-- `entreprise` : qui est l'utilisateur, son rôle, son entreprise et ce qu'elle fait, ce qu'il va enregistrer. Quelques phrases ou puces.
+- `entreprise` : qui est l'utilisateur, son rôle, son entreprise et ce qu'elle fait, ce qu'il va enregistrer. Quelques phrases ou puces. Vide si rien de fiable à en tirer.
 - `equipe` : les collègues cités (prénom + rôle), en liste à puces « - Prénom : rôle ». Vide si rien.
-- `vocabulaire` : noms propres, clients, sigles, outils et jargon cités, en liste à puces. C'est la matière du glossaire de transcription : sois exhaustif sur les noms propres et termes techniques. Vide si rien.
+- `vocabulaire` : noms propres, clients, sigles, outils et jargon cités, en liste à puces. C'est la matière du glossaire de transcription : sois exhaustif sur les noms propres et termes techniques. UNE liste dédupliquée — jamais plusieurs versions du même vocabulaire. Vide si rien.
 - `projets` : les projets en cours cités (nom + une ligne), en liste à puces. Vide si rien.
-- Reste fidèle : n'invente pas d'information non dite. Rédige dans la même langue que la présentation orale (voir consigne de langue ci-dessous si besoin d'un repli). Orthographie au mieux les noms propres (au besoin d'après le son)."#;
+- Reste fidèle : n'invente pas d'information non dite. Rédige dans la même langue que la présentation orale (voir consigne de langue ci-dessous si besoin d'un repli). Orthographie au mieux les noms propres (au besoin d'après le son).
+- JAMAIS de méta-commentaire sur la transcription ou la prestation de l'utilisateur (ex. « la transcription est trop courte pour être exploitable », « l'utilisateur n'a pas dit… », « je pense que… ») : chaque champ ne contient QUE des faits structurés — ou reste VIDE si rien de fiable, jamais une phrase qui commente ou explique cette absence.
+- UNE formulation consolidée par champ : pas de paraphrases ni de variantes répétées du même fait dans une même section."#;
 
 fn context_build_tool(lang: &str) -> serde_json::Value {
     let en = lang == "en";
@@ -1221,10 +1223,10 @@ fn context_build_tool(lang: &str) -> serde_json::Value {
         "input_schema": {
             "type": "object",
             "properties": {
-                "entreprise": { "type": "string", "description": if en { "Who the user is, their role, their company and what it does" } else { "Qui est l'utilisateur, son rôle, son entreprise et ce qu'elle fait" } },
-                "equipe": { "type": "string", "description": if en { "Colleagues mentioned (first name + role), bullet list" } else { "Collègues cités (prénom + rôle), en liste à puces" } },
-                "vocabulaire": { "type": "string", "description": if en { "Proper nouns, clients, acronyms, tools and jargon mentioned, bullet list" } else { "Noms propres, clients, sigles, outils et jargon cités, en liste à puces" } },
-                "projets": { "type": "string", "description": if en { "Current projects mentioned (name + one line), bullet list" } else { "Projets en cours cités (nom + une ligne), en liste à puces" } }
+                "entreprise": { "type": "string", "description": if en { "Who the user is, their role, their company and what it does — ONLY structured facts, empty if nothing reliable, NEVER a comment about the transcription or the user's delivery" } else { "Qui est l'utilisateur, son rôle, son entreprise et ce qu'elle fait — UNIQUEMENT des faits structurés, vide si rien de fiable, JAMAIS un commentaire sur la transcription ou la prestation de l'utilisateur" } },
+                "equipe": { "type": "string", "description": if en { "Colleagues mentioned (first name + role), bullet list — empty if none, never a comment about the transcription" } else { "Collègues cités (prénom + rôle), en liste à puces — vide si rien, jamais un commentaire sur la transcription" } },
+                "vocabulaire": { "type": "string", "description": if en { "Proper nouns, clients, acronyms, tools and jargon mentioned, bullet list — ONE deduplicated list, never several versions; empty if none" } else { "Noms propres, clients, sigles, outils et jargon cités, en liste à puces — UNE liste dédupliquée, jamais plusieurs versions ; vide si rien" } },
+                "projets": { "type": "string", "description": if en { "Current projects mentioned (name + one line), bullet list — empty if none, never a comment about the transcription" } else { "Projets en cours cités (nom + une ligne), en liste à puces — vide si rien, jamais un commentaire sur la transcription" } }
             },
             "required": ["entreprise", "equipe", "vocabulaire", "projets"]
         }

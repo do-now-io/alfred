@@ -74,7 +74,7 @@ Quand le contexte est créé/reconstruit à la voix (visite guidée spec/13,
   ajouter les nouveautés sous une section datée « Appris à l'oral (AAAA-MM-JJ) »
   (comportement conservé pour une re-création ultérieure).
 
-> 🚧 **Bug — empilement de contextes en double (📝 à refaire, feedback tests).**
+> ✅ **Bug corrigé — empilement de contextes en double (feedback tests).**
 > Constat : après l'onboarding, `Contexte Alfred.md` contient **deux structures
 > complètes** (un 1ᵉʳ bloc, puis un `## Appris à l'oral` qui **re-duplique**
 > entreprise/équipe/vocabulaire/projets — avec des infos différentes issues d'une
@@ -83,32 +83,36 @@ Quand le contexte est créé/reconstruit à la voix (visite guidée spec/13,
 > a du contenu → une **structure entière** est ré-empilée.
 >
 > **Correctif : le build vocal du contexte REMPLACE, il n'empile jamais une structure
-> complète.** `build_context_from_transcription` (onboarding / « re-créer mon contexte
-> à la voix ») **réécrit les 4 sections canoniques** (entreprise / équipe /
-> vocabulaire / projets) avec la sortie fraîche — **idempotent**, une reprise écrase
-> proprement la précédente. Le chemin « append sous une section datée » est **retiré**
-> pour ce build. La seule chose qui **s'ajoute** (et se **dédup**) est
-> `## Appris automatiquement` (faits durables post-ingestion, spec/17 §4) — un flux
-> **distinct**, jamais une re-structuration complète. Trade-off : si l'utilisateur a
-> **édité à la main** les 4 sections, un re-build les écrase — acceptable pour le
-> geste explicite « re-créer mon contexte » ; à confirmer si on veut préserver les
-> éditions manuelles.
+> complète.** `write_spoken_context` (`notes/context.rs`) **réécrit en place les 4
+> sections canoniques** (entreprise / équipe / vocabulaire / projets) avec la sortie
+> fraîche — **idempotent**, une reprise écrase proprement la précédente, quelle que
+> soit la langue dans laquelle chaque en-tête a été écrit (`canonical_slot`,
+> reconnaissance FR/EN). Le chemin « append sous une section datée » est **retiré**
+> pour ce build. Tout le reste — titre/intro existants, `## Appris automatiquement`
+> (faits durables post-ingestion, spec/17 §4, un flux **distinct**), et tout
+> éventuel bloc `## Appris à l'oral (date)` déjà présent d'avant ce correctif — est
+> **préservé tel quel**, à sa position d'origine. Bonus auto-cicatrisant : si une
+> section canonique existe en double (séquelle de l'ancien bug), le doublon est
+> supprimé au passage. Trade-off assumé : si l'utilisateur a **édité à la main** une
+> des 4 sections canoniques, un re-build vocal l'écrase — acceptable pour le geste
+> explicite « re-créer mon contexte à la voix ».
 
-### Contenu du contexte : des faits, pas l'avis de Claude — 📝 à faire (feedback tests)
+### Contenu du contexte : des faits, pas l'avis de Claude — ✅ corrigé (feedback tests)
 
 Constat : sur une transcription **pauvre/ratée**, `build_context_from_transcription`
-écrit l'**analyse de Claude** dans la note (ex. dans « Mon entreprise » : *« L'utilisateur
+écrivait l'**analyse de Claude** dans la note (ex. dans « Mon entreprise » : *« L'utilisateur
 n'a pas donné d'informations claires… la transcription est trop courte et peu
 exploitable ("Je parle du fait machin, t'as la paix.") »*). Et sur une bonne prise, il
-écrit **plusieurs paraphrases** du même fait (3 versions de « Mon entreprise », 3
+écrivait **plusieurs paraphrases** du même fait (3 versions de « Mon entreprise », 3
 listes de vocabulaire).
 
-Correctifs sur `CONTEXT_BUILD_SYSTEM` / `submit_context` :
+Correctifs sur `CONTEXT_BUILD_SYSTEM` / `submit_context` (`src-tauri/src/ai/mod.rs`),
+purement prompt :
 - **Jamais de méta-commentaire** : ne pas commenter la qualité de la transcription ni
   la prestation de l'utilisateur ; **aucune** phrase du type « je pense / l'utilisateur
   n'a pas dit… ». Que des **faits structurés**.
-- **Section vide si rien de fiable** (y compris `entreprise`, qui n'a pas de garde
-  « Vide si rien » aujourd'hui) — laisser vide plutôt que narrer l'absence.
+- **Section vide si rien de fiable** — y compris `entreprise`, qui n'avait pas de garde
+  « Vide si rien » avant ce correctif — laisser vide plutôt que narrer l'absence.
 - **Concision + dédup** : **une** formulation consolidée par section, pas de
   variations répétées ; le vocabulaire est **une** liste dédupliquée.
 

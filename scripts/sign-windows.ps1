@@ -64,10 +64,18 @@ if (-not (Test-Path (Join-Path $toolHome "CodeSignTool.bat"))) {
     }
 }
 
+$stagingDir = Join-Path $toolDir "staging"
+New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
+
 foreach ($file in $files) {
     $filePath = $file.FullName
-    $outDir = $file.DirectoryName
     Write-Host "[sign-windows] Signature de $filePath..." -ForegroundColor Cyan
+
+    # `-output_dir_path` ne peut PAS être le même dossier que le fichier d'entrée —
+    # CodeSignTool tente de copier le résultat signé vers l'entrée elle-même et
+    # plante ("Source and destination are the same", testé en local). On signe
+    # dans un dossier de staging à part, puis on écrase le fichier d'origine.
+    Get-ChildItem $stagingDir -File -ErrorAction SilentlyContinue | Remove-Item -Force
 
     # CodeSignTool.bat renvoie exit code 0 MEME en echec (testes : format non
     # supporte, identifiants invalides — dans les deux cas exit=0, juste une ligne
@@ -80,7 +88,7 @@ foreach ($file in $files) {
     try {
         $output = & .\CodeSignTool.bat sign `
             "-input_file_path=$filePath" `
-            "-output_dir_path=$outDir" `
+            "-output_dir_path=$stagingDir" `
             "-username=$env:ESIGNER_USERNAME" `
             "-password=$env:ESIGNER_PASSWORD" `
             "-totp_secret=$env:ESIGNER_TOTP_SECRET" `
@@ -91,9 +99,15 @@ foreach ($file in $files) {
     }
     Write-Host $output
 
+    $signedFile = Join-Path $stagingDir $file.Name
+    if (-not (Test-Path $signedFile) -or $output -match "(?im)^Error:") {
+        Write-Error "[sign-windows] CodeSignTool n'a pas signe $filePath (exit $LASTEXITCODE, fichier signe absent du staging ou erreur dans la sortie ci-dessus)"
+    }
+    Move-Item -Path $signedFile -Destination $filePath -Force
+
     $hashAfter = (Get-FileHash -Path $filePath -Algorithm SHA256).Hash
-    if ($hashAfter -eq $hashBefore -or $output -match "(?im)^Error:") {
-        Write-Error "[sign-windows] CodeSignTool n'a pas signe $filePath (exit $LASTEXITCODE, fichier inchange ou erreur dans la sortie ci-dessus)"
+    if ($hashAfter -eq $hashBefore) {
+        Write-Error "[sign-windows] $filePath inchange apres signature — echec silencieux suspecte."
     }
 
     Write-Host "[sign-windows] Signe : $filePath" -ForegroundColor Green

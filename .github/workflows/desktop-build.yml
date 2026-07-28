@@ -77,9 +77,9 @@ jobs:
           node-version: 22
           cache: npm
 
-      # CodeSignTool (scripts/sign-windows.ps1, appelé via signCommand de tauri.conf.json)
-      # est un outil Java — sans JRE le hook de signature échouerait silencieusement en
-      # `$LASTEXITCODE`. Windows uniquement, les autres OS ne signent rien ici.
+      # CodeSignTool (scripts/sign-windows.ps1, étape "Signer les binaires Windows"
+      # plus bas) est un outil Java — sans JRE, `CodeSignTool.bat` échoue. Windows
+      # uniquement, les autres OS ne signent rien ici.
       - name: Java (signature Windows)
         if: runner.os == 'Windows'
         uses: actions/setup-java@v4
@@ -114,21 +114,29 @@ jobs:
       # (spec/15 §D) embarquée à la compilation — doit correspondre au
       # METRICS_APP_KEY configuré côté Coolify. Vide en local (pas bloquant,
       # le backend n'exige le header que s'il a lui-même une clé configurée).
-      # ESIGNER_* (secrets repo) : signature Windows via SSL.com eSigner —
-      # `bundle.windows.signCommand` (tauri.conf.json) invoque
-      # scripts/sign-windows.ps1 sur chaque binaire produit, no-op si absents
-      # (Linux/macOS n'en ont pas besoin, le script ne s'exécute pas sur ces OS).
-      # Pas de `shell: bash` forcé ici (contrairement aux autres étapes) — la
-      # commande (`npm run tauri -- build`) ne dépend d'aucune syntaxe shell
-      # spécifique, et ça ne coûte rien de garder le shell par défaut de l'OS.
       - name: Build Tauri
         env:
           ALFRED_METRICS_APP_KEY: ${{ secrets.ALFRED_METRICS_APP_KEY }}
+        run: npm run tauri -- build
+
+      # Signature Windows via SSL.com eSigner — étape CI À PART plutôt qu'un hook
+      # `signCommand` de tauri.conf.json (celui-ci échouait systématiquement en CI,
+      # "failed to run powershell", 4 configurations différentes testées sans
+      # qu'on puisse observer la vraie cause). No-op silencieux si les secrets
+      # ESIGNER_* sont absents (fork/PR sans accès aux secrets).
+      - name: Signer les binaires Windows (eSigner)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
           ESIGNER_USERNAME: ${{ secrets.ESIGNER_USERNAME }}
           ESIGNER_PASSWORD: ${{ secrets.ESIGNER_PASSWORD }}
           ESIGNER_TOTP_SECRET: ${{ secrets.ESIGNER_TOTP_SECRET }}
           ESIGNER_CREDENTIAL_ID: ${{ secrets.ESIGNER_CREDENTIAL_ID }}
-        run: npm run tauri -- build
+        run: |
+          ./scripts/sign-windows.ps1 -Paths `
+            "src-tauri/target/release/alfred.exe", `
+            "src-tauri/target/release/bundle/msi/*.msi", `
+            "src-tauri/target/release/bundle/nsis/*.exe"
 
       # Le .app macOS n'est pas uploadé : upload-artifact ne préserve ni les
       # permissions ni les liens symboliques — le .dmg est le livrable.

@@ -7,3 +7,4 @@ alfred_dev.db-wal
 src-tauri/models/*.bin
 src-tauri/.sqlx
 .env.metrics.local
+.codesigntool/

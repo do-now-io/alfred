@@ -169,7 +169,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 |---|---|---|
 | [x] | **CI GitHub Actions — build desktop 3 OS** (`.github/workflows/desktop-build.yml`) : Windows (msi/nsis) + macOS (dmg arm64 — pas d'Intel, runners macos-13 plus provisionnés) + Linux (deb/rpm/AppImage), **non signé** ; manuel + tags `v*` ; **release GitHub auto sur tag** avec les binaires attachés ; base sqlx recréée en CI ; **aucun modèle embarqué** (téléchargé à l'onboarding) | T |
 | [ ] | **macOS** : entitlements v1 (retirer apple-events, + `NSScreenCaptureUsageDescription`) ; signature Developer ID + notarisation | |
-| [ ] | **Windows** : build Whisper + WebView2 (fait) ; signature **Authenticode** — **en stand-by** (validation OV SSL.com/eSigner en cours côté DONOW, cf. Kbis) | |
+| [~] | **Windows** : build Whisper + WebView2 (fait) ; signature **Authenticode** via **SSL.com eSigner** (OV DONOW validé, cloud HSM) câblée dans `tauri.conf.json`/`scripts/sign-windows.ps1`/`desktop-build.yml` (secrets `ESIGNER_*` posés) — **reste à vérifier un run CI réellement signé** avant de cocher | UC |
 | [x] | Aligner le label launch-at-login `io.alfred.app` → `com.alfred.app` | CF |
 | [x] | **Icône d'app à mettre à jour (feedback tests)** : le jeu `src-tauri/icons/*` (32/128/@2x/.ico/.icns + Windows Appx/iOS/Android) régénéré via `npx tauri icon` depuis `alfred-logo-minimal.png` (portrait seul, sans mot-symbole, fond transparent) — pas encore vérifié en rendu réel bureau Windows/macOS (à faire manuellement au prochain build) | CF |
 

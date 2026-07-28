@@ -1,7 +1,10 @@
 # Build desktop Alfred (Tauri) — Windows / macOS / Linux.
 #
-# Produit les installeurs NON SIGNÉS (signature = Phase E, ROADMAP) :
-#   Windows → .msi + .exe (NSIS) · macOS → .dmg · Linux → .deb + .rpm + .AppImage
+# Windows → .msi + .exe (NSIS), **signés** (SSL.com eSigner, OV, cloud HSM — pas de
+# clé privée locale/token, cf. spec/12 + scripts/sign-windows.ps1) si les secrets
+# ESIGNER_* sont configurés sur le repo, sinon NON signé (fallback silencieux).
+# macOS → .dmg · Linux → .deb + .rpm + .AppImage : NON signés (macOS = Phase E, reste
+# à faire — Developer ID + notarisation).
 #
 # Déclenchement : manuel (onglet Actions → Run workflow) ou tag `v*`.
 # Pas de build sur chaque push : la compilation de Whisper (cmake) rend le job
@@ -74,6 +77,16 @@ jobs:
           node-version: 22
           cache: npm
 
+      # CodeSignTool (scripts/sign-windows.ps1, appelé via signCommand de tauri.conf.json)
+      # est un outil Java — sans JRE le hook de signature échouerait silencieusement en
+      # `$LASTEXITCODE`. Windows uniquement, les autres OS ne signent rien ici.
+      - name: Java (signature Windows)
+        if: runner.os == 'Windows'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - uses: dtolnay/rust-toolchain@stable
 
       # Cache cargo + target (whisper.cpp est le gros du temps de compilation).
@@ -101,10 +114,18 @@ jobs:
       # (spec/15 §D) embarquée à la compilation — doit correspondre au
       # METRICS_APP_KEY configuré côté Coolify. Vide en local (pas bloquant,
       # le backend n'exige le header que s'il a lui-même une clé configurée).
+      # ESIGNER_* (secrets repo) : signature Windows via SSL.com eSigner —
+      # `bundle.windows.signCommand` (tauri.conf.json) invoque
+      # scripts/sign-windows.ps1 sur chaque binaire produit, no-op si absents
+      # (Linux/macOS n'en ont pas besoin, le script ne s'exécute pas sur ces OS).
       - name: Build Tauri
         shell: bash
         env:
           ALFRED_METRICS_APP_KEY: ${{ secrets.ALFRED_METRICS_APP_KEY }}
+          ESIGNER_USERNAME: ${{ secrets.ESIGNER_USERNAME }}
+          ESIGNER_PASSWORD: ${{ secrets.ESIGNER_PASSWORD }}
+          ESIGNER_TOTP_SECRET: ${{ secrets.ESIGNER_TOTP_SECRET }}
+          ESIGNER_CREDENTIAL_ID: ${{ secrets.ESIGNER_CREDENTIAL_ID }}
         run: npm run tauri -- build
 
       # Le .app macOS n'est pas uploadé : upload-artifact ne préserve ni les

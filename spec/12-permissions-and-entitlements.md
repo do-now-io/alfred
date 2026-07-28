@@ -44,8 +44,21 @@ loopback AlfredIA / Stripe).
 ## Signature & distribution
 
 - **macOS** : « Developer ID Application » + **notarisation** + staple (hors App Store).
-- **Windows** : certificat de **signature de code** (Authenticode) pour éviter les
-  avertissements SmartScreen.
+  **Reste à faire.**
+- **Windows** : ✅ **fait.** Certificat OV **DONOW** (SSL.com, validé Kbis) signé via
+  **eSigner** — signature **cloud HSM**, la clé privée ne quitte jamais SSL.com (pas
+  de token USB/fichier `.pfx`, requis depuis juin 2023 par le CA/Browser Forum pour
+  tout certificat de signature de code). Câblé dans `bundle.windows.signCommand`
+  (`tauri.conf.json`) → `scripts/sign-windows.ps1` (télécharge/appelle `CodeSignTool`,
+  l'outil officiel SSL.com) sur chaque binaire produit (exe app + installeur NSIS/MSI).
+  Piloté par 4 secrets GitHub Actions (`ESIGNER_USERNAME`/`PASSWORD`/`TOTP_SECRET`/
+  `CREDENTIAL_ID`) injectés dans `desktop-build.yml` — **no-op silencieux** si absents
+  (build local non signé, comportement inchangé pour les contributeurs sans accès aux
+  secrets). Avec un certificat **OV** (pas EV), SmartScreen affiche encore un
+  avertissement (avec le nom de l'éditeur, plus « Unknown publisher ») jusqu'à ce que
+  l'exécutable accumule assez de téléchargements — compromis de coût accepté (spec/12,
+  décision explicite). **Premier run CI signé pas encore vérifié** — à confirmer au
+  prochain build déclenché.
 
 ## Note bug — ✅ fait
 

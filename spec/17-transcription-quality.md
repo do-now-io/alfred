@@ -149,7 +149,23 @@ plus de résumer, il **signale ce qui mérite validation** avant de finaliser
      "Kube" plutôt que "cube" ») — affiché à part, en petite info-bulle
      au-dessus du champ éditable (aide à la décision), **jamais** inséré dans
      `proposed` ni dans la transcription.
-   - `context_addition` : fait appris (ex. « Marie = cheffe de projet »).
+   - `context_addition` : fait appris **durable** sur l'univers de l'utilisateur.
+     **📝 Critère à resserrer (feedback tests) :** aujourd'hui Claude propose aussi
+     des faits **ponctuels/propres à la réunion**, qui n'ont **rien à faire dans le
+     contexte général** → seul le **durable, réutilisable dans les futurs
+     enregistrements** doit être proposé. Les faits ponctuels **ne sont pas proposés**
+     du tout ici (décidé) — ils vivent dans le **compte-rendu** (et deviennent des
+     **tâches** le cas échéant).
+     - ✅ **Durable → contexte** : qui sont les personnes / entreprises et leur
+       **rôle/relation** (« Toto est un **nouveau prospect** de DoNow »), ce que fait
+       l'entreprise (« DoNow fait de l'**infogérance** »), **vocabulaire/jargon**,
+       **projets en cours** et leur nature.
+     - ❌ **Ponctuel → PAS le contexte** (reste dans le compte-rendu / tâches) :
+       planning et rendez-vous (« la **prochaine réunion** avec Toto se fera avec
+       Hugo »), décisions/actions **de cette réunion**, chiffres/états **du jour**,
+       tout ce qui est vrai « aujourd'hui » mais pas **durablement**.
+     - **Test mental** : *« Est-ce encore utile dans 3 mois pour bien traiter un
+       futur enregistrement ? »* Oui → durable ; Non → ponctuel (compte-rendu).
 2. **Résolution — un écran, pas un chat** : accepter / rejeter / éditer. Chaque
    `transcription_fix` a un bouton **« 🔊 réécouter »** (WAV `alfred-raw/` +
    timestamps `segments_json`) → tranche à l'oreille.
@@ -281,6 +297,10 @@ Sur `Contexte Alfred.md` (spec/16) — **pas de nouvelle note** :
   **automatiquement** par Rust dans une section **`## Appris automatiquement`**
   (relisible / corrigeable), sans validation bloquante. Les **corrections de
   transcription**, elles, restent **validées** (§3), jamais auto-appliquées.
+  ⚠️ **Ne doivent arriver ici que des faits DURABLES** (critère resserré, §3) — un
+  fait ponctuel écrit ici **pollue le contexte général** (et donc le glossaire +
+  toutes les futures ingestions). Le filtrage se fait à la **source** (le critère de
+  `context_addition` dans l'analyse), pas au moment de l'écriture.
 - Toute modif → **régénération du glossaire** (§1, débouncée).
 - **Onboarding** (extension spec/13) : `Contexte Alfred.md` est aujourd'hui un
   template *lazy* rempli à la main. La **visite guidée post-onboarding** le peuple

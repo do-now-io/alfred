@@ -60,15 +60,15 @@ par nous).
 | 12  | Permissions                 | 🚧 | **Spec faite.** Cross-platform ; micro + capture système ; retirer apple-events/calendrier ; signature macOS/Windows |
 | 13  | Onboarding                  | ✅ | Intro (2 slides) + détection/création vault + choix clé perso / AlfredIA + test micro ✅ ; **visite guidée = contexte à la voix** (téléprompteur avec pause/revue → visite de l'app pendant la transcription → pop-up « vérifiez » → `/resolve` mode contexte → clôture) ✅ ; **contenu de démarrage (seed)** ✅ ; **écran de fin habillé** (aperçu de `/recording`) ✅. Détail mineur non tranché dans spec/13 (étape 8 « Contexte », chevauchement avec la carte d'intro de la visite) |
 | 14  | Feedback                    | ✅ | **Construit.** Onglet texte + images (collage) + email de contact ; catégories bug/feature/praise ; stockage Postgres via backend. 🟡 **widget discret topbar** en cours (Tanguy) |
-| 15  | Backend AlfredIA + Metrics  | ✅ | **Construit + validé en prod.** Rust/axum, **Coolify** (self-hosted), `api.alfred.do-now.io`, **Postgres**, Stripe 20€/mois (+ annuel) ; proxy, loopback, metrics, feedback. **Reste : recette du paiement** (sandbox rejouée de bout en bout, puis validation prod — jamais rejoué depuis le code) |
+| 15  | Backend AlfredIA + Metrics  | ✅ | **Construit + validé en prod.** Rust/axum, **Coolify** (self-hosted), `api.alfred.do-now.io`, **Postgres**, Stripe 20€/mois (+ annuel) ; proxy, loopback, metrics, feedback. Le code/la spec vivent désormais dans le **repo privé `alfred-backend`** (plus de `spec/15-*.md` ici). **Reste : recette du paiement** (sandbox rejouée de bout en bout, puis validation prod — jamais rejoué depuis le code) |
 | 16  | Contexte interne            | ✅ | **Construit.** Note `Contexte Alfred.md` (contexte maison) injectée dans l'ingestion + Settings ; source du glossaire (spec 17). **Transcription live abandonnée** (code retiré) |
 | 17  | Glossaire & qualité de transcription | ✅ | **Construit.** Glossaire (initial_prompt) dérivé de `Contexte Alfred.md` (régén auto) ; beam + seuils anti-hallucination ; **transcription parallèle par tranches** (longs fichiers) ; ingestion augmentée + écran `/resolve` ; contexte à la voix (onboarding) |
-| 18  | Partage de notes            | ✅ | **Construit** (à déployer/tester en réel). `POST /share` + `GET /s/{slug}` (rendu comrak **mode sûr**, `noindex`, CSP) + `PUT`/`DELETE` ; bouton **Partager** (Notes + Tâches) → URL publique par lien, révocable, re-partage = même URL. Tout en Postgres |
+| 18  | Partage de notes            | ✅ | **Construit et testé en réel.** `POST /share` + `GET /s/{slug}` (rendu comrak **mode sûr**, `noindex`, CSP) + `PUT`/`DELETE` ; bouton **Partager** (Notes + Tâches) → URL publique par lien, révocable, re-partage = même URL. Tout en Postgres |
 | 19  | Site web (`alfred.do-now.io`) | 📝 | **Rien n'existe** — le footer des pages partagées (spec 18) pointe déjà vers ce domaine, mais aucun site (landing/marketing) n'est construit ni spécifié. Spec à écrire (contenu, hébergement) avant de coder |
 | 20  | Rendre le projet open source | 📝 | **Pas encore spécifié** — licence, ce qui reste privé (secrets Coolify/Stripe/clés déjà hors repo) vs code publié, dépôt cible. Décisions produit/légales à prendre avant d'écrire la spec |
-| 21  | Internationalisation (FR / EN) | 📝 | **Spec écrite, rien de codé.** Traduction **entière** de l'app en anglais + **choix de la langue à l'installation** (`app_language`, modifiable en Réglages) ; langue des sorties IA ≠ langue UI ; templates/`Todo.md` à découpler du libellé (feedback tests) |
-| 22  | Alfred agentique (actions) | 📝 | **Spec écrite, rien de codé.** Alfred passe de lecture seule à **agent** : créer/éditer/renommer/**archiver** notes + tâches + contexte via le chat (réutilise les commandes existantes). **« Supprimer » = archiver** (jamais de suppression dure par l'IA) ; confirmation pour les **lots/écrasements** ; Réglages/app + suppression dure hors périmètre v1 (feedback tests) |
-| 23  | Liens internes & navigation | 📝 | **Spec écrite, rien de codé.** Audit : les `[[wikilinks]]` s'affichent mais **ne naviguent pas** (`renderInlineMd` = spans morts ; résolution qui échoue). Gestionnaire de lien **unique** (note→note via `openNoteByRef` ; **tâche via schéma `task:`** → Kanban surligné) ; compte-rendu → liste de tâches cliquables ; échec = feedback visible (feedback tests) |
+| 21  | Internationalisation (FR / EN) | ✅ | **Construit.** Traduction **entière** de l'app en anglais + **choix de la langue à l'installation** (`app_language`, modifiable en Réglages) ; langue des sorties IA ≠ langue UI ; catalogues `t()` sans chaîne en dur. **Dette restante disclosed** (spec/21) : erreurs backend pas encore sur catalogue de codes, titres `Contexte Alfred.md` et nouvelles sections `Todo.md` restés FR-only |
+| 22  | Alfred agentique (actions) | ✅ | **Construit.** Alfred passe de lecture seule à **agent** : 15 outils de mutation notes/tâches (créer/éditer/renommer/**archiver**) via le chat, réutilisant les commandes existantes. **« Supprimer » = archiver** (jamais de suppression dure par l'IA) ; confirmation pour les **lots/écrasements** (carte Appliquer/Annuler) ; Réglages/app + suppression dure hors périmètre v1. Résidu connu : les requêtes `search_notes` choisies par Claude restent parfois en français même en UI anglaise |
+| 23  | Liens internes & navigation | ✅ | **Construit.** Gestionnaire de lien **unique** (`useInternalLink`) : note→note via `openNoteByRef`, **tâche via schéma `task:`** → Kanban surligné, `http(s)` externe ; compte-rendu → liste de tâches cliquables ; échec = toast visible. Couvre preview note / brief / Kanban / fiche tâche / sources chat / Récents. Gap connu, non bloquant : pas de repli sur le titre frontmatter pour `wikilink:` (résolution par nom de fichier uniquement) |
 | —   | Ingest « run Claude » (CLI) | ❌ | **Supprimé** — remplacé par l'ingestion API (spec 05) |
 
 ## Deux modes d'accès à l'IA
@@ -93,11 +93,10 @@ Les 3 risques qui gataient le lancement sont **levés** :
 
 Le **moteur** (capture, transcription, IA, notes, backend) et la **Phase C (UX/écrans)** sont désormais **largement construits**. **Ce qui reste pour une v1 livrable** :
 
-1. ⚠️ **Packaging & signature** — **macOS** (entitlements + Developer ID + notarisation) et **Windows** (signature Authenticode) : **le plus gros bloc restant** (Phase E), gate la distribution aux ~10 users.
+1. ⚠️ **Packaging & signature** — **macOS** (entitlements + Developer ID + notarisation) et **Windows** (signature Authenticode, **en stand-by**) : **le plus gros bloc restant** (Phase E), gate la distribution aux ~10 users.
 2. ⚠️ **Audio système macOS** (helper Swift ScreenCaptureKit) — non commencé.
-3. 🟡 **Finitions UX** : onboarding (wizard), accueil (historique chat sur la page), widget feedback.
-4. 🟡 **Déployer + tester** le partage de notes (spec 18).
-5. ❌ Optionnel : regroupement des notes **par projet** (spec 07).
+3. 🟡 **Widget feedback discret** (topbar, en cours — Tanguy).
+4. ❌ Optionnel : regroupement des notes **par projet** (spec 07).
 
 ## Suivi des tâches
 

@@ -130,7 +130,7 @@ La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
 **tableau Kanban** (demande explicite d'utilisateurs). La source de vérité **reste
 `Todo.md`** — le Kanban est une **vue** par-dessus, pas un nouveau stockage.
 
-- **Colonnes = sections du fichier** — 📝 **nouvel ordre (feedback tests)** :
+- **Colonnes = sections du fichier** — ✅ **nouvel ordre (feedback tests)** :
   **À faire · En cours · Fait · Archivé** (Archivé repliable/masquable par défaut).
   **`Prioritaire` retirée** ; **`Fait` ajoutée** (statut « done »). Une colonne =
   une section `##`.
@@ -140,7 +140,7 @@ La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
   **Déposer dans `Fait` coche la tâche (`[x]`)** ; l'en sortir la décoche —
   cohérent avec « `[x]` ⇔ `Fait` » (§Format). → commande `move_todo(id, section,
   position?)` (existe).
-- **Tri par priorité dans chaque colonne** (📝 feedback tests) : à l'affichage,
+- **Tri par priorité dans chaque colonne** (✅ feedback tests) : à l'affichage,
   ordonner les cartes d'une colonne par `!priorité` (**haute** en haut, puis
   moyenne, basse, sans priorité). Le tri est **visuel** ; l'ordre dans le fichier
   reste la source (pas de réécriture forcée juste pour trier).
@@ -247,7 +247,7 @@ estimate})` (fiche tâche). `update_todo_block(id, notes[], description[])` (sou
 ## Commandes Tauri — ✅ refondues vers le fichier
 
 `get_todos` (non cochées hors Archivé), `create_todo` (ajout dédupliqué dans
-`## À faire`), `complete_todo(id, checked?)` — 📝 **à ajuster (feedback tests)** :
+`## À faire`), `complete_todo(id, checked?)` — ✅ **ajusté (feedback tests)** :
 cocher **déplace vers `## Fait`**, décocher renvoie vers `## À faire` (n'est plus un
 coche « en place ») ; `dismiss_todo` (déplace vers `## Archivé`), `move_todo(id,
 section, position?)` (déplacement Kanban ; déposer dans `Fait` coche, en sortir

@@ -168,8 +168,8 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    + aperçu (sections remplies + *« {n} noms propres ajoutés au glossaire »*).
    **Un seul bouton : « Revoir / corriger »** (l'ancien bouton « Continuer » est
    **retiré** — on veut forcer le passage par la vérification).
-7. **Correction du contexte — MÊME écran que pour un vrai enregistrement** (📝 à
-   revoir, feedback tests) — « Revoir / corriger » ouvre **exactement le même écran
+7. **Correction du contexte — MÊME écran que pour un vrai enregistrement** (✅
+   fait, feedback tests) — « Revoir / corriger » ouvre **exactement le même écran
    `/resolve`** et **le même flux de vérification/correction** que la correction d'une
    note d'enregistrement normale (spec/17). **Pas de page ni de variante spécifiques
    à l'onboarding** : même composant, même route, mêmes interactions (texte éditable
@@ -177,10 +177,10 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    **Valider**). Seul le **contenu** injecté diffère (issu du traitement contexte),
    pas l'UI. On n'ouvre **plus** la note brute dans `/notes`.
 
-   > **Correctif (feedback tests) :** l'onboarding présentait une page `/resolve`
-   > **différente** de celle d'une vérification normale. À **unifier** : supprimer
-   > toute page/variante « mode contexte » spécifique — l'onboarding passe par le
-   > même écran et le même parcours que n'importe quel enregistrement.
+   > **✅ Corrigé (feedback tests) :** l'onboarding présentait une page `/resolve`
+   > **différente** de celle d'une vérification normale. Unifié : toute page/variante
+   > « mode contexte » spécifique retirée — l'onboarding passe par le même écran et
+   > le même parcours que n'importe quel enregistrement.
 8. **Clôture** — après validation, carte chaleureuse, ton majordome : *« Vous êtes
    équipé »* / *« Désormais : parlez, Alfred écoute, résume et retient — et il
    connaît votre univers. Le reste, vous le découvrirez en l'utilisant. »* →
@@ -322,8 +322,8 @@ de `transcription-complete` :
   `alfred-intelligence/`, **pas** de tâches. Le WAV reste dans `alfred-raw/`
   (ré-écoute / refaire), cohérent spec/04. **La note brute de transcription du
   contexte est archivée** (`status: archived`) une fois `build_context_from_transcription`
-  réussi — comme les transcriptions de réunion après ingestion (📝 à faire, feedback
-  tests, spec/07) : sinon elle reste seule visible dans Notes alors que toutes les
+  réussi — comme les transcriptions de réunion après ingestion (✅ fait, feedback
+  tests, spec/07) : sinon elle resterait seule visible dans Notes alors que toutes les
   autres transcriptions disparaissent.
 - **Hors visite guidée** : le même `build_context_from_transcription` est
   réutilisable par un futur bouton « (Re)créer mon contexte à la voix » (Réglages).

@@ -11,7 +11,7 @@
 #
 # CodeSignTool (outil officiel SSL.com, cf. https://github.com/SSLcom/CodeSignTool)
 # est téléchargé et mis en cache dans .codesigntool/ à la racine du repo (gitignored).
-# Nécessite un JRE — `actions/setup-java` en CI ; installer un JDK en local pour tester.
+# Embarque son propre JDK (jdk-11.0.2/) — aucun Java système requis.
 
 param(
     [Parameter(Mandatory = $true)]
@@ -40,17 +40,27 @@ $toolHome = Join-Path $toolDir "CodeSignTool"
 
 if (-not (Test-Path (Join-Path $toolHome "CodeSignTool.bat"))) {
     Write-Host "[sign-windows] Telechargement de CodeSignTool..." -ForegroundColor Cyan
-    New-Item -ItemType Directory -Force -Path $toolDir | Out-Null
-    $zipPath = Join-Path $toolDir "CodeSignTool.zip"
-    Invoke-WebRequest -Uri "https://github.com/SSLcom/CodeSignTool/releases/latest/download/CodeSignTool.zip" -OutFile $zipPath
-    Expand-Archive -Path $zipPath -DestinationPath $toolDir -Force
-    Remove-Item $zipPath -Force
-    $extracted = Get-ChildItem $toolDir -Directory | Where-Object { $_.Name -like "CodeSignTool*" } | Select-Object -First 1
-    if (-not $extracted) {
-        Write-Error "[sign-windows] Archive CodeSignTool inattendue — dossier extrait introuvable."
+    New-Item -ItemType Directory -Force -Path $toolHome | Out-Null
+    # Le nom de l'archive est versionne (ex. CodeSignTool-v1.3.2-windows.zip) — pas
+    # de nom stable "latest/download/CodeSignTool.zip" (404). On resout l'asset via
+    # l'API GitHub : d'abord la variante "-windows.zip" si presente, sinon le zip
+    # generique. L'archive n'a PAS de sous-dossier "CodeSignTool/" — CodeSignTool.bat,
+    # jar/ et son propre JDK embarque (jdk-11.0.2/, pas besoin de Java installe) sont
+    # directement a la racine du zip.
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/SSLcom/CodeSignTool/releases/latest" -Headers @{ "User-Agent" = "alfred-sign-windows" }
+    $asset = $release.assets | Where-Object { $_.name -like "*-windows.zip" } | Select-Object -First 1
+    if (-not $asset) {
+        $asset = $release.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
     }
-    if ($extracted.FullName -ne $toolHome) {
-        Rename-Item $extracted.FullName $toolHome
+    if (-not $asset) {
+        Write-Error "[sign-windows] Aucune archive .zip trouvee dans la derniere release CodeSignTool."
+    }
+    $zipPath = Join-Path $toolDir $asset.name
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
+    Expand-Archive -Path $zipPath -DestinationPath $toolHome -Force
+    Remove-Item $zipPath -Force
+    if (-not (Test-Path (Join-Path $toolHome "CodeSignTool.bat"))) {
+        Write-Error "[sign-windows] Archive CodeSignTool inattendue — CodeSignTool.bat introuvable apres extraction."
     }
 }
 
@@ -59,21 +69,31 @@ foreach ($file in $files) {
     $outDir = $file.DirectoryName
     Write-Host "[sign-windows] Signature de $filePath..." -ForegroundColor Cyan
 
+    # CodeSignTool.bat renvoie exit code 0 MEME en echec (testes : format non
+    # supporte, identifiants invalides — dans les deux cas exit=0, juste une ligne
+    # "Error: ..." dans la sortie). Se fier au SEUL signal fiable : le hash du
+    # fichier a-t-il change ? Une signature reussie reecrit le fichier.
+    $hashBefore = (Get-FileHash -Path $filePath -Algorithm SHA256).Hash
+    $output = ""
+
     Push-Location $toolHome
     try {
-        & .\CodeSignTool.bat sign `
+        $output = & .\CodeSignTool.bat sign `
             "-input_file_path=$filePath" `
             "-output_dir_path=$outDir" `
             "-username=$env:ESIGNER_USERNAME" `
             "-password=$env:ESIGNER_PASSWORD" `
             "-totp_secret=$env:ESIGNER_TOTP_SECRET" `
             "-credential_id=$env:ESIGNER_CREDENTIAL_ID" `
-            "-override=true"
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "[sign-windows] CodeSignTool a echoue (exit $LASTEXITCODE) pour $filePath"
-        }
+            "-override=true" 2>&1 | Out-String
     } finally {
         Pop-Location
+    }
+    Write-Host $output
+
+    $hashAfter = (Get-FileHash -Path $filePath -Algorithm SHA256).Hash
+    if ($hashAfter -eq $hashBefore -or $output -match "(?im)^Error:") {
+        Write-Error "[sign-windows] CodeSignTool n'a pas signe $filePath (exit $LASTEXITCODE, fichier inchange ou erreur dans la sortie ci-dessus)"
     }
 
     Write-Host "[sign-windows] Signe : $filePath" -ForegroundColor Green

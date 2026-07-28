@@ -77,16 +77,6 @@ jobs:
           node-version: 22
           cache: npm
 
-      # CodeSignTool (scripts/sign-windows.ps1, étape "Signer les binaires Windows"
-      # plus bas) est un outil Java — sans JRE, `CodeSignTool.bat` échoue. Windows
-      # uniquement, les autres OS ne signent rien ici.
-      - name: Java (signature Windows)
-        if: runner.os == 'Windows'
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
       - uses: dtolnay/rust-toolchain@stable
 
       # Cache cargo + target (whisper.cpp est le gros du temps de compilation).

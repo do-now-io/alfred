@@ -7,7 +7,14 @@ interface Rect {
   height: number;
 }
 
-/** Tracks a target element's viewport rect, live across resize/scroll/layout changes. */
+/** Tracks a target element's viewport rect, live across resize/scroll/layout changes.
+ *  Polled every frame rather than only on `ResizeObserver`/`resize`/`scroll`: a
+ *  sibling appearing above the target (e.g. the demo-content banner popping in
+ *  after an async check) shifts the target's *position* without changing its own
+ *  size, which `ResizeObserver` never reports — leaving the spotlight stuck at a
+ *  stale position (feedback tests). `getBoundingClientRect` is cheap enough for
+ *  a per-frame poll, and the state only updates (re-render) when values actually
+ *  changed. */
 function useTargetRect(target: HTMLElement | null | undefined): Rect | null {
   const [rect, setRect] = useState<Rect | null>(null);
 
@@ -16,21 +23,24 @@ function useTargetRect(target: HTMLElement | null | undefined): Rect | null {
       setRect(null);
       return;
     }
-    const update = () => {
-      const r = target.getBoundingClientRect();
-      setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
-    };
-    update();
 
-    const ro = new ResizeObserver(update);
-    ro.observe(target);
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
+    const measure = () => {
+      const r = target.getBoundingClientRect();
+      setRect((prev) =>
+        prev && prev.top === r.top && prev.left === r.left && prev.width === r.width && prev.height === r.height
+          ? prev
+          : { top: r.top, left: r.left, width: r.width, height: r.height },
+      );
     };
+    // Measure synchronously on mount too — a tab that isn't focused/visible can
+    // have its first `requestAnimationFrame` throttled/delayed by the browser,
+    // which would otherwise leave the spotlight invisible until that first tick.
+    measure();
+    let raf = requestAnimationFrame(function tick() {
+      measure();
+      raf = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(raf);
   }, [target]);
 
   return rect;

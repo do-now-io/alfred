@@ -18,7 +18,7 @@ export default {
     no: "Non",
     linkNotFound: "Cible introuvable — a-t-elle été renommée ?",
     share: {
-      consent: "Partager ?\n\nLe contenu sera envoyé sur mes serveurs et accessible par toute personne disposant du lien. Vous pourrez arrêter le partage à tout moment.",
+      consent: "Ce contenu sera accessible à toute personne disposant du lien. Êtes-vous sûr ?\n\nIl sera envoyé sur mes serveurs ; vous pourrez arrêter le partage à tout moment. (Ce message ne s'affichera plus.)",
       failed: "Partage impossible : {error}",
       unshareFailed: "Impossible d'arrêter le partage : {error}",
       copied: "Copié",
@@ -48,7 +48,7 @@ export default {
     no: "No",
     linkNotFound: "Target not found — was it renamed?",
     share: {
-      consent: "Share?\n\nThe content will be sent to my servers and accessible to anyone with the link. You can stop sharing at any time.",
+      consent: "This content will be accessible to anyone with the link. Are you sure?\n\nIt'll be sent to my servers; you can stop sharing at any time. (This message won't show again.)",
       failed: "Could not share: {error}",
       unshareFailed: "Could not stop sharing: {error}",
       copied: "Copied",

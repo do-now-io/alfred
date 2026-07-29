@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
-import { EditorState } from "@codemirror/state";
-import { EditorView, keymap, placeholder } from "@codemirror/view";
+import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import { Decoration, type DecorationSet, EditorView, keymap, placeholder } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from "@codemirror/search";
@@ -44,7 +44,32 @@ interface Props {
   onNavigate?: (href: string) => void;
   /** When true, each task gets a ★ toggle to flag it important (Tâches screen). */
   importantToggles?: boolean;
+  /** First matching occurrence gets highlighted + scrolled into view — `null`/
+   *  absent clears it (`/resolve`, feedback tests: hovering a to-verify card
+   *  now highlights its quote in the transcription instead of leaving the
+   *  reader to search for it by eye). Case-insensitive fallback, same matching
+   *  as `replaceOnce` (Resolve.tsx) so "found" here implies "found" there too. */
+  highlightQuote?: string | null;
 }
+
+const setHighlightEffect = StateEffect.define<{ from: number; to: number } | null>();
+const highlightField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none;
+  },
+  update(deco, tr) {
+    deco = deco.map(tr.changes);
+    for (const e of tr.effects) {
+      if (e.is(setHighlightEffect)) {
+        deco = e.value
+          ? Decoration.set([Decoration.mark({ class: "cm-quote-highlight" }).range(e.value.from, e.value.to)])
+          : Decoration.none;
+      }
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 // Imperative API for "fold/unfold every section at once" from a parent toolbar.
 export interface NoteEditorHandle {
@@ -55,7 +80,7 @@ export interface NoteEditorHandle {
 }
 
 const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEditor(
-  { body, noteKey, onChange, onWikilink, onNavigate, importantToggles }, ref
+  { body, noteKey, onChange, onWikilink, onNavigate, importantToggles, highlightQuote }, ref
 ) {
   const t = useT();
   const lang = useI18nStore((s) => s.lang);
@@ -97,6 +122,7 @@ const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEditor(
         placeholder(t("notes.editor.placeholder")),
         search({ top: true }),
         highlightSelectionMatches(),
+        highlightField,
         // English is the search panel's own default — only override the
         // phrases when the app is in French (spec/21).
         ...(lang === "fr" ? [EditorState.phrases.of(buildFrenchPhrases(t))] : []),
@@ -129,6 +155,7 @@ const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEditor(
           },
           ".cm-searchMatch": { background: "rgba(200, 145, 74, 0.25)" },
           ".cm-searchMatch.cm-searchMatch-selected": { background: "rgba(200, 145, 74, 0.5)" },
+          ".cm-quote-highlight": { background: "rgba(200, 145, 74, 0.45)", borderRadius: "3px" },
         }),
       ],
     });
@@ -151,6 +178,28 @@ const NoteEditor = forwardRef<NoteEditorHandle, Props>(function NoteEditor(
       view.dispatch({ changes: { from: 0, to: current.length, insert: body } });
     }
   }, [body]);
+
+  // Highlight + scroll to the first occurrence of `highlightQuote` (case-
+  // insensitive fallback, same as `replaceOnce`) — `null`/not found clears it.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const doc = view.state.doc.toString();
+    const quote = highlightQuote?.trim();
+    let from = -1;
+    if (quote) {
+      from = doc.indexOf(quote);
+      if (from < 0) from = doc.toLowerCase().indexOf(quote.toLowerCase());
+    }
+    if (from < 0) {
+      view.dispatch({ effects: setHighlightEffect.of(null) });
+      return;
+    }
+    const to = from + quote!.length;
+    view.dispatch({
+      effects: [setHighlightEffect.of({ from, to }), EditorView.scrollIntoView(from, { y: "center" })],
+    });
+  }, [highlightQuote, noteKey]);
 
   return <div ref={containerRef} style={{ flex: 1, overflow: "hidden", height: "100%" }} />;
 });

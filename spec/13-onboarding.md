@@ -131,18 +131,19 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    logo Alfred (`AlfredLogo`, sidebar — toujours monté, quel que soit l'écran) :
    *« Ce point, c'est moi. Il clignote quand je travaille — j'enregistre, je
    transcris ou je réfléchis — et reste discret quand je suis disponible. Vous
-   le retrouverez à cet endroit à chaque fois. »* → **« Suivant »** (navigue vers
+   me retrouverez ici ou sur les documents sur lesquels je travaille. »* →
+   **« Suivant »** (navigue vers
    `/notes` à ce moment-là, pas avant, puis avance vers l'étape 5).
 5. **Visite de l'app pendant la transcription** — la transcription du contexte est
    **longue** ; au lieu d'un simple bandeau d'attente, la visite **occupe ce temps
    utile** en faisant découvrir l'app, étape par étape (spotlights non bloquants),
    pendant que le traitement tourne en arrière-plan :
-   1. **Notes** — où retrouver les comptes-rendus, regroupés par projet (spec/07).
+   1. **Notes** — où retrouver les comptes-rendus (spec/07).
    2. **Tâches** — `Todo.md` agrégé (sections Prioritaire / En cours / À faire, spec/06).
    3. **Graphe** — les liens entre notes (spec/07c).
-   4. **Questions à Alfred & comment enregistrer** — le chat (poser une question,
-      suggestions, spec/07b) **et** comment lancer un enregistrement (logo/carte
-      d'accueil, import audio, spec/03).
+   4. **Questions à Alfred** — le chat (poser une question, suggestions, spec/07b).
+      **Ne répète plus** comment enregistrer (feedback tests) : un seul rappel
+      suffit, celui de l'étape `record-cta` juste après validation du contexte.
 
    Un **indicateur d'état discret** rappelle en permanence qu'Alfred « écoute et met
    au propre… » puis « range tout ça… » (piloté par `recording-status-changed =
@@ -182,9 +183,8 @@ revient pas au prochain lancement) ; seul « Revoir la visite guidée » la rela
    > « mode contexte » spécifique retirée — l'onboarding passe par le même écran et
    > le même parcours que n'importe quel enregistrement.
 8. **Clôture** — après validation, carte chaleureuse, ton majordome : *« Vous êtes
-   équipé »* / *« Désormais : parlez, Alfred écoute, résume et retient — et il
-   connaît votre univers. Le reste, vous le découvrirez en l'utilisant. »* →
-   « Terminer ».
+   équipé »* / *« Désormais : parlez, Alfred écoute, résume et retient. Le reste,
+   vous le découvrirez en l'utilisant. »* → « Terminer ».
 
 **Dégradation gracieuse** : si l'enregistrement/transcription/structuration échoue
 (`status: "error"`), message d'excuse avec l'erreur + « Continuer quand même » →
@@ -358,6 +358,17 @@ gagne un `children` optionnel pour ce cas (glow seul, sans bulle de texte —
 évite un overlay invisible cliquable qui bloquerait la sidebar dessous).
 `Resolve.tsx` route désormais vers `record-cta` (au lieu de `closing`
 directement) après validation du contexte en mode visite guidée.
+
+> **✅ Bug corrigé (feedback tests) — halo décalé.** Le halo sur `hero-card`
+> apparaissait décalé par rapport à la vraie carte quand la bannière « Supprimer
+> les données de démo » (`Dashboard.tsx`) s'affichait au-dessus : elle pousse la
+> carte vers le bas via un `invoke` **asynchrone** (`has_starter_content`), qui
+> résout **après** la première mesure du halo. `Spotlight` (`components/tour/
+> Spotlight.tsx`) ne réagissait qu'à un `ResizeObserver` sur la cible — qui ne
+> détecte qu'un changement de **taille**, jamais un décalage de **position**
+> causé par un élément voisin. Corrigé : mesure en boucle (`requestAnimationFrame`)
+> tant que le halo est monté, qui capte tout décalage de mise en page, pas
+> seulement un resize de la cible.
 
 ## Retiré / déplacé
 

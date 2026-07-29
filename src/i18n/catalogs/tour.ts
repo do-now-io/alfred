@@ -16,7 +16,7 @@ export default {
     },
     statusDot: {
       title: "Ce point, c'est moi",
-      text: "Il clignote quand je travaille (j'enregistre, je transcris ou je réfléchis) et reste discret quand je suis disponible. Vous le retrouverez à cet endroit à chaque fois.",
+      text: "Il clignote quand je travaille (j'enregistre, je transcris ou je réfléchis) et reste discret quand je suis disponible. Vous me retrouverez ici ou sur les documents sur lesquels je travaille.",
     },
     error: {
       title: "Petit accroc",
@@ -39,13 +39,13 @@ export default {
     },
     closing: {
       title: "Vous êtes équipé",
-      text: "Désormais : parlez, je vous écoute, je résume et je retiens. Et je connais votre univers. Le reste, vous le découvrirez en m'utilisant.",
+      text: "Désormais : parlez, je vous écoute, je résume et je retiens. Le reste, vous le découvrirez en m'utilisant.",
       primary: "Terminer",
     },
     visit: {
       notes: {
         title: "Vos notes",
-        text: "De chaque enregistrement, je produis la transcription et le compte-rendu, rangés ici, regroupés par projet.",
+        text: "De chaque enregistrement, je produis la transcription et le compte-rendu, rangés ici.",
       },
       tasks: {
         title: "Vos tâches",
@@ -56,8 +56,8 @@ export default {
         text: "Je relie vos notes entre elles par projets et participants, pratique pour retrouver le fil d'un sujet.",
       },
       chat: {
-        title: "Questions à Alfred, et comment enregistrer",
-        text: "Posez vos questions ici, je réponds en citant vos notes. Et pour enregistrer : cliquez mon logo (en haut à gauche), la carte d'accueil, ou importez un audio.",
+        title: "Questions à Alfred",
+        text: "Posez vos questions ici, je réponds en citant vos notes.",
       },
       next: "Suivant",
       finishVisit: "Terminer la visite",
@@ -103,7 +103,7 @@ export default {
     },
     statusDot: {
       title: "This dot is me",
-      text: "It pulses when I'm working (recording, transcribing, or thinking) and stays quiet when I'm available. You'll find it here every time.",
+      text: "It pulses when I'm working (recording, transcribing, or thinking) and stays quiet when I'm available. You'll find me here or on the documents I'm working on.",
     },
     error: {
       title: "Small hiccup",
@@ -126,13 +126,13 @@ export default {
     },
     closing: {
       title: "You're all set",
-      text: "From now on: talk, I'll listen, summarize, and remember. And I know your world. You'll discover the rest as you use me.",
+      text: "From now on: talk, I'll listen, summarize, and remember. You'll discover the rest as you use me.",
       primary: "Finish",
     },
     visit: {
       notes: {
         title: "Your notes",
-        text: "From every recording, I produce the transcription and the summary, stored here, grouped by project.",
+        text: "From every recording, I produce the transcription and the summary, stored here.",
       },
       tasks: {
         title: "Your tasks",
@@ -143,8 +143,8 @@ export default {
         text: "I link your notes together by project and participant, handy for picking back up the thread of a topic.",
       },
       chat: {
-        title: "Ask Alfred, and how to record",
-        text: "Ask your questions here, I'll answer by citing your notes. And to record: click my logo (top left), the home card, or import an audio file.",
+        title: "Ask Alfred",
+        text: "Ask your questions here, I'll answer by citing your notes.",
       },
       next: "Next",
       finishVisit: "Finish the tour",

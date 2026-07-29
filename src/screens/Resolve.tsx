@@ -195,6 +195,9 @@ export default function Resolve() {
 
   const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Survol d'une carte à vérifier → surligne sa citation dans le texte
+  // (feedback tests) — évite d'avoir à la chercher à l'œil.
+  const [hoveredQuote, setHoveredQuote] = useState<string | null>(null);
 
   // Keep local state in sync if a new session arrives.
   useEffect(() => {
@@ -326,7 +329,7 @@ export default function Resolve() {
             {isContext ? t("resolve.editor.labelContext") : t("resolve.editor.labelMeeting")}
           </div>
           <div style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 12, background: "var(--card-bg)", overflow: "hidden", padding: "8px 12px" }}>
-            <NoteEditor body={text} noteKey={session.recordingId} onChange={setText} />
+            <NoteEditor body={text} noteKey={session.recordingId} onChange={setText} highlightQuote={hoveredQuote} />
           </div>
         </div>
 
@@ -357,7 +360,7 @@ export default function Resolve() {
             if (status === "applied") return <ResolvedRow key={`f${i}`} label={t("resolve.fixes.applied", { value: fixEdit[i] ?? f.correction })} onUndo={() => setFixStatus((s) => ({ ...s, [i]: "pending" }))} />;
             if (status === "skipped") return <ResolvedRow key={`f${i}`} label={t("resolve.fixes.skipped")} onUndo={() => setFixStatus((s) => ({ ...s, [i]: "pending" }))} />;
             return (
-              <div key={`f${i}`} style={card}>
+              <div key={`f${i}`} style={card} onMouseEnter={() => setHoveredQuote(f.quote)} onMouseLeave={() => setHoveredQuote(null)}>
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", textDecoration: "line-through" }}>{f.quote}</div>
                 <input value={fixEdit[i] ?? f.correction} onChange={(e) => setFixEdit((s) => ({ ...s, [i]: e.target.value }))} style={smallInput} />
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
@@ -383,7 +386,7 @@ export default function Resolve() {
             const isUnsure = u.proposed.trim() === "?";
             const value = unclearEdit[i] ?? (isUnsure ? "" : u.proposed);
             return (
-              <div key={`u${i}`} style={card}>
+              <div key={`u${i}`} style={card} onMouseEnter={() => setHoveredQuote(u.quote)} onMouseLeave={() => setHoveredQuote(null)}>
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", fontStyle: "italic" }}>« {u.quote} »</div>
                 {u.comment && (
                   <div

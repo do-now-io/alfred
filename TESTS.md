@@ -33,7 +33,7 @@ Remove-Item "$env:APPDATA\com.alfred.app\alfred.db*" -Force -ErrorAction Silentl
 Remove-Item "$env:APPDATA\com.alfred.app\recordings\*" -Recurse -Force -ErrorAction SilentlyContinue
 
 # 2) Vider le vault (ADAPTE le chemin à ton vault)
-$vault = "C:\Users\ulyss\OneDrive\Bureau\alfred_vault"
+$vault = "$env:USERPROFILE\alfred_vault"  # adapte au chemin de ton vault
 Remove-Item "$vault\alfred-raw\*","$vault\alfred-intelligence\*" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item "$vault\Contexte Alfred.md" -Force -ErrorAction SilentlyContinue
 ```
@@ -197,7 +197,7 @@ Feedback (§13) → Nav & indicateur d'état (§14). Le §1 dépend d'un état r
 - [ ] Sécurité : injecter `<script>` dans une note → **non exécuté** sur la page partagée.
 - [ ] Footer de la page partagée : « Partagé via Alfred » + lien `alfred.do-now.io` + logo.
 
-## 12. Accès IA & backend (spec 15) 💻
+## 12. Accès IA & backend (repo privé alfred-backend) 💻
 - [ ] **Clé perso** : requêtes via `api.anthropic.com`.
 - [ ] **AlfredIA** : abonnement Stripe (20 €/mois) → token loopback auto → requêtes via le proxy.
 - [ ] `test_api_key` valide clé perso / token.

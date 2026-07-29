@@ -8,3 +8,4 @@ src-tauri/models/*.bin
 src-tauri/.sqlx
 .env.metrics.local
 .codesigntool/
+.DS_Store

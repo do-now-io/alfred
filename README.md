@@ -75,9 +75,6 @@ npm run tauri:dev                 # dev, with Whisper
 ./build-macos.sh                  # release build (.app + .dmg), fetches + bundles `small`, then builds
 ```
 
-`npm run tauri:dev:whisper` / `dev-whisper.sh` still work but are deprecated
-aliases for the plain dev command now that Whisper is always on.
-
 ## Audio system capture (spec/03)
 
 - **Windows:** `system_only` / `mixed` recording sources are implemented via

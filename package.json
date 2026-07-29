@@ -9,7 +9,6 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:dev:whisper": "bash dev-whisper.sh",
     "generate-types": "cd src-tauri && cargo test export_bindings 2>&1"
   },
   "dependencies": {

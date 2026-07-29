@@ -57,6 +57,7 @@ export default {
     },
     card: {
       detailsTitle: "Cette tâche a des détails (sous-tâches / description)",
+      newTitle: "Nouvelle tâche — jamais ouverte",
     },
     sheet: {
       owner: "Responsable",
@@ -134,6 +135,7 @@ export default {
     },
     card: {
       detailsTitle: "This task has details (sub-tasks / description)",
+      newTitle: "New task — never opened",
     },
     sheet: {
       owner: "Owner",

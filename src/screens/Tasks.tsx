@@ -14,6 +14,7 @@ import { useToastStore } from "../store/toastStore";
 import { useInternalLink } from "../utils/useInternalLink";
 import { renderInlineMd, stripInlineMd } from "../utils/inlineMd";
 import { normalizeSearch } from "../utils/text";
+import { computeNewTaskIds, markTaskOpened } from "../utils/tasksSeen";
 import type { Todo } from "../bindings/Todo";
 import { useT, useI18nStore } from "../i18n";
 import { TODO_SECTION_LABELS, TODO_SECTION_KEYS, normalizeSectionHeading, type TodoSectionKey } from "../i18n/todoSections";
@@ -142,6 +143,12 @@ export default function Tasks() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const handledFocusRef = useRef<string | null>(null);
   const showToast = useToastStore((s) => s.show);
+  // Tâches jamais ouvertes (feedback tests) — snapshot calculé UNE SEULE fois à
+  // l'ouverture de la page (pas à chaque rafraîchissement de la liste, sinon
+  // une tâche qui arrive pendant qu'on est déjà sur la page rejoindrait le lot
+  // "nouvelles" après coup). Ouvrir une tâche la retire immédiatement du set.
+  const [newTaskIds, setNewTaskIds] = useState<Set<string>>(new Set());
+  const newTaskIdsComputedRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -175,6 +182,12 @@ export default function Tasks() {
     listen("notes-updated", () => { load(); loadVaultProjects(); }).then((fn) => unsubs.push(fn));
     return () => unsubs.forEach((fn) => fn());
   }, [load, loadVaultProjects]);
+
+  useEffect(() => {
+    if (!loaded || newTaskIdsComputedRef.current) return;
+    newTaskIdsComputedRef.current = true;
+    setNewTaskIds(computeNewTaskIds(todos.map((x) => x.id)));
+  }, [loaded, todos]);
 
   // `/tasks?focus=<id>` (spec/23) : une fois les tâches chargées, cherche la
   // cible — l'`id` est déjà `normalize_title` côté Rust (ingestion) donc une
@@ -547,8 +560,18 @@ export default function Tasks() {
                       task={task}
                       profileName={profileName}
                       highlighted={task.id === highlightedId}
+                      isNew={newTaskIds.has(task.id)}
                       onToggle={() => toggleChecked(task)}
-                      onOpen={() => setOpenTaskId(task.id)}
+                      onOpen={() => {
+                        markTaskOpened(task.id);
+                        setNewTaskIds((prev) => {
+                          if (!prev.has(task.id)) return prev;
+                          const next = new Set(prev);
+                          next.delete(task.id);
+                          return next;
+                        });
+                        setOpenTaskId(task.id);
+                      }}
                       onDragStart={() => setDrag({ id: task.id })}
                       onDragEnd={() => { setDrag(null); setDropCol(null); }}
                       onDropBefore={() => {
@@ -599,13 +622,16 @@ function viewToggleBtn(active: boolean): React.CSSProperties {
 }
 
 function TaskCard({
-  task, profileName, highlighted, onToggle, onOpen, onDragStart, onDragEnd, onDropBefore,
+  task, profileName, highlighted, isNew, onToggle, onOpen, onDragStart, onDragEnd, onDropBefore,
 }: {
   task: Todo;
   /** Profil local (spec/10/11) — pour afficher « moi » sur ses propres tâches. */
   profileName: string;
   /** Halo bref après navigation depuis un lien `task:` (spec/23). */
   highlighted?: boolean;
+  /** Jamais ouverte depuis son apparition (feedback tests) — petit badge, tant
+   *  qu'on ne l'a pas ouverte au moins une fois. */
+  isNew?: boolean;
   onToggle: () => void;
   onOpen: () => void;
   onDragStart: () => void;
@@ -629,8 +655,9 @@ function TaskCard({
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDrop={(e) => { e.preventDefault(); e.stopPropagation(); onDropBefore(); }}
       style={{
-        background: "var(--bg)",
-        border: `1px solid ${highlighted ? "var(--accent)" : "var(--border)"}`,
+        position: "relative",
+        background: isNew ? "var(--active-bg)" : "var(--bg)",
+        border: `1px solid ${highlighted ? "var(--accent)" : isNew ? "var(--accent)" : "var(--border)"}`,
         boxShadow: highlighted ? "0 0 0 3px rgba(200,145,74,0.35)" : "none",
         borderRadius: 10,
         padding: "9px 11px", cursor: "grab",
@@ -639,6 +666,15 @@ function TaskCard({
         transition: "box-shadow 0.4s ease, border-color 0.4s ease",
       }}
     >
+      {isNew && (
+        <span
+          title={t("tasks.card.newTitle")}
+          style={{
+            position: "absolute", top: -5, right: -5, width: 10, height: 10,
+            borderRadius: "50%", background: "var(--accent)", border: "2px solid var(--card-bg)",
+          }}
+        />
+      )}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <input
           type="checkbox"

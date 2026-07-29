@@ -28,7 +28,7 @@ export default {
       empty: "Enregistrez ou écrivez quelque chose, et je vous préparerai un point chaque jour.",
     },
     demoBanner: {
-      message: "Ces données sont des exemples",
+      message: "Il y a des données d'exemple",
       delete: "Supprimer les données de démo",
       deleting: "Suppression…",
     },
@@ -61,7 +61,7 @@ export default {
       empty: "Record or write something, and I'll prepare a briefing for you every day.",
     },
     demoBanner: {
-      message: "This data is example content",
+      message: "There's some example content in here",
       delete: "Delete the demo data",
       deleting: "Deleting…",
     },

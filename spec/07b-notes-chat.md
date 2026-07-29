@@ -83,6 +83,14 @@ source puis cherche les **notes liées** (tags / projet communs) et renvoie un
 **résumé synthétique** + les **sources** (comptes-rendus similaires cliquables).
 Jamais automatique. Réutilise `search_notes` / `read_note` ; sortie = `ChatResponse`.
 
+> **✅ Bug corrigé (feedback tests)** : la question envoyée à `answer_question`
+> était rédigée **en dur en français** (« Rassemble le contexte utile... ») —
+> `chat_system`'s consigne de langue infère depuis le **contenu envoyé**, pas
+> `app_language` (même mécanisme que spec/17/22), donc Claude répondait en
+> français même en UI anglaise. `gather_task_context` (`lib.rs`) construit
+> désormais la question dans la langue de `app_language`, comme le reste du
+> texte (titre de tâche, provenance) qu'elle enveloppe.
+
 ## Recherche
 
 Simple **keyword-match** (pas d'embeddings) — suffisant pour la v1.

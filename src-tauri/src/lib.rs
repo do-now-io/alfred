@@ -842,17 +842,36 @@ async fn gather_task_context(
     app: tauri::AppHandle,
 ) -> Result<ai::chat::ChatResponse, String> {
     let vault_root = state.vault_path.lock().unwrap().clone();
-    let mut question = format!(
-        "Rassemble le contexte utile pour réaliser cette tâche : « {} ». ",
-        title
-    );
+    // La question sert de signal de langue à `answer_question` (chat.rs :
+    // « écris dans la MÊME langue que le texte fourni ») — la rédiger en dur en
+    // français faisait répondre Claude en français même en UI anglaise
+    // (feedback tests, même cause racine que spec/17/22 : la langue du CONTENU
+    // envoyé prime sur `app_language`, donc le contenu doit déjà suivre `app_language`).
+    let en = ai::app_language(&state.db).await == "en";
+    let mut question = if en {
+        format!("Gather the useful context to carry out this task: \"{}\". ", title)
+    } else {
+        format!("Rassemble le contexte utile pour réaliser cette tâche : « {} ». ", title)
+    };
     if let Some(ref note) = source_note {
-        question.push_str(&format!("Elle vient du compte-rendu « {} » — commence par le lire. ", note));
+        if en {
+            question.push_str(&format!("It comes from the summary \"{}\" — start by reading it. ", note));
+        } else {
+            question.push_str(&format!("Elle vient du compte-rendu « {} » — commence par le lire. ", note));
+        }
     }
     if let Some(ref p) = project {
-        question.push_str(&format!("Elle concerne le projet « {} » — retrouve aussi les autres notes de ce projet. ", p));
+        if en {
+            question.push_str(&format!("It's part of the \"{}\" project — also look up the other notes in that project. ", p));
+        } else {
+            question.push_str(&format!("Elle concerne le projet « {} » — retrouve aussi les autres notes de ce projet. ", p));
+        }
     }
-    question.push_str("Résume en quelques points ce qu'il faut savoir pour s'y mettre.");
+    question.push_str(if en {
+        "Summarize in a few points what's worth knowing before getting started."
+    } else {
+        "Résume en quelques points ce qu'il faut savoir pour s'y mettre."
+    });
 
     ai::chat::answer_question(question, vec![], vault_root, &state.db, &app)
         .await

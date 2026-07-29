@@ -154,6 +154,15 @@ La liste Markdown en lignes est peu lisible ; les tâches vivent mieux dans un
   marqueurs.
 - **Ajout rapide par colonne** (« + » en tête de colonne → `create_todo` dans la
   section correspondante) + **compteur** par colonne.
+- **✅ Mise en évidence des tâches jamais ouvertes (feedback tests)** : un petit
+  badge (point accent + fond teinté) reste sur une carte jusqu'à ce qu'elle soit
+  **ouverte au moins une fois** (fiche tâche). Calculé **une seule fois par
+  ouverture de la page** Tâches (`src/utils/tasksSeen.ts`, `localStorage` —
+  purement local, `Todo.md` n'a pas ce concept) : une tâche qui arrive pendant
+  qu'on est déjà sur la page ne rejoint **pas** le lot après coup, seul un
+  nouveau montage de la page en tient compte. Premier lancement jamais vu
+  (`localStorage` absent) : le lot existant est semé comme « déjà ouvert » pour
+  ne pas illuminer tout le passif d'un coup.
 - **Filtres** — ✅ faits : par **responsable**, par **échéance** (en retard /
   cette semaine) et par **réunion d'origine**. Le filtre réunion (feedback
   tests — **remplace** l'ancien filtre projet, jugé peu utile : le bon axe de

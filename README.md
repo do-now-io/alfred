@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/assets/alfred-logo.png" alt="Alfred logo" width="160">
+</p>
+
 # Alfred
 
 **Alfred** is a personal assistant desktop app (Tauri 2 + React/TypeScript) that

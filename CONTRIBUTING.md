@@ -60,6 +60,9 @@ These are deliberate, locked-in decisions (see [`spec/00-architecture.md`](spec/
 4. Open a pull request against `main`. Describe **what** changed and **why**,
    and link the issue/spec section it relates to.
 
+By submitting a pull request, you agree that your contribution is licensed
+under the project's [Apache License, Version 2.0](LICENSE).
+
 ## Testing
 
 - **Rust**: unit tests live next to the code (`#[cfg(test)]`). Run with:

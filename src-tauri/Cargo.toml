@@ -3,6 +3,7 @@ name = "alfred"
 version = "0.2.9"
 description = "Alfred — personal assistant desktop app"
 authors = ["Tanguy"]
+license = "Apache-2.0"
 edition = "2021"
 
 [lib]

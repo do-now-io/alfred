@@ -136,7 +136,7 @@ propose changes, the branch/PR workflow, and coding conventions.
 
 ## License
 
-License to be announced.
+Licensed under the [Apache License, Version 2.0](LICENSE).
 
 ---
 

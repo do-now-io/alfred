@@ -15,7 +15,7 @@ Whisper, and turns them into structured notes, summaries, and tasks in a plain
 Windows and macOS installers (`.msi`/`.exe`, `.dmg`) are published on the
 [Releases page](https://github.com/do-now-io/alfred/releases/latest).
 
-<video src="https://github.com/do-now-io/alfred/raw/main/spec/Images/Demo.mp4" controls poster="spec/Images/image.png" width="100%"></video>
+![Alfred demo](spec/Images/Demo.gif)
 
 ## What it does
 

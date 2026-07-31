@@ -43,8 +43,16 @@ loopback AlfredIA / Stripe).
 
 ## Signature & distribution
 
-- **macOS** : « Developer ID Application » + **notarisation** + staple (hors App Store).
-  **Reste à faire.**
+- **macOS** : 🚧 **signature câblée, notarisation pas encore.** Certificat
+  « Developer ID Application » (DONOW) importé dans un keychain temporaire en CI
+  (`desktop-build.yml`, secrets `APPLE_CERTIFICATE`/`APPLE_CERTIFICATE_PASSWORD`) ;
+  identité détectée automatiquement (`security find-identity`) et passée à
+  `tauri build` via `APPLE_SIGNING_IDENTITY`. **Notarisation + staple** : décision
+  explicite de repousser (nécessite une clé API App Store Connect en plus) — sans
+  elle, Gatekeeper avertit encore au 1er lancement (clic droit → Ouvrir), sur les
+  versions macOS récentes il peut carrément refuser d'ouvrir un `.app` non notarié
+  sans passer par Réglages Système → Confidentialité. No-op silencieux (build non
+  signé) si les secrets sont absents.
 - **Windows** : ✅ **fait, vérifié en réel.** Certificat OV **DONOW** (SSL.com, validé
   Kbis) signé via **eSigner** — signature **cloud HSM**, la clé privée ne quitte
   jamais SSL.com (pas de token USB/fichier `.pfx`, requis depuis juin 2023 par le

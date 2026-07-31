@@ -3,8 +3,11 @@
 # Windows → .msi + .exe (NSIS), **signés** (SSL.com eSigner, OV, cloud HSM — pas de
 # clé privée locale/token, cf. spec/12 + scripts/sign-windows.ps1) si les secrets
 # ESIGNER_* sont configurés sur le repo, sinon NON signé (fallback silencieux).
-# macOS → .dmg · Linux → .deb + .rpm + .AppImage : NON signés (macOS = Phase E, reste
-# à faire — Developer ID + notarisation).
+# macOS → .dmg, **signé** (Developer ID Application) si les secrets APPLE_CERTIFICATE*
+# sont configurés, sinon NON signé — **notarisation pas encore branchée** (décision
+# explicite, à faire plus tard : Gatekeeper avertit encore au 1er lancement même signé).
+# Linux → .deb + .rpm + .AppImage : NON signés (pas de mécanisme équivalent attendu par
+# l'écosystème Linux pour ces formats).
 #
 # Déclenchement : manuel (onglet Actions → Run workflow) ou tag `v*`.
 # Pas de build sur chaque push : la compilation de Whisper (cmake) rend le job
@@ -99,14 +102,57 @@ jobs:
       - name: npm ci
         run: npm ci
 
+      # Signature macOS (Developer ID Application, spec/12) — **notarisation pas
+      # encore branchée** (décision explicite, à faire plus tard) : l'app sera
+      # signée mais Gatekeeper affichera quand même un avertissement au premier
+      # lancement (clic droit → Ouvrir), plus strict que sans signature du tout
+      # sur les versions macOS récentes qui bloquent carrément un .app non
+      # notarié — mais un premier pas. Mot de passe de keychain généré à la
+      # volée (jetable, ne sert qu'à cette exécution CI). No-op si les secrets
+      # APPLE_CERTIFICATE* sont absents (fork/PR sans accès aux secrets) : la
+      # variable d'environnement `APPLE_SIGNING_IDENTITY` reste alors vide et
+      # Tauri produit un `.dmg` non signé, comme avant.
+      - name: Importer le certificat Apple (macOS)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "Secrets APPLE_CERTIFICATE* absents — build macOS non signe."
+            exit 0
+          fi
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm certificate.p12
+          IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.+)"/\1/')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::Aucune identite 'Developer ID Application' trouvee dans le certificat importe."
+            exit 1
+          fi
+          echo "Identite trouvee : $IDENTITY"
+          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
       # beforeBuildCommand (tauri.conf.json) enchaîne tsc + vite build.
       # ALFRED_METRICS_APP_KEY (secret repo, optionnel) : clé anti-spam metrics
       # (spec/15 §D) embarquée à la compilation — doit correspondre au
       # METRICS_APP_KEY configuré côté Coolify. Vide en local (pas bloquant,
       # le backend n'exige le header que s'il a lui-même une clé configurée).
+      # APPLE_* (macOS uniquement, secrets repo) : signature — cf. étape
+      # précédente. `APPLE_SIGNING_IDENTITY` vient de `$GITHUB_ENV`, posé par
+      # elle ; vide sur Windows/Linux et sans effet là-bas (Tauri ne signe
+      # macOS que pour la cible macOS).
       - name: Build Tauri
         env:
           ALFRED_METRICS_APP_KEY: ${{ secrets.ALFRED_METRICS_APP_KEY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: npm run tauri -- build
 
       # Signature Windows via SSL.com eSigner — étape CI À PART plutôt qu'un hook

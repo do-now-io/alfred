@@ -186,6 +186,22 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [ ] | **Site web (`alfred.do-now.io`) — spec/19** : rien n'existe (ni code, ni spec) — le footer des pages partagées (spec/18) pointe déjà vers ce domaine. Écrire la spec (contenu, hébergement) avant de coder | |
 | [ ] | **Rendre le projet open source — spec/20** : décisions produit/légales à prendre d'abord (licence, dépôt cible, ce qui doit rester privé) avant d'écrire la spec | |
 
+## Phase G — Post-v1 : Alfred connecté, collaboratif & mobile (specs à écrire)
+
+**Vision :** Alfred a pour objectif de **rassembler autour de la notion de projet**
+tout ce qui s'y rapporte — notes et comptes-rendus de réunion, tâches, e-mails,
+agenda — pour qu'on puisse lui demander « qu'est-ce qu'il me reste à faire sur ce
+projet ? » et obtenir une réponse qui croise toutes ces sources.
+
+| | Tâche | Qui |
+|---|---|---|
+| [ ] | **Benchmark speech-to-text (spec/04/17 à mettre à jour) — priorité haute** : on ne fait que du Whisper aujourd'hui alors que l'offre a beaucoup évolué (large-v3-turbo, Parakeet/Canary, Voxtral, Moonshine, Distil-Whisper…) — benchmarker les meilleurs modèles / catégories de modèles sur nos cas réels (FR/EN, réunions longues, CPU local, glossaire via `initial_prompt`, licence / embarquabilité) et choisir le(s) bon(s) pour Alfred | |
+| [ ] | **Connexion e-mails — extraction de tâches & contexte (spec/24 à écrire)** : connecter Alfred à la boîte mail (Gmail / Outlook / IMAP à trancher) : **extraire les tâches** des e-mails → `Todo.md` (avec provenance), rattacher les mails pertinents aux **projets**, et pousser ce contexte dans l'ingestion / le chat / le brief pour structurer et rassembler les idées. Grande complexité (auth, sync, volume, pertinence du tri) — gros chantier à part entière, cœur de la vision ci-dessus | |
+| [ ] | **Projets unifiés — interroger Alfred par projet (spec/24 + 07b/05)** : la notion de **projet** englobe notes de réunion, synthèses, tâches ET e-mails ; le chat/RAG croise toutes ces sources pour répondre à « qu'est-ce qu'il me reste à faire sur le projet X ? ». Dépend de la connexion e-mails ci-dessus ; énorme travail de pertinence pour que ce soit vraiment efficace | |
+| [ ] | **Calendrier — reconnexion + affichage (spec/02 à rouvrir)** : reconnecter le calendrier (module retiré en Phase D) — afficher l'agenda dans l'app et s'en servir comme contexte (brief, enregistrements). **Dépriorisé** (sympa mais pas obligatoire) | |
+| [ ] | **Travail collaboratif sur les notes partagées (spec/25 à écrire, étend spec/18)** : temps 1 — le destinataire d'une note partagée peut la **commenter** ; temps 2 — **ajouter / modifier** du contenu. Ouvre de vraies questions (système de comptes utilisateurs, droits, suivi des modifications) à trancher dans la spec avant de coder | |
+| [ ] | **Application mobile (spec/26 à écrire) — priorité la plus faible** : consulter les notes + **enregistrer** depuis le téléphone. Énorme sujet à part entière : Whisper ne peut plus tourner comme aujourd'hui (transcription on-device vs serveur à trancher), sync du vault, choix de stack (Tauri 2 mobile ?) | |
+
 ---
 
 *Mis à jour au fil de l'eau. Nouveau besoin non couvert par une spec → ajouter la

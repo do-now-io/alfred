@@ -9,3 +9,12 @@ src-tauri/.sqlx
 .env.metrics.local
 .codesigntool/
 .DS_Store
+
+# Certificats de signature de code (Windows/macOS) - jamais dans le repo,
+# meme par accident (clefs privees).
+*.p12
+*.pfx
+*.key
+*.csr
+*.cer
+*.pem

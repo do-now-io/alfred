@@ -17,14 +17,54 @@ Windows and macOS installers (`.msi`/`.exe`, `.dmg`) are published on the
 
 ![Alfred demo](spec/Images/Demo.gif)
 
+## Privacy: what's local, and what uses AI
+
+Alfred has two clearly separate parts. Please read this before recording
+anything sensitive.
+
+### 🔒 Transcription — 100% local, nothing leaves your machine
+
+Recording and transcription run entirely on-device via
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp). Your microphone/system
+audio and the raw transcript it produces are **never sent anywhere** for this
+step — there is no network call involved in turning speech into text.
+
+### 🤖 AI features — send text to Claude (Anthropic)
+
+Everything *beyond* the raw transcript is AI-assisted, meaning the relevant
+**text** (never raw audio) is sent to Claude to be processed. That covers:
+
+1. **Meeting summaries** — the transcript is sent to generate the structured
+   write-up (`alfred-intelligence/`).
+2. **Task extraction** — action items pulled out of the same transcript.
+3. **Home page daily brief** ("today's tasks") — your recent notes/tasks are
+   sent to generate the summary shown on the home screen.
+4. **Chat with Alfred** — your question plus the relevant note excerpts it
+   finds (RAG) are sent to answer with sources.
+5. **Chat agent actions** — from that same chat, Claude can also create,
+   edit, or archive notes and tasks on your behalf (never a hard delete).
+6. **Onboarding voice context** — the first recording where you describe
+   yourself/your company is sent to Claude to structure it into
+   `Contexte Alfred.md`.
+7. **Glossary generation** — the content of `Contexte Alfred.md` is sent to
+   Claude to derive a list of proper nouns, fed back into Whisper to improve
+   transcription accuracy on names/jargon.
+
+**Two ways to access these AI features**, both using Claude under the hood:
+
+- **Bring your own Anthropic API key** — requests go **directly** from your
+  machine to `api.anthropic.com` using your own key. Nothing passes through
+  do·now's servers.
+- **AlfredIA subscription** — a managed option with no key to set up. Requests
+  are routed through our proxy (which holds the shared API key) to Claude, and
+  are not used for anything beyond serving that request.
+
 ## What it does
 
 - 🎙️ **Recording** — microphone and system audio (Windows: WASAPI loopback,
   mic + system mixed by default), or import an existing `.wav` file.
-- 📝 **Local transcription** — [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
-  runs on-device, no audio ever leaves your machine to transcribe it. A
-  glossary derived from your own context (people, company, jargon) improves
-  accuracy on proper nouns.
+- 📝 **Local transcription** — on-device with Whisper, see
+  [above](#privacy-whats-local-and-what-uses-ai).
 - 🤖 **AI notes & tasks** — Claude turns a transcription into a structured
   summary and a task list, with a review screen to correct anything before it's
   finalized.

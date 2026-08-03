@@ -16,13 +16,14 @@ import resolve from "./catalogs/resolve";
 import feedback from "./catalogs/feedback";
 import graph from "./catalogs/graph";
 import errors from "./catalogs/errors";
+import calendar from "./catalogs/calendar";
 
 // Un module par domaine (spec/21) — évite qu'une traduction de tout l'app en
 // une passe fasse collision sur un unique gros fichier. Chaque module
 // exporte { fr, en } pour SON namespace ; on les assemble ici.
 const NAMESPACES = {
   common, nav, onboarding, tour, settings, dashboard, chat, notes, tasks,
-  recording, resolve, feedback, graph, errors,
+  recording, resolve, feedback, graph, errors, calendar,
 };
 
 function buildCatalog(lang: Lang): Catalog {

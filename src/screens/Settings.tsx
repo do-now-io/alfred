@@ -8,6 +8,7 @@ import { useProfileStore } from "../store/profileStore";
 import WhisperModelPicker from "../components/WhisperModelPicker";
 import type { NoteFile } from "../bindings/NoteFile";
 import type { ImapStatus } from "../bindings/ImapStatus";
+import type { GoogleAuthStatus } from "../bindings/GoogleAuthStatus";
 import { useI18nStore, useT, type Lang } from "../i18n";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -575,6 +576,107 @@ function EmailSection() {
   );
 }
 
+// ─── Google Calendar (spec/02) — OAuth + sync manuelle ────────────────────────
+
+function CalendarSection() {
+  const t = useT();
+  const [status, setStatus] = useState<GoogleAuthStatus | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    invoke<GoogleAuthStatus>("get_calendar_auth_status").then(setStatus).catch(() => setStatus(null));
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const handleConnect = async () => {
+    setError(null);
+    setConnecting(true);
+    try {
+      await invoke("start_google_oauth");
+      refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    await invoke("disconnect_google_calendar");
+    refresh();
+  };
+
+  const handleSync = async () => {
+    setError(null);
+    setSyncing(true);
+    try {
+      await invoke("trigger_calendar_sync");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <>
+      <SettingRow label={t("settings.calendarSection.status")}>
+        <span style={{ fontSize: 13, color: status?.connected ? "#34C759" : "var(--text-secondary)" }}>
+          {status?.connected ? `✓ ${t("settings.calendarSection.connected")}` : t("settings.calendarSection.notConnected")}
+        </span>
+      </SettingRow>
+      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        {status?.connected ? (
+          <>
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              style={{
+                background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6,
+                padding: "5px 12px", cursor: syncing ? "not-allowed" : "pointer", fontSize: 13,
+              }}
+            >
+              {syncing ? t("settings.calendarSection.syncing") : t("settings.calendarSection.syncNow")}
+            </button>
+            <button
+              onClick={handleDisconnect}
+              style={{
+                background: "transparent", color: "var(--danger)", border: "1px solid var(--border)",
+                borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 13,
+              }}
+            >
+              {t("settings.calendarSection.disconnect")}
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={handleConnect}
+            disabled={connecting}
+            style={{
+              background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6,
+              padding: "5px 12px", cursor: connecting ? "not-allowed" : "pointer", fontSize: 13,
+            }}
+          >
+            {connecting ? t("settings.calendarSection.connecting") : t("settings.calendarSection.connect")}
+          </button>
+        )}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5, marginTop: 10 }}>
+        {t("settings.calendarSection.help")}
+      </div>
+      {!status?.connected && (
+        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 6 }}>
+          {t("settings.calendarSection.unverifiedWarning")}
+        </div>
+      )}
+      {error && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 6 }}>{error}</div>}
+    </>
+  );
+}
+
 // ─── Settings screen ──────────────────────────────────────────────────────────
 
 export default function Settings() {
@@ -664,6 +766,10 @@ export default function Settings() {
 
       <Section title={t("settings.sections.emails")}>
         <EmailSection />
+      </Section>
+
+      <Section title={t("settings.sections.calendar")}>
+        <CalendarSection />
       </Section>
 
       <Section title={t("settings.sections.tasks")}>

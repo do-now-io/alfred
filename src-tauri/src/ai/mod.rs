@@ -917,6 +917,18 @@ async fn call_analyze(text: &str, context: Option<&str>, recording_id: &str, db:
     // prompt + schéma français (spec/05/17, 2e test tranché).
     let lang = recording_language(db, Some(recording_id)).await;
     let system_text = format!("{}\n{}", ANALYZE_SYSTEM, language_directive(lang));
+
+    // §3c (spec/02) — si un événement du calendrier chevauche la fenêtre de cet
+    // enregistrement (±15 min), son titre + participants sont ajoutés comme
+    // indice supplémentaire pour `projects_detected` — pas de nouveau champ de
+    // sortie, juste un enrichissement de l'ENTRÉE (message utilisateur, pas le
+    // bloc `context` mis en cache : celui-ci reste stable d'un enregistrement à
+    // l'autre, cet indice est spécifique à celui-ci).
+    let user_content = match calendar_hint_for_recording(recording_id, db).await {
+        Some(hint) => format!("{}\n\nTranscription:\n{}", hint, text),
+        None => format!("Transcription:\n{}", text),
+    };
+
     let body = json!({
         "model": MODEL,
         "max_tokens": 2048,
@@ -924,7 +936,7 @@ async fn call_analyze(text: &str, context: Option<&str>, recording_id: &str, db:
         "system": system_blocks(&system_text, context),
         "tools": analyze_tool(lang),
         "tool_choice": {"type": "tool", "name": "submit_clarifications"},
-        "messages": [{ "role": "user", "content": format!("Transcription:\n{}", text) }]
+        "messages": [{ "role": "user", "content": user_content }]
     });
 
     let resp = call_claude_with_retry(&client, &access, &body).await?;
@@ -935,6 +947,38 @@ async fn call_analyze(text: &str, context: Option<&str>, recording_id: &str, db:
 
     serde_json::from_value(block["input"].clone())
         .map_err(|e| anyhow!("Invalid submit_clarifications input: {} — {:?}", e, block["input"]))
+}
+
+/// Indice calendrier pour §3c (spec/02) — `None` si l'enregistrement est
+/// introuvable/sans horodatage ou si aucun événement ne chevauche sa fenêtre.
+async fn calendar_hint_for_recording(recording_id: &str, db: &SqlitePool) -> Option<String> {
+    let row: (String, Option<i64>) = sqlx::query_as(
+        "SELECT recorded_at, duration_seconds FROM recordings WHERE id = ?",
+    )
+    .bind(recording_id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()?;
+    let (recorded_at, duration_seconds) = row;
+    let start = chrono::DateTime::parse_from_rfc3339(&recorded_at).ok()?.with_timezone(&chrono::Utc);
+    let end = start + chrono::Duration::seconds(duration_seconds.unwrap_or(0).max(0));
+
+    let events = crate::calendar::find_events_for_project(db, None, Some((start, end))).await.ok()?;
+    if events.is_empty() {
+        return None;
+    }
+    let lines: Vec<String> = events
+        .iter()
+        .map(|e| {
+            let attendees = if e.attendees.is_empty() { String::new() } else { format!(" — participants : {}", e.attendees.join(", ")) };
+            format!("« {} »{}", e.title, attendees)
+        })
+        .collect();
+    Some(format!(
+        "Indice calendrier — événement(s) d'agenda chevauchant cet enregistrement (utile pour `projects_detected`, pas une information à traiter comme dite dans la réunion) :\n{}",
+        lines.join("\n")
+    ))
 }
 
 /// Load a recording's transcription segments (for re-listen timestamps).
@@ -1876,8 +1920,38 @@ pub async fn generate_daily_brief(db: &SqlitePool, vault_root: Option<&Path>) ->
         None => if en { "Vault not configured.".to_string() } else { "Vault non configuré.".to_string() },
     };
 
-    let (tasks_heading, notes_heading) = if en { ("Current tasks", "Recent notes") } else { ("Tâches en cours", "Notes récentes") };
-    let prompt = format!("## {}\n{}\n\n## {}\n{}", tasks_heading, todos_text, notes_heading, recents_text);
+    // §3b (spec/02) — section Agenda : simple ajout de données au prompt
+    // existant, pas de nouvelle logique IA. No-op silencieux si aucun compte
+    // Google n'est connecté (table vide).
+    let today_events = crate::calendar::get_today_events(db).await.unwrap_or_default();
+    let agenda_text = if today_events.is_empty() {
+        if en { "No meetings today.".to_string() } else { "Aucune réunion aujourd'hui.".to_string() }
+    } else {
+        today_events
+            .iter()
+            .map(|e| {
+                let when = if e.all_day {
+                    if en { "all day".to_string() } else { "toute la journée".to_string() }
+                } else {
+                    chrono::DateTime::parse_from_rfc3339(&e.start_at)
+                        .map(|dt| dt.with_timezone(&chrono::Local).format("%Hh%M").to_string())
+                        .unwrap_or_default()
+                };
+                format!("- {} ({})", e.title, when)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let (tasks_heading, notes_heading, agenda_heading) = if en {
+        ("Current tasks", "Recent notes", "Today's agenda")
+    } else {
+        ("Tâches en cours", "Notes récentes", "Agenda du jour")
+    };
+    let prompt = format!(
+        "## {}\n{}\n\n## {}\n{}\n\n## {}\n{}",
+        agenda_heading, agenda_text, tasks_heading, todos_text, notes_heading, recents_text
+    );
 
     let client = reqwest::Client::new();
     // Contrairement à l'ingestion/au chat (une SEULE source — transcription ou

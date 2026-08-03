@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod audio;
+pub mod calendar;
 pub mod db;
 pub mod email;
 pub mod feedback;
@@ -1541,6 +1542,38 @@ async fn sync_emails(state: tauri::State<'_, AppState>, app: tauri::AppHandle) -
         .map_err(|e| e.to_string())
 }
 
+// ─── Calendrier Google (spec/02) ──────────────────────────────────────────────
+
+#[tauri::command]
+async fn start_google_oauth() -> Result<(), String> {
+    calendar::start_google_oauth().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn disconnect_google_calendar() -> Result<(), String> {
+    calendar::disconnect_google_calendar().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_calendar_auth_status() -> Result<calendar::GoogleAuthStatus, String> {
+    calendar::get_calendar_auth_status().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn trigger_calendar_sync(state: tauri::State<'_, AppState>, app: tauri::AppHandle) -> Result<(), String> {
+    calendar::trigger_calendar_sync(&state.db, &app).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_today_events(state: tauri::State<'_, AppState>) -> Result<Vec<calendar::CalendarEvent>, String> {
+    calendar::get_today_events(&state.db).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_week_events(state: tauri::State<'_, AppState>) -> Result<Vec<calendar::CalendarEvent>, String> {
+    calendar::get_week_events(&state.db).await.map_err(|e| e.to_string())
+}
+
 // ─── System commands ──────────────────────────────────────────────────────────
 
 #[cfg(target_os = "macos")]
@@ -1776,6 +1809,26 @@ pub fn run() {
                 });
             }
 
+            // Sync du calendrier Google (spec/02 §2) : au lancement + toutes les
+            // 15 minutes — plus fréquent que les mails (spec/24/27) car les
+            // événements peuvent bouger en cours de journée. No-op silencieux si
+            // aucun compte n'est connecté. Si l'OS suspend l'app, l'intervalle se
+            // déclenche au réveil plutôt qu'à l'heure exacte (acceptable, pas de
+            // rattrapage — spec/02 §2).
+            {
+                let db_calendar = db.clone();
+                let app_handle_calendar = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(15 * 60));
+                    loop {
+                        interval.tick().await;
+                        if let Err(e) = calendar::trigger_calendar_sync(&db_calendar, &app_handle_calendar).await {
+                            eprintln!("[calendar] sync failed: {}", e);
+                        }
+                    }
+                });
+            }
+
             let _ = app_handle; // kept for future setup steps
 
             Ok(())
@@ -1874,6 +1927,13 @@ pub fn run() {
             disconnect_imap_account,
             get_imap_status,
             sync_emails,
+            // Calendrier Google (spec/02)
+            start_google_oauth,
+            disconnect_google_calendar,
+            get_calendar_auth_status,
+            trigger_calendar_sync,
+            get_today_events,
+            get_week_events,
             // System
             get_launch_at_login,
             set_launch_at_login,

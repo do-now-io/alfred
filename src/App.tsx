@@ -4,12 +4,13 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
   MdCheckBox, MdStickyNote2,
-  MdAutoAwesome, MdSettings, MdHub, MdMic, MdStop, MdFactCheck,
+  MdAutoAwesome, MdSettings, MdHub, MdMic, MdStop, MdFactCheck, MdCalendarToday,
 } from "react-icons/md";
 import alfredAvatar from "./assets/alfred-logo.png";
 import Dashboard from "./screens/Dashboard";
 import Notes from "./screens/Notes";
 import Tasks from "./screens/Tasks";
+import Agenda from "./screens/Agenda";
 import Graph from "./screens/Graph";
 import Settings from "./screens/Settings";
 import RecordingGuide from "./screens/RecordingGuide";
@@ -358,6 +359,7 @@ function Sidebar() {
         <NavItem to="/" icon={<MdAutoAwesome />} label={t("nav.sidebar.alfred")} tourId="nav-chat" end />
         <NavItem to="/tasks" icon={<MdCheckBox />} label={t("nav.sidebar.tasks")} tourId="nav-tasks" />
         <NavItem to="/notes" icon={<MdStickyNote2 />} label={t("nav.sidebar.notes")} tourId="nav-notes" />
+        <NavItem to="/calendar" icon={<MdCalendarToday />} label={t("nav.sidebar.calendar")} tourId="nav-calendar" />
         <NavItem to="/graph" icon={<MdHub />} label={t("nav.sidebar.graph")} tourId="nav-graph" />
 
         <div style={{ height: 1, background: "var(--border)", margin: "12px 16px" }} />
@@ -528,6 +530,7 @@ function AppInner() {
             <Route path="/recording" element={<RecordingGuide />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/notes" element={<Notes />} />
+            <Route path="/calendar" element={<Agenda />} />
             <Route path="/graph" element={<Graph />} />
             <Route path="/feedback" element={<Feedback />} />
             <Route path="/resolve" element={<Resolve />} />

@@ -118,6 +118,21 @@ fn tools(lang: &str) -> Value {
                 "required": ["note"]
             }
         }),
+        json!({
+            "name": "get_calendar_events",
+            "description": if en { "Reads the user's Google Calendar events (read-only) for today or the current week — use to answer \"what do I have today/this week?\"." } else { "Lit les événements du Google Calendar de l'utilisateur (lecture seule) pour aujourd'hui ou la semaine en cours — utilise-le pour répondre à « qu'est-ce que j'ai aujourd'hui/cette semaine ? »." },
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "enum": ["today", "week"],
+                        "description": if en { "\"today\" or \"week\"" } else { "« today » ou « week »" }
+                    }
+                },
+                "required": ["period"]
+            }
+        }),
     ];
     base.extend(super::agent_actions::tool_defs(lang));
     Value::Array(base)
@@ -336,6 +351,34 @@ pub async fn answer_question(
                             format!("Note: \"{}\"\n\n{}", stem, body)
                         }
                         None => if lang == "en" { format!("Note not found: {}", note_ref) } else { format!("Note introuvable : {}", note_ref) },
+                    }
+                }
+                "get_calendar_events" => {
+                    let period = input["period"].as_str().unwrap_or("today").to_string();
+                    let _ = app.emit("chat-progress", json!({ "kind": "calendar", "label": period }));
+                    let events = if period == "week" {
+                        crate::calendar::get_week_events(db).await
+                    } else {
+                        crate::calendar::get_today_events(db).await
+                    };
+                    match events {
+                        Ok(evs) if evs.is_empty() => {
+                            if lang == "en" { "No events for this period.".to_string() } else { "Aucun événement pour cette période.".to_string() }
+                        }
+                        Ok(evs) => evs
+                            .iter()
+                            .map(|e| {
+                                let attendees = if e.attendees.is_empty() { String::new() } else { format!(" — {}", e.attendees.join(", ")) };
+                                let when = if e.all_day {
+                                    if lang == "en" { "all day".to_string() } else { "toute la journée".to_string() }
+                                } else {
+                                    format!("{} → {}", e.start_at, e.end_at)
+                                };
+                                format!("- {} ({}){}", e.title, when, attendees)
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                        Err(e) => e.to_string(),
                     }
                 }
                 other if super::agent_actions::is_unitary_agent_tool(other) => {

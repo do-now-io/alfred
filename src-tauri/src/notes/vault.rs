@@ -21,6 +21,11 @@ pub struct VaultNode {
     /// notes with no linked recording. Lets the tree cross-reference the
     /// pending-clarifications list to show the « à vérifier » indicator.
     pub recording_id: Option<String>,
+    /// Frontmatter `type` (spec/07/16b) — `None` for directories. Drives the
+    /// context-note icon (`type: context`) in the Dossiers tree, same as the
+    /// Récents/Projets views (`RecentNote`/`ProjectNote`).
+    #[serde(rename = "type")]
+    pub note_type: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, TS)]
@@ -82,6 +87,7 @@ fn build_node(path: &Path, root: &Path) -> VaultNode {
             is_dir: false,
             children: vec![],
             status: meta.as_ref().map(|m| m.status.clone()),
+            note_type: meta.as_ref().map(|m| m.note_type.clone()),
             recording_id: meta.and_then(|m| m.recording_id),
         };
     }
@@ -126,6 +132,7 @@ fn build_node(path: &Path, root: &Path) -> VaultNode {
         is_dir: true,
         children: dirs,
         status: None,
+        note_type: None,
         recording_id: None,
     }
 }
@@ -182,6 +189,15 @@ pub fn list_recent_notes(root: &Path, limit: usize, exclude_paths: &[PathBuf]) -
                 .map(|raw| frontmatter::parse(&raw, &stem).0)
                 .unwrap_or_else(|_| frontmatter::NoteMetadata::new(&stem));
             if meta.status == STATUS_ARCHIVED {
+                return None;
+            }
+            // `type: context` (spec/16b §5) — couvre `Contexte Alfred.md` ET
+            // toute note de contexte de projet, sans énumérer les chemins un
+            // par un (`exclude_paths` reste utile pour `Todo.md`, qui n'est
+            // pas de ce type). Les vaults pas encore migrés (note de contexte
+            // encore `type: note`, écrite avant ce champ) restent couverts par
+            // `exclude_paths` côté appelant.
+            if meta.note_type == "context" {
                 return None;
             }
             Some((path, modified, meta))
@@ -763,7 +779,7 @@ pub async fn migrate_sqlite_to_vault(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-fn sanitize_filename(name: &str) -> String {
+pub(crate) fn sanitize_filename(name: &str) -> String {
     let safe: String = name
         .chars()
         .map(|c| match c {

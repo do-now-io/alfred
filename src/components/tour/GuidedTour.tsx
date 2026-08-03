@@ -243,9 +243,10 @@ export default function GuidedTour() {
         noteTitle: recap?.noteTitle ?? "",
         contextPath: note.path,
         text: note.body,
-        clarifications: { transcription_fixes: [], unassigned_tasks: [], unclear_sentences: [], context_additions: [] },
+        clarifications: { transcription_fixes: [], unassigned_tasks: [], unclear_sentences: [], context_additions: [], projects_detected: [], vocab_terms: [] },
         summary: false,
         tasks: false,
+        projectsConfirmed: [],
       });
       goto("correcting");
       navigate("/resolve");

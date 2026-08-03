@@ -95,6 +95,14 @@ pub(crate) fn titles(lang: &str) -> &'static ContextTitles {
     if lang == "en" { &TITLES_EN } else { &TITLES_FR }
 }
 
+/// The two (FR, EN) spellings of `## Appris automatiquement` — for modules
+/// outside `context.rs` (`notes::project_context`, spec/16b) that need to
+/// recognize the section regardless of which language it was written in,
+/// without reaching into the private `TITLES_FR`/`TITLES_EN` consts directly.
+pub(crate) fn learned_heading_variants() -> (&'static str, &'static str) {
+    (TITLES_FR.learned_auto, TITLES_EN.learned_auto)
+}
+
 async fn lang(db: &SqlitePool) -> String {
     crate::ai::app_language(db).await
 }
@@ -109,7 +117,7 @@ fn context_template(lang: &str) -> String {
 
 /// Reconnaît `## Appris automatiquement` **ou** `## Automatically learned` —
 /// peu importe dans quelle langue la note a été écrite (spec/16 « piège »).
-fn has_learned_heading(body: &str) -> bool {
+pub(crate) fn has_learned_heading(body: &str) -> bool {
     body.lines().any(|l| {
         let t = l.trim();
         t == format!("## {}", TITLES_FR.learned_auto) || t == format!("## {}", TITLES_EN.learned_auto)
@@ -139,7 +147,9 @@ pub async fn ensure_context_note(vault_root: &Path, db: &SqlitePool) -> Result<P
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        let metadata = super::NoteMetadata::new("Contexte Alfred");
+        // `type: context` (spec/16b) — reconnue par le frontmatter plutôt
+        // qu'un chemin en dur, couvre aussi les notes de contexte de projet.
+        let metadata = super::NoteMetadata::for_context("Contexte Alfred", None);
         let content = super::frontmatter::serialize(&metadata, &context_template(&lang(db).await));
         tokio::fs::write(&path, content).await?;
     }
@@ -309,6 +319,70 @@ pub async fn append_learned_facts(
     }
 
     let content = super::frontmatter::serialize(&metadata, &format!("{}\n", new_body));
+    tokio::fs::write(&path, content).await?;
+    Ok(to_add.len())
+}
+
+/// Append `terms` (spec/16b §2/§3 — `vocab_terms`, indépendant du `scope` des
+/// `context_addition`) to the `## Vocabulaire maison & noms propres` canonical
+/// section, deduped against existing bullet lines. Always the global note,
+/// regardless of "Projets concernés" (no per-project vocabulary — constraint
+/// on `initial_prompt` size, spec/17 §1). Recreates the section (localised,
+/// at the end) if the user had deleted it. Returns the number actually added.
+pub async fn append_vocab_terms(vault_root: &Path, db: &SqlitePool, terms: &[String]) -> Result<usize> {
+    let clean: Vec<String> = terms.iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+    if clean.is_empty() {
+        return Ok(0);
+    }
+
+    let path = ensure_context_note(vault_root, db).await?;
+    let raw = tokio::fs::read_to_string(&path).await?;
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let (metadata, body) = super::frontmatter::parse(&raw, &stem);
+
+    let existing: std::collections::HashSet<String> = body
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("- "))
+        .map(|l| l.trim().to_lowercase())
+        .collect();
+    let to_add: Vec<&String> = clean.iter().filter(|f| !existing.contains(&f.to_lowercase())).collect();
+    if to_add.is_empty() {
+        return Ok(0);
+    }
+
+    let (preamble, sections) = split_sections(&body);
+    let mut out_sections: Vec<(String, String)> = Vec::new();
+    let mut inserted = false;
+    for (heading, content) in sections {
+        // Slot 2 = vocab (see `canonical_slot`'s ordering: company/team/vocab/projects).
+        if !inserted && canonical_slot(&heading) == Some(2) {
+            let mut new_content = content.trim_end().to_string();
+            for f in &to_add {
+                new_content.push_str(&format!("\n- {}", f));
+            }
+            out_sections.push((heading, new_content.trim_start().to_string()));
+            inserted = true;
+        } else {
+            out_sections.push((heading, content));
+        }
+    }
+    if !inserted {
+        // Section vocab absente (supprimée par l'utilisateur) — recréée en fin de note.
+        let heading = titles(&lang(db).await).vocab.to_string();
+        let content: String = to_add.iter().map(|f| format!("- {}\n", f)).collect::<String>().trim_end().to_string();
+        out_sections.push((heading, content));
+    }
+
+    let mut rebuilt = preamble.trim_end().to_string();
+    for (heading, content) in &out_sections {
+        rebuilt.push_str(&format!("\n\n## {}\n\n{}", heading, content.trim()));
+    }
+    let new_body = format!("{}\n", rebuilt.trim_start_matches('\n'));
+
+    let content = super::frontmatter::serialize(&metadata, &new_body);
     tokio::fs::write(&path, content).await?;
     Ok(to_add.len())
 }

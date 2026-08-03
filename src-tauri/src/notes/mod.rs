@@ -1,6 +1,7 @@
 pub mod context;
 pub mod frontmatter;
 pub mod graph;
+pub mod project_context;
 pub mod todo_md;
 pub mod vault;
 

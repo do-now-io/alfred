@@ -30,6 +30,11 @@ export interface ResolveSession {
   tasks: boolean;
   /** Mode contexte uniquement : chemin de `Contexte Alfred.md` à réécrire. */
   contextPath?: string;
+  /** « Projets concernés » (spec/16b §1) : pré-rempli avec
+   *  `clarifications.projects_detected`, éditable dans `/resolve` — devient le
+   *  `project` du compte-rendu et confirme le routage des `context_additions`
+   *  à `scope: "project"`. Ignoré en mode contexte. */
+  projectsConfirmed: string[];
 }
 
 interface ResolveStore {
@@ -60,6 +65,7 @@ export const useResolveStore = create<ResolveStore>((set) => ({
           clarifications: pending.clarifications,
           summary: pending.summary,
           tasks: pending.tasks,
+          projectsConfirmed: pending.clarifications.projects_detected,
         },
       });
       return true;

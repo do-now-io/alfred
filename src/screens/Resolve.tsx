@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { MdCheck, MdClose, MdVolumeUp, MdPause, MdReplay, MdAutoFixHigh, MdPersonOutline, MdHelpOutline, MdLightbulbOutline, MdInfoOutline } from "react-icons/md";
+import { MdCheck, MdClose, MdVolumeUp, MdPause, MdReplay, MdAutoFixHigh, MdPersonOutline, MdHelpOutline, MdLightbulbOutline, MdInfoOutline, MdFolderSpecial } from "react-icons/md";
 import { useResolveStore } from "../store/resolveStore";
 import { useTourStore } from "../store/tourStore";
 import type { NoteFile } from "../bindings/NoteFile";
+import type { ContextAddition } from "../bindings/ContextAddition";
 import NoteEditor from "../components/notes/NoteEditor";
+import ChipsInput from "../components/notes/ChipsInput";
 import { useT } from "../i18n";
 
 // Écran de vérification (spec/17 §3, feedback tests) : **toujours** présenté
@@ -191,7 +193,13 @@ export default function Resolve() {
   const [unclearEdit, setUnclearEdit] = useState<Record<number, string>>({});
   const [taskStatus, setTaskStatus] = useState<Record<number, ItemStatus>>({});
   const [taskOwner, setTaskOwner] = useState<Record<number, string>>({});
-  const [adds, setAdds] = useState(() => contextAdds.map((c) => ({ fact: c.fact, accepted: true })));
+  const [adds, setAdds] = useState(() => contextAdds.map((c) => ({ fact: c.fact, scope: c.scope, projects: c.projects, accepted: true })));
+  // « Projets concernés » (spec/16b §1) : pré-rempli avec `projects_detected`,
+  // éditable — devient le `project` du compte-rendu et confirme le routage
+  // des `context_additions` à `scope: "project"`. Non affiché/utilisé en mode
+  // contexte (le champ n'a pas de sens pour la note de contexte elle-même).
+  const [projectsConfirmed, setProjectsConfirmed] = useState<string[]>(() => session?.projectsConfirmed ?? []);
+  const [allProjects, setAllProjects] = useState<string[]>([]);
 
   const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -199,10 +207,15 @@ export default function Resolve() {
   // (feedback tests) — évite d'avoir à la chercher à l'œil.
   const [hoveredQuote, setHoveredQuote] = useState<string | null>(null);
 
+  useEffect(() => {
+    invoke<string[]>("list_projects").then(setAllProjects).catch(() => {});
+  }, []);
+
   // Keep local state in sync if a new session arrives.
   useEffect(() => {
     setText(session?.text ?? "");
-    setAdds((session?.clarifications.context_additions ?? []).map((c) => ({ fact: c.fact, accepted: true })));
+    setAdds((session?.clarifications.context_additions ?? []).map((c) => ({ fact: c.fact, scope: c.scope, projects: c.projects, accepted: true })));
+    setProjectsConfirmed(session?.projectsConfirmed ?? []);
     setFixStatus({}); setFixEdit({}); setUnclearStatus({}); setUnclearEdit({}); setTaskStatus({}); setTaskOwner({});
   }, [session?.recordingId]);
 
@@ -263,12 +276,19 @@ export default function Resolve() {
         return;
       }
 
-      const contextAdditions = adds.filter((a) => a.accepted).map((a) => a.fact.trim()).filter(Boolean);
+      const contextAdditions: ContextAddition[] = adds
+        .filter((a) => a.accepted)
+        .map((a) => ({ fact: a.fact.trim(), scope: a.scope, projects: a.projects }))
+        .filter((a) => a.fact);
       await invoke("finalize_ingestion", {
         recordingId: session.recordingId,
         correctedText: text,
         noteTitle: session.noteTitle,
         contextAdditions,
+        vocabTerms: session.clarifications.vocab_terms,
+        // « Projets concernés » confirmé (spec/16b §1) — source de vérité du
+        // `project` du compte-rendu et du routage des faits `scope: "project"`.
+        confirmedProjects: projectsConfirmed,
         // Sélection du panneau de revue (spec/03/05) — honorée à la finalisation.
         summary: session.summary,
         tasks: session.tasks,
@@ -317,6 +337,27 @@ export default function Resolve() {
           </button>
         </div>
       </div>
+
+      {/* « Projets concernés » (spec/16b §1) — premier champ, avant les
+          clarifications existantes. Multi-select des projets du vault +
+          « nouveau projet » en texte libre. Pré-rempli avec `projects_detected`,
+          éditable ; devient la source de vérité du `project` du compte-rendu et
+          confirme le routage des faits de contexte propres à un projet. */}
+      {!isContext && (
+        <div style={{ ...card, flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", color: "var(--text-muted)", textTransform: "uppercase", flexShrink: 0 }}>
+            <MdFolderSpecial /> {t("resolve.projects.label")}
+          </span>
+          <div style={{ flex: 1 }}>
+            <ChipsInput
+              values={projectsConfirmed}
+              onChange={setProjectsConfirmed}
+              suggestions={allProjects}
+              placeholder={t("resolve.projects.placeholder")}
+            />
+          </div>
+        </div>
+      )}
 
       {error && (
         <div style={{ padding: "8px 12px", borderRadius: 8, background: "var(--tag-red-bg)", color: "var(--tag-red-text)", fontSize: 13 }}>{error}</div>
@@ -435,9 +476,19 @@ export default function Resolve() {
 
           <GroupLabel icon={<MdLightbulbOutline />} label={t("resolve.contextAdds.group")} count={adds.length} />
           {adds.map((a, i) => (
-            <div key={`a${i}`} style={{ ...card, flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <input type="checkbox" checked={a.accepted} onChange={(e) => setAdds((prev) => prev.map((x, k) => (k === i ? { ...x, accepted: e.target.checked } : x)))} style={{ flexShrink: 0, accentColor: "var(--accent)" }} />
-              <input value={a.fact} onChange={(e) => setAdds((prev) => prev.map((x, k) => (k === i ? { ...x, fact: e.target.value } : x)))} style={{ ...smallInput, opacity: a.accepted ? 1 : 0.5 }} />
+            <div key={`a${i}`} style={{ ...card, gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input type="checkbox" checked={a.accepted} onChange={(e) => setAdds((prev) => prev.map((x, k) => (k === i ? { ...x, accepted: e.target.checked } : x)))} style={{ flexShrink: 0, accentColor: "var(--accent)" }} />
+                <input value={a.fact} onChange={(e) => setAdds((prev) => prev.map((x, k) => (k === i ? { ...x, fact: e.target.value } : x)))} style={{ ...smallInput, opacity: a.accepted ? 1 : 0.5 }} />
+              </div>
+              {/* Portée du fait (spec/16b §2/§3) : global (Contexte Alfred.md)
+                  ou un/plusieurs projets — informatif seulement, la portée elle-
+                  même n'est pas éditable ici (décidée par l'analyse). */}
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", paddingLeft: 24 }}>
+                {a.scope === "project" && a.projects.length > 0
+                  ? t("resolve.contextAdds.scopeProject", { projects: a.projects.join(", ") })
+                  : t("resolve.contextAdds.scopeGlobal")}
+              </div>
             </div>
           ))}
           {adds.length > 0 && (

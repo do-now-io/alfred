@@ -136,6 +136,7 @@ export default function Notes() {
         clarifications,
         summary: true,
         tasks: true,
+        projectsConfirmed: clarifications.projects_detected,
       });
       navigate("/resolve");
     } catch (e) {

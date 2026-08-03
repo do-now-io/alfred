@@ -1,6 +1,6 @@
 # spec/16b — Contexte par projet (extension spec/16 & spec/17)
 
-> **Statut :** 📝 spec écrite, rien de codé. Post-v1. Étend le **contexte interne**
+> **Statut :** ✅ construit. Post-v1. Étend le **contexte interne**
 > (spec/16) et l'**ingestion augmentée** (spec/17 §3/§4) : introduit un **second
 > niveau de contexte**, par projet, en plus du contexte global existant.
 

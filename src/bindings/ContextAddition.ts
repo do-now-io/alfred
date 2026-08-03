@@ -3,5 +3,10 @@
 /**
  * A fact learned about the user's world (e.g. "Marie = cheffe de projet") →
  * auto-written to `## Appris automatiquement` (spec/17 §4), non-blocking.
+ * `scope` (spec/16b §2) sépare le durable non lié à un projet (`"global"` →
+ * `Contexte Alfred.md`) du durable propre à un ou plusieurs projets
+ * (`"project"` → note(s) de projet, `projects` étant alors un sous-ensemble de
+ * `projects_detected`). Défaut `"global"` si absent/mal formé — le critère le
+ * plus resserré, jamais un fait perdu dans un projet non voulu.
  */
-export type ContextAddition = { fact: string, };
+export type ContextAddition = { fact: string, scope: string, projects: Array<string>, };

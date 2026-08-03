@@ -7,4 +7,17 @@ import type { UnclearSentence } from "./UnclearSentence";
 /**
  * Grouped, thresholded propositions produced by the analysis pass (spec/17 §3).
  */
-export type Clarifications = { transcription_fixes: Array<TranscriptionFix>, unassigned_tasks: Array<UnassignedTask>, unclear_sentences: Array<UnclearSentence>, context_additions: Array<ContextAddition>, };
+export type Clarifications = { transcription_fixes: Array<TranscriptionFix>, unassigned_tasks: Array<UnassignedTask>, unclear_sentences: Array<UnclearSentence>, context_additions: Array<ContextAddition>, 
+/**
+ * Projets identifiés dans la transcription (spec/16b §1) — vide ou
+ * plusieurs entrées possibles. Pré-remplit le champ « Projets concernés »
+ * de `/resolve` ; auto-appliqué tel quel si `/resolve` est sauté (rien
+ * d'autre à vérifier).
+ */
+projects_detected: Array<string>, 
+/**
+ * Noms propres/termes techniques repérés (spec/16b §2), indépendant du
+ * `scope` des `context_additions` — toujours candidats au vocabulaire
+ * global (`Contexte Alfred.md` § Vocabulaire), quel que soit le projet.
+ */
+vocab_terms: Array<string>, };

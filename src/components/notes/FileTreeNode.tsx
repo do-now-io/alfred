@@ -164,8 +164,9 @@ export default function FileTreeNode({
         onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "var(--bg)"; }}
         onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
       >
-        {/* Icône de type à l'œil (spec/07) — dérivée du dossier / nom de fichier. */}
-        <NoteTypeIcon path={node.path} size={13} />
+        {/* Icône de type à l'œil (spec/07/16b) — dérivée du dossier / nom de
+            fichier + frontmatter `type` (notamment `context`, spec/16b §5). */}
+        <NoteTypeIcon path={node.path} noteType={node.type} size={13} />
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.name}</span>
         {needsReview && (
           <button

@@ -44,7 +44,12 @@ export function noteKind({
   const file = p.split("/").pop() ?? "";
   const stem = file.replace(/\.md$/i, "");
 
-  if (/^contexte alfred$/i.test(stem)) return "context";
+  // spec/16b : reconnue par le frontmatter `type: context` — couvre à la fois
+  // le contexte global et chaque note de contexte de projet, sans énumérer de
+  // chemins. Le nom de fichier reste un repli pour les vaults pas encore
+  // migrés (note de contexte globale écrite avant l'introduction de ce champ,
+  // encore `type: note` tant qu'elle n'a pas été réécrite).
+  if (noteType === "context" || /^contexte alfred$/i.test(stem)) return "context";
   if (/^todo$/i.test(stem) || noteType === "task") return "task";
   // Dossier brut → audio si la note vient d'un enregistrement (nom daté — seule
   // info dispo dans l'arbre — ou recording_id), sinon note brute.

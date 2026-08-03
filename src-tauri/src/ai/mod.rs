@@ -354,6 +354,7 @@ async fn run_ingestion_core(
     recording_id: Option<&str>,
     summary: bool,
     tasks: bool,
+    override_project: Option<Vec<String>>,
     db: &SqlitePool,
     vault_root: Option<&Path>,
     app_handle: &tauri::AppHandle,
@@ -418,17 +419,20 @@ async fn run_ingestion_core(
     };
     let report_date = chrono::Local::now().format("%Y-%m-%d").to_string();
 
+    // « Projets concernés » confirmé par l'utilisateur sur `/resolve` (spec/16b
+    // §1) devient la source de vérité du `project` écrit sur le compte-rendu —
+    // remplace l'inférence de `call_ingestion` pour CE champ précis quand un
+    // override est fourni (toujours le cas via `finalize_ingestion`). `None`
+    // (ré-ingestion manuelle d'une note, pas d'analyse préalable) garde
+    // l'inférence d'origine.
+    let project: Vec<String> = override_project.unwrap_or(output.project).into_iter().map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect();
+
     if let Some(vault_root) = vault_root {
         // 1. Compte-rendu → alfred-intelligence/{titre}.md — only when requested.
         if summary {
             emit_status("running", "summary", None);
             let folder = vault_root.join(intelligence_folder(db).await);
-            let project: Vec<String> = output
-                .project
-                .iter()
-                .map(|p| p.trim().to_string())
-                .filter(|p| !p.is_empty())
-                .collect();
+            let project = project.clone();
             let metadata = crate::notes::NoteMetadata::for_meeting_report(&report_title, recording_id, output.participants.clone(), project);
             let mut body = output.resume.clone();
             if !output.points_cles.is_empty() {
@@ -501,12 +505,8 @@ async fn run_ingestion_core(
             // Projet principal de la réunion (spec/06) : posé en `+Projet` sur
             // chaque tâche extraite — la ligne ne porte qu'un marqueur, on
             // prend le premier projet identifié quand il y en a plusieurs.
-            let main_project = output
-                .project
-                .iter()
-                .map(|p| p.trim())
-                .find(|p| !p.is_empty())
-                .map(str::to_string);
+            // Même source que le compte-rendu (override confirmé, spec/16b §1).
+            let main_project = project.first().cloned();
             let tasks: Vec<IngestTask> = output
                 .taches
                 .iter()
@@ -591,7 +591,7 @@ pub async fn run_ingestion_for_recording(
         }
         Err(e) => {
             eprintln!("[analyze] failed, falling back to direct ingestion: {}", e);
-            return run_ingestion_core(transcription_text, note_title, Some(recording_id), summary, tasks, db, vault_root, app_handle).await;
+            return run_ingestion_core(transcription_text, note_title, Some(recording_id), summary, tasks, None, db, vault_root, app_handle).await;
         }
     };
 
@@ -603,8 +603,25 @@ pub async fn run_ingestion_for_recording(
         // Rien à trancher (spec/17 §3, révisé) : finalise directement sur le
         // texte brut — les faits appris (context_additions) sont toujours
         // écrits par `finalize_ingestion`, qu'il y ait eu clarification ou non.
-        let context_additions: Vec<String> = clarifications.context_additions.iter().map(|c| c.fact.clone()).collect();
-        return finalize_ingestion(recording_id, transcription_text, note_title, context_additions, summary, tasks, db, vault_root, app_handle).await;
+        // `/resolve` est sauté → les `projects_detected` de Claude sont
+        // auto-appliqués tels quels comme « Projets concernés » (spec/16b §1,
+        // point d'attention) : ils deviennent à la fois le `project` du
+        // compte-rendu et les projets confirmés pour le routage des
+        // `context_additions` à `scope: "project"`.
+        return finalize_ingestion(
+            recording_id,
+            transcription_text,
+            note_title,
+            clarifications.context_additions,
+            clarifications.vocab_terms,
+            clarifications.projects_detected,
+            summary,
+            tasks,
+            db,
+            vault_root,
+            app_handle,
+        )
+        .await;
     }
 
     // Persisté par `recording_id` (spec/17 §3/spec/07, feedback tests) — survit à
@@ -653,7 +670,7 @@ pub async fn run_ingestion_for_note(
         .unwrap_or_default();
     let (metadata, body) = crate::notes::frontmatter::parse(&raw, &stem);
 
-    run_ingestion_core(&body, &metadata.title, metadata.recording_id.as_deref(), summary, tasks, db, vault_root, app_handle).await
+    run_ingestion_core(&body, &metadata.title, metadata.recording_id.as_deref(), summary, tasks, None, db, vault_root, app_handle).await
 }
 
 // ─── Ingestion augmentée en deux temps (spec/17 §3) ──────────────────────────────
@@ -711,10 +728,23 @@ pub struct UnclearSentence {
 
 /// A fact learned about the user's world (e.g. "Marie = cheffe de projet") →
 /// auto-written to `## Appris automatiquement` (spec/17 §4), non-blocking.
+/// `scope` (spec/16b §2) sépare le durable non lié à un projet (`"global"` →
+/// `Contexte Alfred.md`) du durable propre à un ou plusieurs projets
+/// (`"project"` → note(s) de projet, `projects` étant alors un sous-ensemble de
+/// `projects_detected`). Défaut `"global"` si absent/mal formé — le critère le
+/// plus resserré, jamais un fait perdu dans un projet non voulu.
 #[derive(Debug, Serialize, Deserialize, Clone, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct ContextAddition {
     pub fact: String,
+    #[serde(default = "default_scope")]
+    pub scope: String,
+    #[serde(default)]
+    pub projects: Vec<String>,
+}
+
+fn default_scope() -> String {
+    "global".to_string()
 }
 
 /// Grouped, thresholded propositions produced by the analysis pass (spec/17 §3).
@@ -729,6 +759,17 @@ pub struct Clarifications {
     pub unclear_sentences: Vec<UnclearSentence>,
     #[serde(default)]
     pub context_additions: Vec<ContextAddition>,
+    /// Projets identifiés dans la transcription (spec/16b §1) — vide ou
+    /// plusieurs entrées possibles. Pré-remplit le champ « Projets concernés »
+    /// de `/resolve` ; auto-appliqué tel quel si `/resolve` est sauté (rien
+    /// d'autre à vérifier).
+    #[serde(default)]
+    pub projects_detected: Vec<String>,
+    /// Noms propres/termes techniques repérés (spec/16b §2), indépendant du
+    /// `scope` des `context_additions` — toujours candidats au vocabulaire
+    /// global (`Contexte Alfred.md` § Vocabulaire), quel que soit le projet.
+    #[serde(default)]
+    pub vocab_terms: Vec<String>,
 }
 
 const ANALYZE_SYSTEM: &str = r#"Tu es Alfred. On te donne la transcription brute d'un enregistrement (réunion, note vocale, appel) et, éventuellement, le contexte interne de l'utilisateur (entreprise, équipe, vocabulaire). AVANT de rédiger le compte-rendu, tu repères ce qui mérite une VALIDATION humaine. Soumets tes propositions via l'outil `submit_clarifications`.
@@ -738,7 +779,12 @@ Sois SÉLECTIF : ne remonte que ce qui est vraiment utile (haute confiance ou vr
 - `transcription_fixes` : un passage probablement MAL TRANSCRIT que tu sais corriger UNIQUEMENT parce que le contexte interne te donne le bon référent (ex. un prénom, un nom de projet, un terme métier). `quote` = le passage douteux recopié mot pour mot depuis la transcription ; `correction` = la version corrigée ; `confidence` entre 0 et 1. N'invente JAMAIS une correction sans référent dans le contexte.
 - `unassigned_tasks` : une tâche à faire clairement énoncée mais SANS responsable identifiable. `task` = la tâche ; `question` = la question à poser (ex. « Qui s'en charge ? »).
 - `unclear_sentences` : une phrase IMPORTANTE mais floue/ambiguë. `quote` = la phrase ; `proposed` = UNIQUEMENT le texte de remplacement prêt à insérer tel quel dans la transcription (même registre, longueur comparable à la citation) — JAMAIS ton avis, une explication ou une reformulation façon « je pense que l'interlocuteur parle de… » : ce texte remplace directement la citation, un commentaire de ta part n'a rien à y faire là-dedans. Si tu n'as AUCUNE proposition fiable, mets exactement `?` — l'humain complètera lui-même. `comment` (optionnel) : LÀ tu peux expliquer ton raisonnement en une phrase courte (ex. « Contexte technique + prononciation proche : probablement "Kube" plutôt que "cube" ») — affiché à part, comme aide à la décision, jamais inséré dans la transcription.
-- `context_additions` : UNIQUEMENT un fait DURABLE et réutilisable sur l'univers de l'utilisateur — jamais un fait ponctuel propre à cette réunion (celui-là vit dans le compte-rendu et, le cas échéant, devient une tâche — ne le propose PAS ici). ✅ Durable → contexte : qui sont les personnes/entreprises et leur rôle/relation (« Toto est un nouveau prospect de DoNow »), ce que fait l'entreprise (« DoNow fait de l'infogérance »), le vocabulaire/jargon métier, les projets en cours et leur nature. ❌ Ponctuel → PAS le contexte : planning et rendez-vous (« la prochaine réunion avec Toto se fera avec Hugo »), décisions/actions de CETTE réunion, chiffres ou états du jour — tout ce qui est vrai « aujourd'hui » mais pas durablement. Test mental avant de proposer : « Est-ce encore utile dans 3 mois pour bien traiter un futur enregistrement ? » Si la réponse est non, ne le propose pas. `fact` = le fait, en une ligne."#;
+- `context_additions` : UNIQUEMENT un fait DURABLE et réutilisable — jamais un fait ponctuel propre à cette réunion (celui-là vit dans le compte-rendu et, le cas échéant, devient une tâche — ne le propose PAS ici). `fact` = le fait, en une ligne. Chaque fait porte un `scope` — deux critères DISTINCTS selon le niveau :
+  - `scope: "global"` — réservé aux faits durables et NON liés à un projet précis : qui sont les personnes/entreprises et leur rôle/relation (« Toto est un nouveau prospect de DoNow »), ce que fait l'entreprise (« DoNow fait de l'infogérance »), le vocabulaire/jargon métier général. ✅ Exemples : « DoNow fait de l'infogérance » ; « Marie est cheffe de projet chez DoNow ». ❌ Pas ici : tout ce qui concerne un projet précis (ça descend au niveau `project`), planning et rendez-vous (« la prochaine réunion avec Toto se fera avec Hugo »), décisions/actions de CETTE réunion, chiffres ou états du jour.
+  - `scope: "project"` — critère PLUS PERMISSIF, réservé à ce qui concerne spécifiquement un ou plusieurs projets identifiés (voir `projects_detected`) : tarifs, décisions, état du projet, personnes impliquées côté client, jargon spécifique au projet. Un fait « ponctuel » au niveau global peut être durable pour CE projet tant qu'il n'est pas re-changé. `projects` = sous-ensemble de `projects_detected` que ce fait concerne (obligatoire, non vide, si `scope: "project"`). ✅ Exemples : « Le tarif d'infogérance d'Acme est passé à 500€/mois » (`projects: ["Acme"]`) ; « Le projet Atlas est en phase de migration GKE » (`projects: ["Atlas"]`) ; une hausse de tarif commune à deux clients → `projects: ["Acme", "Beta"]`. ❌ Pas ici : ce qui est vrai « aujourd'hui » mais pas durablement même pour ce projet précis (planning ponctuel, décision de cette réunion sans portée durable).
+  Test mental avant de proposer, quel que soit le niveau : « Est-ce encore utile dans 3 mois pour bien traiter un futur enregistrement (sur ce projet, ou en général) ? » Si la réponse est non, ne le propose pas.
+- `projects_detected` : les projets identifiés dans la transcription (0, 1 ou plusieurs) — à partir du vocabulaire/noms déjà connus (contexte fourni) ou de noms de projet explicitement cités. Liste vide si aucun. Sert à pré-remplir le champ « Projets concernés » que l'utilisateur confirme.
+- `vocab_terms` : noms propres et termes techniques repérés dans la transcription (prénoms, entreprises, projets, outils, sigles, jargon) — INDÉPENDANT du `scope` des `context_additions` ci-dessus : toujours candidats au vocabulaire global (utile à la reconnaissance vocale), même si le fait qui les accompagne est `scope: "project"`. Liste plate de mots/noms uniquement, pas de phrases."#;
 
 fn analyze_tool(lang: &str) -> serde_json::Value {
     let en = lang == "en";
@@ -804,17 +850,55 @@ fn analyze_tool(lang: &str) -> serde_json::Value {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "properties": { "fact": { "type": "string" } },
-                        "required": ["fact"]
+                        "properties": {
+                            "fact": { "type": "string" },
+                            "scope": {
+                                "type": "string",
+                                "enum": ["global", "project"],
+                                "description": if en {
+                                    "\"global\": durable fact NOT tied to a specific project (who/what/role, general jargon). \"project\": durable fact specific to one or more projects (rates, decisions, project state, jargon) — more permissive criterion, see `projects`."
+                                } else {
+                                    "\"global\" : fait durable NON lié à un projet précis (qui/quoi/rôle, jargon général). \"project\" : fait durable propre à un ou plusieurs projets (tarifs, décisions, état, jargon) — critère plus permissif, voir `projects`."
+                                }
+                            },
+                            "projects": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": if en {
+                                    "REQUIRED, non-empty, when scope=\"project\": subset of `projects_detected` this fact concerns. Omit/empty when scope=\"global\"."
+                                } else {
+                                    "OBLIGATOIRE, non vide, quand scope=\"project\" : sous-ensemble de `projects_detected` concerné par ce fait. Omis/vide quand scope=\"global\"."
+                                }
+                            }
+                        },
+                        "required": ["fact", "scope"]
                     },
                     "description": if en {
-                        "ONLY durable, reusable facts about the user's world (who/what/role, jargon, ongoing projects) — NEVER a one-off fact specific to this meeting (scheduling, this meeting's decisions, today's figures): those belong in the summary/tasks, not here."
+                        "ONLY durable, reusable facts — NEVER a one-off fact specific to this meeting (scheduling, this meeting's decisions, today's figures): those belong in the summary/tasks, not here. Each fact is tagged \"global\" or \"project\" (see field descriptions) — two DISTINCT criteria, project-scoped being more permissive."
                     } else {
-                        "UNIQUEMENT des faits DURABLES et réutilisables sur l'univers de l'utilisateur (qui/quoi/rôle, vocabulaire, projets en cours) — JAMAIS un fait ponctuel propre à cette réunion (planning, décisions de cette réunion, chiffres du jour) : ceux-là vivent dans le compte-rendu/les tâches, pas ici."
+                        "UNIQUEMENT des faits DURABLES et réutilisables — JAMAIS un fait ponctuel propre à cette réunion (planning, décisions de cette réunion, chiffres du jour) : ceux-là vivent dans le compte-rendu/les tâches, pas ici. Chaque fait est étiqueté « global » ou « project » (voir descriptions des champs) — deux critères DISTINCTS, le niveau projet étant plus permissif."
+                    }
+                },
+                "projects_detected": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": if en {
+                        "Projects identified in the transcription (0..n), from known vocabulary/context or explicitly named projects. Empty if none."
+                    } else {
+                        "Projets identifiés dans la transcription (0..n), à partir du vocabulaire/contexte connu ou de noms de projet explicitement cités. Liste vide si aucun."
+                    }
+                },
+                "vocab_terms": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": if en {
+                        "Proper nouns / technical terms spotted (names, companies, projects, tools, acronyms, jargon) — flat list of words only, no sentences. Always a candidate for the global vocabulary, independent of any context_addition's scope."
+                    } else {
+                        "Noms propres / termes techniques repérés (prénoms, entreprises, projets, outils, sigles, jargon) — liste plate de mots uniquement, pas de phrases. Toujours candidat au vocabulaire global, indépendamment du scope des context_additions."
                     }
                 }
             },
-            "required": ["transcription_fixes", "unassigned_tasks", "unclear_sentences", "context_additions"]
+            "required": ["transcription_fixes", "unassigned_tasks", "unclear_sentences", "context_additions", "projects_detected", "vocab_terms"]
         }
     }])
 }
@@ -968,14 +1052,27 @@ pub async fn finalize_ingestion(
     recording_id: &str,
     corrected_text: &str,
     note_title: &str,
-    context_additions: Vec<String>,
+    context_additions: Vec<ContextAddition>,
+    vocab_terms: Vec<String>,
+    confirmed_projects: Vec<String>,
     summary: bool,
     tasks: bool,
     db: &SqlitePool,
     vault_root: Option<&Path>,
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
-    run_ingestion_core(corrected_text, note_title, Some(recording_id), summary, tasks, db, vault_root, app_handle).await?;
+    run_ingestion_core(
+        corrected_text,
+        note_title,
+        Some(recording_id),
+        summary,
+        tasks,
+        Some(confirmed_projects.clone()),
+        db,
+        vault_root,
+        app_handle,
+    )
+    .await?;
 
     // La vérification en attente, s'il y en avait une, est résolue (spec/17
     // §3/spec/07) — l'indicateur « à vérifier » disparaît de la note.
@@ -985,22 +1082,150 @@ pub async fn finalize_ingestion(
     let _ = app_handle.emit("pending-clarifications-changed", json!({}));
 
     if let Some(root) = vault_root {
-        if !context_additions.is_empty() {
-            match crate::notes::context::append_learned_facts(root, db, &context_additions).await {
+        let mut glossary_dirty = false;
+
+        // `scope: "global"` (spec/16b §3) → comportement inchangé, `Contexte
+        // Alfred.md` § Appris automatiquement.
+        let global_facts: Vec<String> = context_additions
+            .iter()
+            .filter(|c| c.scope != "project")
+            .map(|c| c.fact.trim().to_string())
+            .filter(|f| !f.is_empty())
+            .collect();
+        if !global_facts.is_empty() {
+            match crate::notes::context::append_learned_facts(root, db, &global_facts).await {
                 Ok(n) if n > 0 => {
-                    eprintln!("[ingestion] {} fait(s) appris ajouté(s) au contexte", n);
-                    // New context → the glossary may have new proper nouns (spec/17 §1/§4).
-                    if let Err(e) = generate_glossary_from_context(db, Some(root)).await {
-                        eprintln!("[ingestion] glossary regen failed: {}", e);
-                    }
-                    let _ = app_handle.emit("notes-updated", json!({}));
+                    eprintln!("[ingestion] {} fait(s) appris ajouté(s) au contexte global", n);
+                    glossary_dirty = true;
                 }
                 Ok(_) => {}
-                Err(e) => eprintln!("[ingestion] append learned facts failed: {}", e),
+                Err(e) => eprintln!("[ingestion] append learned facts (global) failed: {}", e),
             }
+        }
+
+        // `scope: "project"` (spec/16b §3) → une note par projet, uniquement
+        // pour l'intersection avec les « Projets concernés » confirmés. Si
+        // cette confirmation est vide, tous les faits `scope: "project"` sont
+        // perdus (pas de repli sur le global) — les `scope: "global"`
+        // ci-dessus s'écrivent normalement, indépendamment de ce vide.
+        if !confirmed_projects.is_empty() {
+            let confirmed: std::collections::HashSet<&str> =
+                confirmed_projects.iter().map(|p| p.as_str()).collect();
+            let mut by_project: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+            for c in context_additions.iter().filter(|c| c.scope == "project") {
+                let fact = c.fact.trim().to_string();
+                if fact.is_empty() {
+                    continue;
+                }
+                for p in &c.projects {
+                    let p = p.trim();
+                    if !p.is_empty() && confirmed.contains(p) {
+                        by_project.entry(p.to_string()).or_default().push(fact.clone());
+                    }
+                }
+            }
+            for (project, facts) in by_project {
+                match crate::notes::project_context::write_project_context_fact(root, db, &project, &facts).await {
+                    Ok(n) if n > 0 => {
+                        eprintln!("[ingestion] {} fait(s) appris ajouté(s) au contexte du projet {}", n, project);
+                        let _ = app_handle.emit("notes-updated", json!({}));
+                    }
+                    Ok(_) => {}
+                    Err(e) => eprintln!("[ingestion] write_project_context_fact({}) failed: {}", project, e),
+                }
+            }
+        }
+
+        // `vocab_terms` (spec/16b §2/§3) : toujours au vocabulaire global, quel
+        // que soit l'état des « Projets concernés » — pas de dérivation par
+        // projet (contrainte de taille de l'`initial_prompt` Whisper, spec/17 §1).
+        let vocab_clean: Vec<String> = vocab_terms.iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        if !vocab_clean.is_empty() {
+            match crate::notes::context::append_vocab_terms(root, db, &vocab_clean).await {
+                Ok(n) if n > 0 => {
+                    eprintln!("[ingestion] {} terme(s) de vocabulaire ajouté(s) au contexte", n);
+                    glossary_dirty = true;
+                }
+                Ok(_) => {}
+                Err(e) => eprintln!("[ingestion] append_vocab_terms failed: {}", e),
+            }
+        }
+
+        if glossary_dirty {
+            // New context → the glossary may have new proper nouns (spec/17 §1/§4).
+            if let Err(e) = generate_glossary_from_context(db, Some(root)).await {
+                eprintln!("[ingestion] glossary regen failed: {}", e);
+            }
+            let _ = app_handle.emit("notes-updated", json!({}));
         }
     }
     Ok(())
+}
+
+// ─── Construction rétroactive du contexte de projet (spec/16b §4) ───────────────
+//
+// Première fois qu'un fait `scope: "project"` concerne un projet sans note
+// encore : on rescanne tous les comptes-rendus déjà tagués `project: <Nom>` et on
+// en extrait les faits durables en un appel Claude dédié, avant d'ajouter le fait
+// qui vient de déclencher la création (`notes::project_context`).
+
+const PROJECT_FACTS_SYSTEM: &str = r#"Tu es Alfred. On te donne l'historique des comptes-rendus déjà écrits pour UN projet précis (du plus récent au plus ancien, éventuellement tronqué). Extrais-en les faits DURABLES et réutilisables sur CE projet — tarifs, décisions, état du projet, personnes impliquées côté client, jargon spécifique — pour constituer sa fiche de contexte. Soumets via l'outil `submit_project_facts`.
+
+Consignes :
+- UNE formulation consolidée par fait — pas de paraphrases ni de doublons. Si un même sujet évolue dans le temps (ex. un tarif qui change), ne garde que l'état le PLUS RÉCENT (les comptes-rendus sont fournis du plus récent au plus ancien).
+- Écarte le ponctuel sans portée durable pour ce projet (planning, décisions du jour sans suite).
+- Liste vide si rien de fiable à en tirer — n'invente rien."#;
+
+fn project_facts_tool(lang: &str) -> serde_json::Value {
+    let en = lang == "en";
+    json!([{
+        "name": "submit_project_facts",
+        "description": if en { "Submit the durable facts extracted from this project's meeting history." } else { "Soumets les faits durables extraits de l'historique de ce projet." },
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "facts": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": if en { "One durable fact per entry, deduplicated — most recent state wins on a changed fact (e.g. a rate change)." } else { "Un fait durable par entrée, dédupliqué — l'état le plus récent prime sur un fait qui a changé (ex. un tarif)." }
+                }
+            },
+            "required": ["facts"]
+        }
+    }])
+}
+
+/// One Claude call → durable facts extracted from a project's concatenated
+/// meeting history (spec/16b §4, création rétroactive de la note de projet).
+pub(crate) async fn extract_project_facts(history_text: &str, project: &str, db: &SqlitePool) -> Result<Vec<String>> {
+    if history_text.trim().is_empty() {
+        return Ok(vec![]);
+    }
+    let access = resolve_access(db).await?;
+    let client = reqwest::Client::new();
+    let lang = if app_language(db).await == "en" { "en" } else { "fr" };
+    let system_text = format!("{}\n{}", PROJECT_FACTS_SYSTEM, language_directive(lang));
+    let body = json!({
+        "model": MODEL,
+        "max_tokens": 1024,
+        "thinking": {"type": "disabled"},
+        "system": [{ "type": "text", "text": system_text, "cache_control": {"type": "ephemeral"} }],
+        "tools": project_facts_tool(lang),
+        "tool_choice": {"type": "tool", "name": "submit_project_facts"},
+        "messages": [{
+            "role": "user",
+            "content": format!("Projet : {}\n\nHistorique des comptes-rendus (du plus récent au plus ancien) :\n{}", project, history_text)
+        }]
+    });
+
+    let resp = call_claude_with_retry(&client, &access, &body).await?;
+    let block = resp["content"]
+        .as_array()
+        .and_then(|c| c.iter().find(|b| b["type"] == "tool_use" && b["name"] == "submit_project_facts"))
+        .ok_or_else(|| anyhow!("Claude did not call submit_project_facts: {:?}", resp))?;
+
+    let facts: Vec<String> = serde_json::from_value(block["input"]["facts"].clone()).unwrap_or_default();
+    Ok(facts)
 }
 
 const STOPWORDS: &[&str] = &[

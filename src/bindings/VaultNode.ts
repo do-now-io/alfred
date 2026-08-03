@@ -11,4 +11,10 @@ status: string | null,
  * notes with no linked recording. Lets the tree cross-reference the
  * pending-clarifications list to show the « à vérifier » indicator.
  */
-recording_id: string | null, };
+recording_id: string | null, 
+/**
+ * Frontmatter `type` (spec/07/16b) — `None` for directories. Drives the
+ * context-note icon (`type: context`) in the Dossiers tree, same as the
+ * Récents/Projets views (`RecentNote`/`ProjectNote`).
+ */
+type: string | null, };

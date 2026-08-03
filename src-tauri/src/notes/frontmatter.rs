@@ -69,6 +69,23 @@ impl NoteMetadata {
         }
     }
 
+    /// Note de contexte (spec/16/16b) — `type: context`, reconnue par ce
+    /// frontmatter plutôt qu'un chemin unique en dur : couvre `Contexte
+    /// Alfred.md` (contexte global, `project` vide) ET chaque note de contexte
+    /// de projet (`alfred-intelligence/<Projet>.md`, `project: [<Nom>]`).
+    pub fn for_context(title: &str, project: Option<&str>) -> Self {
+        Self {
+            title: title.to_string(),
+            date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+            tags: vec![],
+            note_type: "context".to_string(),
+            status: "active".to_string(),
+            recording_id: None,
+            participants: vec![],
+            project: project.map(|p| vec![p.to_string()]).unwrap_or_default(),
+        }
+    }
+
     pub fn prop_count(&self) -> usize {
         let mut count = 2; // title + date always present
         if !self.tags.is_empty() { count += 1; }

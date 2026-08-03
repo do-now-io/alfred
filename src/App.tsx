@@ -509,6 +509,7 @@ function AppInner() {
           clarifications: e.payload.clarifications,
           summary: e.payload.summary ?? true,
           tasks: e.payload.tasks ?? true,
+          projectsConfirmed: e.payload.clarifications.projects_detected,
         });
       }
     ).then(fn => unsubs.push(fn));

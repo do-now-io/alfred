@@ -1,6 +1,7 @@
 # spec/27 — Mise à jour automatique de l'app
 
-> **Statut :** 📝 spec écrite, rien de codé. Post-v1. Étend le packaging
+> **Statut :** 📝 spec écrite (décisions prises, dont fréquence de check =
+> démarrage uniquement), rien de codé. Post-v1. Étend le packaging
 > (spec/12) — s'appuie sur le pipeline de release existant (`.github/workflows/
 > desktop-build.yml`, tags `v*`), sans nouvelle infra.
 
@@ -76,12 +77,10 @@ notification pour LA MISE À JOUR QUI INTRODUIT CE MÉCANISME** — il faut les
 prévenir **manuellement une dernière fois** (message direct) pour cette
 version-là ; toutes les suivantes seront détectées automatiquement.
 
-## Points ouverts (à trancher avant/pendant l'implémentation)
+## Décisions
 
-- **Fréquence de check** : seulement au démarrage, ou aussi périodiquement
-  pendant que l'app reste ouverte longtemps (l'app peut rester ouverte
-  plusieurs jours) ? Défaut proposé : démarrage uniquement + bouton manuel
-  (le plus simple, suffisant à l'échelle de ~10 utilisateurs).
+- **Fréquence de check : démarrage uniquement** (+ bouton manuel dans
+  Réglages) — pas de check périodique en cours de session.
 - **Linux (AppImage/deb/rpm)** : le plugin supporte l'auto-update mais avec
   des nuances par format ; à l'échelle actuelle (~10 testeurs, surtout
   Windows/macOS), pas prioritaire de creuser le cas Linux dans un premier

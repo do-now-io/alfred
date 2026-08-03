@@ -1,8 +1,8 @@
 # spec/18 — Partage de notes
 
-> **Statut v1 :** 📝 spec à créer, **rien de codé**. Nouvelle feature **v1**.
-> S'appuie sur le **backend AlfredIA existant** (repo privé `alfred-backend`) — **aucune nouvelle
-> infra**. Volontairement **minimal**.
+> **Statut :** ✅ construit et testé en réel (v1). S'appuie sur le **backend
+> AlfredIA existant** (repo privé `alfred-backend`) — **aucune nouvelle infra**.
+> Volontairement **minimal**.
 
 ## Idée directrice
 

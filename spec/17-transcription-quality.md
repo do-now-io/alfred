@@ -1,8 +1,8 @@
 # spec/17 — Glossaire & qualité de transcription (extension spec/16)
 
-> **Statut v1 :** 📝 spec à créer, **rien de codé**. S'appuie sur le **contexte
-> interne** (`Contexte Alfred.md`, spec/16) : n'introduit **aucune nouvelle note de
-> contexte**.
+> **Statut :** ✅ construit (v1). S'appuie sur le **contexte interne**
+> (`Contexte Alfred.md`, spec/16). Le contexte par projet (post-v1) est traité
+> dans spec/16b.
 
 ## Idée directrice
 

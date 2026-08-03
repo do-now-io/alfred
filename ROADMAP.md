@@ -1,4 +1,8 @@
-# Alfred — ROADMAP v1
+# Alfred — ROADMAP
+
+**La v1 est livrée** (~10 utilisateurs test). On est en **post-v1** — Phases A à F
+ci-dessous sont l'historique du chantier v1 (quasi tout `[x]`) ; Phase G+ est le
+backlog courant.
 
 Backlog extrait des specs (`spec/`). Suivi simple : cocher au fil de l'eau,
 mettre ses initiales dans **Qui**. Les specs restent la source de vérité du *quoi*
@@ -195,6 +199,8 @@ projet ? » et obtenir une réponse qui croise toutes ces sources.
 
 | | Tâche | Qui |
 |---|---|---|
+| [ ] | **Contexte par projet (spec/16b à écrire)** : scinder le contexte appris entre **global** (`Contexte Alfred.md` — infos long terme entreprise/poste, quasi figé après onboarding + vocabulaire → glossaire Whisper) et **par projet** (`alfred-intelligence/<Projet>.md`, un fichier par projet, créé automatiquement au 1er fait appris pour ce projet, critère plus permissif que le global). Nouveau champ **"Projets concernés"** sur `/resolve` (multi-select existants + "Nouveau projet"), proposé dès l'**analyse** ; un fait peut cibler plusieurs projets ; sans projet sélectionné → rien n'est enregistré côté projet. Le **vocabulaire/noms propres** repérés continuent de remonter au **contexte global** (donc au glossaire) même sur une réunion mono-projet. Pas d'injection dans l'ingestion pour l'instant (limite de taille) — sert de mémoire lisible + RAG (spec/07b), prépare "Projets unifiés" (tâche ci-dessous). **Rétroactif** : à la 1ʳᵉ apparition du projet côté contexte, rescanner tous les comptes-rendus déjà tagués `project: X` pour reconstruire la note en une fois. **Dépend de** : renommage de projet (tâche dédiée ci-dessous) pour que la note suive un projet renommé | |
+| [ ] | **Renommage de projet (spec/07 à étendre)** : aujourd'hui `project` n'est qu'une valeur de frontmatter par note (pas d'entité), aucune commande `rename_project` — renommer un projet ne met à jour que la note qu'on édite à la main. À construire : renommage **cascade** sur toutes les notes taguées + (une fois fait) sur sa note de contexte (tâche ci-dessus) | |
 | [ ] | **Benchmark speech-to-text (spec/04/17 à mettre à jour) — priorité haute** : on ne fait que du Whisper aujourd'hui alors que l'offre a beaucoup évolué (large-v3-turbo, Parakeet/Canary, Voxtral, Moonshine, Distil-Whisper…) — benchmarker les meilleurs modèles / catégories de modèles sur nos cas réels (FR/EN, réunions longues, CPU local, glossaire via `initial_prompt`, licence / embarquabilité) et choisir le(s) bon(s) pour Alfred | |
 | [ ] | **Connexion e-mails — extraction de tâches & contexte (spec/24 à écrire)** : connecter Alfred à la boîte mail (Gmail / Outlook / IMAP à trancher) : **extraire les tâches** des e-mails → `Todo.md` (avec provenance), rattacher les mails pertinents aux **projets**, et pousser ce contexte dans l'ingestion / le chat / le brief pour structurer et rassembler les idées. Grande complexité (auth, sync, volume, pertinence du tri) — gros chantier à part entière, cœur de la vision ci-dessus | |
 | [ ] | **Projets unifiés — interroger Alfred par projet (spec/24 + 07b/05)** : la notion de **projet** englobe notes de réunion, synthèses, tâches ET e-mails ; le chat/RAG croise toutes ces sources pour répondre à « qu'est-ce qu'il me reste à faire sur le projet X ? ». Dépend de la connexion e-mails ci-dessus ; énorme travail de pertinence pour que ce soit vraiment efficace | |

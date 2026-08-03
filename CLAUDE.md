@@ -6,11 +6,12 @@ automatiquement à chaque session.
 ## Contexte
 
 Alfred = app desktop **Tauri (Rust + React/TS)**, cross-platform (Windows + macOS).
-Objectif : livrer une **v1** rapidement à ~10 utilisateurs.
+**La v1 est livrée** (~10 utilisateurs test) — on est en **post-v1** : itération sur
+les retours + nouveaux chantiers (voir Phase G+ du ROADMAP).
 
 - **Specs** = source de vérité (le *quoi* / *comment*) : dossier `spec/`. Index +
   statut de chaque module : `spec/README.md`.
-- **Backlog v1** (le *où on en est*) : `ROADMAP.md` (racine).
+- **Backlog** (le *où on en est*) : `ROADMAP.md` (racine).
 
 ## Workflow de session — OBLIGATOIRE
 
@@ -38,8 +39,8 @@ chacun voie en temps réel ce que l'autre fait.
 - **Éditer `ROADMAP.md` de façon ciblée** (une ligne = une tâche) pour limiter les
   conflits de merge à deux.
 - Si un `push` est rejeté → `git pull --rebase` puis re-push.
-- **Respecter le périmètre v1** : ce qui est marqué **« Hors v1 »** dans les specs
-  ne se code pas.
+- **Respecter le périmètre** : ce qui est marqué **« Hors v1 »** (décision produit,
+  pas juste "pas encore fait") dans les specs ne se code pas sans en reparler.
 
 ## Repères techniques
 

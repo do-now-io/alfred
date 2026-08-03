@@ -1,6 +1,6 @@
 # spec/03 — Audio Recording
 
-> **Statut v1 :** micro fonctionnel ; **audio système à coder** (Windows + macOS).
+> **Statut :** ✅ construit (v1). Micro + audio système (Windows + macOS).
 
 ## Vue d'ensemble
 

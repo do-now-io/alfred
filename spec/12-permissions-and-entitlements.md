@@ -1,7 +1,8 @@
 # spec/12 — Permissions & Entitlements (cross-platform)
 
-> **Statut v1 :** réconcilier — Windows + macOS ; micro + **capture audio système** ;
-> retirer apple-events / calendrier.
+> **Statut :** 🚧 construit — Windows + macOS ; micro + **capture audio système** ;
+> apple-events/calendrier retirés ; signature macOS + Windows faites ;
+> **notarisation macOS bloquée** (en pause).
 
 ## macOS — `Alfred.entitlements`
 

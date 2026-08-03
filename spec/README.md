@@ -3,8 +3,9 @@
 Source de vérité fonctionnelle et technique d'Alfred. Chaque `NN-*.md` décrit un
 module.
 
-**Objectif :** livrer une **v1 cross-platform (Windows + macOS)** rapidement à
-~10 utilisateurs en attente, pour valider l'intérêt et l'usage.
+**La v1 cross-platform (Windows + macOS)** a été livrée à ~10 utilisateurs test.
+On est désormais en **post-v1** : itération sur les retours + nouveaux chantiers
+(Phase G+ du ROADMAP, ex. contexte par projet).
 
 **En une phrase :** Alfred enregistre (micro + audio système), transcrit en local
 avec Whisper, en fait des notes dans un **vault Markdown**, et **Claude** t'assiste
@@ -86,18 +87,21 @@ décorrélé de l'identité Stripe. Événements : `install_created`, `app_launc
 `recording_completed` (mic/système), `ingestion_completed` (mode byo/alfredia),
 `ai_request`. Envoi vers le backend (`/metrics`).
 
-## Risques v1 — statut
+## Statut v1 — livrée
 
-Les 3 risques qui gataient le lancement sont **levés** :
+**La v1 est livrée** aux ~10 utilisateurs test. Les 3 risques qui gataient le
+lancement sont **levés** :
 
 1. ✅ **Backend AlfredIA** (proxy + Stripe + metrics) — construit, validé en prod (Coolify).
 2. ✅ **Audio système** Windows (WASAPI loopback + mixed) et macOS (helper Swift ScreenCaptureKit) — fait, testé.
 3. ✅ **Whisper par défaut, cross-platform** — feature par défaut + modèle `small` embarqué, installeurs Windows testés (transcription offline dès le 1er lancement).
 
-Le **moteur** (capture, transcription, IA, notes, backend) et la **Phase C (UX/écrans)** sont désormais **largement construits**. **Ce qui reste pour une v1 livrable** :
+**Reste ouvert (non bloquant pour la distribution actuelle)** :
 
-1. ⚠️ **Packaging & signature macOS** — Developer ID ✅, **notarisation bloquée** : **le plus gros bloc restant** (Phase E), gate la distribution aux ~10 users. Windows : signature Authenticode faite.
-2. ❌ Optionnel : regroupement des notes **par projet** (spec 07).
+- ⚠️ **Notarisation macOS** — Developer ID ✅, notarisation **bloquée** (Phase E) — en pause pour le moment.
+
+On est maintenant en **post-v1** — voir Phase G+ du [`ROADMAP.md`](../ROADMAP.md)
+pour les chantiers en cours (ex. contexte par projet).
 
 ## Suivi des tâches
 

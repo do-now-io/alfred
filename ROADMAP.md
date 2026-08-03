@@ -28,14 +28,14 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | **`POST /feedback`** → tout en **Postgres** (texte + images BYTEA, consultation SQL ; email/S3 hors v1) | UC |
 | [x] | **Secrets** : variables d'env Coolify (clé Anthropic + clés Stripe, chiffrées) | UC |
 | [~] | **Essai gratuit 14 jours AlfredIA (backend privé + spec/13, spec/11, feedback tests)** : Checkout Stripe avec `subscription_data.trial_period_days = 14` (✅ fait) ; token émis dès le départ en `trialing` (proxy accepte déjà, ✅) ; wording onboarding + Réglages « Commencer l'essai gratuit » (✅ fait). **Reste** : endpoint de statut détaillé (`trialing` vs `active` + jours restants, desktop ne voit aujourd'hui que « token valide/invalide ») ; tester fin d'essai → `active` et échec paiement → `suspended` (recette sandbox, cf. tâche dédiée) | CF |
-| [ ] | **Recette du paiement — 20 €/mois (backend privé `alfred-backend`)** : rejouer `/subscribe` en **sandbox** Stripe (Checkout carte de test → webhook → token → proxy accepte) + simuler `subscription.deleted`/`payment_failed` (`stripe trigger`) → vérifie `suspended`/`revoked` ; puis **un** paiement réel de validation en **prod** une fois la sandbox verte | |
+| [x] | **Recette du paiement — 20 €/mois (backend privé `alfred-backend`)** : rejouer `/subscribe` en **sandbox** Stripe (Checkout carte de test → webhook → token → proxy accepte) + simuler `subscription.deleted`/`payment_failed` (`stripe trigger`) → vérifie `suspended`/`revoked` ; puis **un** paiement réel de validation en **prod** une fois la sandbox verte | |
 | [x] | **Bouton « Gérer l'abonnement » AlfredIA (backend privé + spec/11)** : backend `POST /subscription/portal` (Bearer token → `customer_id` → session Billing Portal Stripe → `{url}`) + `GET /subscription/portal/done` (page de retour) ; desktop `manage_alfredia_subscription` ouvre l'URL dans le navigateur (`tauri_plugin_opener`) ; bouton dans Réglages → Accès IA, à côté de « ✓ Activé ». **Suppose le Customer Portal activé côté dashboard Stripe** (paramétrage manuel, non testé en sandbox) | UC |
 
 ## Phase B — Desktop, moteur
 
 | | Tâche | Qui |
 |---|---|---|
-| [~] | ⚠️ **Audio système** : Windows ✅ (WASAPI loopback, `system_only` + `mixed`, testé) — reste macOS helper Swift (Tanguy) | UC/T |
+| [x] | ⚠️ **Audio système** : Windows ✅ (WASAPI loopback, `system_only` + `mixed`, testé) — macOS ✅ (helper Swift) | UC/T |
 | [x] | Durcir la **capture micro** (gérer `i16`/`f32`/`u16` selon le device) | UC |
 | [x] | **Feedback live** d'enregistrement : volume (RMS) + timer dans `recording-status-changed` (micro ; system_only/mixed pas encore de volume live) | UC |
 | [x] | ⚠️ **Whisper** : activer la feature par défaut + **embarquer le modèle `small`** + packaging Windows | UC |
@@ -145,7 +145,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | [x] | **Clic droit incohérent — Récents (spec/07, feedback tests)** : la liste « Récents » de la sidebar (`App.tsx`) n'avait aucun `onContextMenu` → menu natif du navigateur (Retour/Actualiser/Imprimer…) au lieu du Renommer/Supprimer de l'arbre. Menu extrait en composant partagé `NoteContextMenu` (arbre + Récents) ; corrige aussi l'icône empilée au-dessus du texte au lieu d'être sur la même ligne (Tailwind `svg { display: block }` — fix `display: flex` + `alignItems: center`) | CF |
 | [x] | **Vue Projets — paire transcription/compte-rendu repliée par défaut (spec/07, feedback tests)** : la transcription appariée s'affichait toujours en retrait sous le compte-rendu (2 lignes par entrée) ; un chevron (▶/▼) la déplie/replie à la demande — une seule ligne par défaut, comme la vue Dossiers | CF |
 | [ ] | **Glisser-déposer de fichiers externes dans Notes (spec/07)** — **Hors v1, décision produit** : glisser un fichier depuis le Finder/l'Explorateur (PDF, image…) sur l'arbre ou le contenu ne fait rien aujourd'hui (`dragDropEnabled: false` désactive le DnD natif de fichiers OS ; aucun handler `dataTransfer.files`). Volontairement pas fait pour la v1 (feedback tests, CF) | |
-| [ ] | **Nom du dossier des transcriptions brutes — décision ouverte (spec/07)** : `alfred-raw` est le nom par défaut actuel, jamais validé comme définitif produit ; à rouvrir si besoin, en tenant compte de la migration des vaults déjà créés chez les utilisateurs en test | |
+| [x] | **Nom du dossier des transcriptions brutes — décision prise (spec/07)** : `alfred-raw` confirmé comme nom définitif produit | |
 | [x] | **Voix du majordome — passe éditoriale (spec/10)** : le ton « majordome » n'existe que sur les labels d'état (« À votre service », « Je cogite… »…) ; relire l'ensemble des textes (boutons, placeholders, erreurs, onboarding) pour un ton cohérent de bout en bout, sans nuire à la lisibilité des messages d'erreur | CF |
 | [x] | **Recherche dans le fichier courant (spec/06/07/10)** : Notes — Ctrl/Cmd+F dans l'éditeur (`@codemirror/search`, panneau FR, bouton loupe, raccourci global écran Notes) ; Tâches — champ « Rechercher… » qui filtre les cartes Kanban en direct (titre+responsable, insensible casse/accents). Recherche **locale** uniquement (globale toujours hors v1) | T |
 | [x] | **Settings** refonte (accès IA ✓, Whisper ✓, Vapi/Google/Places/calendrier/ingest CLI retirés ✓, défauts `alfred-*` ✓) | UC |
@@ -174,7 +174,7 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 | | Tâche | Qui |
 |---|---|---|
 | [x] | **CI GitHub Actions — build desktop 3 OS** (`.github/workflows/desktop-build.yml`) : Windows (msi/nsis) + macOS (dmg arm64 — pas d'Intel, runners macos-13 plus provisionnés) + Linux (deb/rpm/AppImage), **non signé** ; manuel + tags `v*` ; **release GitHub auto sur tag** avec les binaires attachés ; base sqlx recréée en CI ; **aucun modèle embarqué** (téléchargé à l'onboarding) | T |
-| [ ] | **macOS** : entitlements v1 (retirer apple-events, + `NSScreenCaptureUsageDescription`) ; signature Developer ID + notarisation | |
+| [~] | **macOS** : entitlements v1 (retirer apple-events, + `NSScreenCaptureUsageDescription`) ; signature Developer ID ✅ — **notarisation bloquée** | |
 | [x] | **Windows** : build Whisper + WebView2 (fait) ; signature **Authenticode** via **SSL.com eSigner** (OV DONOW validé, cloud HSM) — **vérifiée en réel** : installeur `Alfred_x.y.z_x64-setup.exe` téléchargé depuis une release taguée, SmartScreen affiche bien l'éditeur **« DONOW »** (plus « Unknown publisher »). Signature en étape CI à part (`scripts/sign-windows.ps1`, pas un hook `signCommand` Tauri — abandonné après plusieurs échecs opaques) dans un dossier de staging (CodeSignTool refuse `output_dir_path == dossier source`) ; détection d'échec par hash SHA256 (CodeSignTool renvoie exit 0 même en échec). SmartScreen affichera encore un avertissement (OV, pas EV) jusqu'à accumulation de réputation — compromis de coût assumé, spec/12 | UC |
 | [x] | Aligner le label launch-at-login `io.alfred.app` → `com.alfred.app` | CF |
 | [x] | **Icône d'app à mettre à jour (feedback tests)** : le jeu `src-tauri/icons/*` (32/128/@2x/.ico/.icns + Windows Appx/iOS/Android) régénéré via `npx tauri icon` depuis `alfred-logo-minimal.png` (portrait seul, sans mot-symbole, fond transparent) — pas encore vérifié en rendu réel bureau Windows/macOS (à faire manuellement au prochain build) | CF |
@@ -183,8 +183,8 @@ Légende : `[ ]` à faire · `[~]` en cours · `[x]` fait · ⚠️ = risque / c
 
 | | Tâche | Qui |
 |---|---|---|
-| [ ] | **Site web (`alfred.do-now.io`) — spec/19** : rien n'existe (ni code, ni spec) — le footer des pages partagées (spec/18) pointe déjà vers ce domaine. Écrire la spec (contenu, hébergement) avant de coder | |
-| [ ] | **Rendre le projet open source — spec/20** : décisions produit/légales à prendre d'abord (licence, dépôt cible, ce qui doit rester privé) avant d'écrire la spec | |
+| [x] | **Site web (`alfred.do-now.io`) — spec/19** : fait | |
+| [x] | **Rendre le projet open source — spec/20** : décisions produit/légales prises | |
 
 ## Phase G — Post-v1 : Alfred connecté, collaboratif & mobile (specs à écrire)
 

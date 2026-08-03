@@ -59,7 +59,7 @@ par nous).
 | 11  | Settings                    | ✅ | **Construit.** Accès IA (clé perso / AlfredIA) ; Whisper ; enregistrement ; vault ; Todo ; Vapi/Google/Places/calendrier/ingest CLI retirés ; défauts `alfred-*` |
 | 12  | Permissions                 | 🚧 | **Spec faite.** Cross-platform ; micro + capture système ; retirer apple-events/calendrier ; signature macOS ✅ / Windows ✅ — **notarisation macOS bloquée** |
 | 13  | Onboarding                  | ✅ | Intro (2 slides) + détection/création vault + choix clé perso / AlfredIA + test micro ✅ ; **visite guidée = contexte à la voix** (téléprompteur avec pause/revue → visite de l'app pendant la transcription → pop-up « vérifiez » → `/resolve` mode contexte → clôture) ✅ ; **contenu de démarrage (seed)** ✅ ; **écran de fin habillé** (aperçu de `/recording`) ✅. Détail mineur non tranché dans spec/13 (étape 8 « Contexte », chevauchement avec la carte d'intro de la visite) |
-| 14  | Feedback                    | ✅ | **Construit.** Onglet texte + images (collage) + email de contact ; catégories bug/feature/praise ; stockage Postgres via backend. 🟡 **widget discret topbar** en cours (Tanguy) |
+| 14  | Feedback                    | ✅ | **Construit.** Onglet texte + images (collage) + email de contact ; catégories bug/feature/praise ; stockage Postgres via backend. **Widget discret topbar** fait (Tanguy) |
 | 15  | Backend AlfredIA + Metrics  | ✅ | **Construit + validé en prod.** Rust/axum, **Coolify** (self-hosted), `api.alfred.do-now.io`, **Postgres**, Stripe 20€/mois (+ annuel) ; proxy, loopback, metrics, feedback. Le code/la spec vivent désormais dans le **repo privé `alfred-backend`** (plus de `spec/15-*.md` ici). **Recette du paiement faite** (sandbox bout-en-bout + validation prod) |
 | 16  | Contexte interne            | ✅ | **Construit.** Note `Contexte Alfred.md` (contexte maison) injectée dans l'ingestion + Settings ; source du glossaire (spec 17). **Transcription live abandonnée** (code retiré) |
 | 17  | Glossaire & qualité de transcription | ✅ | **Construit.** Glossaire (initial_prompt) dérivé de `Contexte Alfred.md` (régén auto) ; beam + seuils anti-hallucination ; **transcription parallèle par tranches** (longs fichiers) ; ingestion augmentée + écran `/resolve` ; contexte à la voix (onboarding) |
@@ -97,8 +97,7 @@ Les 3 risques qui gataient le lancement sont **levés** :
 Le **moteur** (capture, transcription, IA, notes, backend) et la **Phase C (UX/écrans)** sont désormais **largement construits**. **Ce qui reste pour une v1 livrable** :
 
 1. ⚠️ **Packaging & signature macOS** — Developer ID ✅, **notarisation bloquée** : **le plus gros bloc restant** (Phase E), gate la distribution aux ~10 users. Windows : signature Authenticode faite.
-2. 🟡 **Widget feedback discret** (topbar, en cours — Tanguy).
-3. ❌ Optionnel : regroupement des notes **par projet** (spec 07).
+2. ❌ Optionnel : regroupement des notes **par projet** (spec 07).
 
 ## Suivi des tâches
 

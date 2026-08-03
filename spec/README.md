@@ -74,6 +74,7 @@ par nous).
 | 24  | E-mails — connexion & extraction | 🕓 | **Post-v1, spec à écrire** — connecter la boîte mail : extraction de tâches (→ `Todo.md`, provenance), rattachement des mails aux **projets**, contexte pour ingestion/chat/brief. Pivot de la vision « projets unifiés » (ROADMAP Phase G) |
 | 25  | Collaboration sur notes partagées | 🕓 | **Post-v1, spec à écrire** — commentaires (temps 1) puis ajout/modification (temps 2) sur les notes partagées ; comptes utilisateurs / droits / suivi des modifications à trancher. Étend spec/18 (ROADMAP Phase G) |
 | 26  | App mobile                  | 🕓 | **Post-v1, spec à écrire** — consultation des notes + enregistrement depuis le téléphone ; transcription on-device vs serveur à trancher, sync du vault, stack (ROADMAP Phase G) |
+| 27  | Mise à jour automatique      | 📝 | **Post-v1, spec écrite, rien de codé.** `tauri-plugin-updater`, clé de signature dédiée, `latest.json` hébergé sur la release GitHub, bandeau + Réglages. Dépend de la notarisation macOS (Phase E, en pause) pour une UX propre sur macOS |
 | —   | Ingest « run Claude » (CLI) | ❌ | **Supprimé** — remplacé par l'ingestion API (spec 05) |
 
 ## Deux modes d'accès à l'IA

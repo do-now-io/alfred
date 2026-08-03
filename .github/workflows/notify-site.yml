@@ -1,0 +1,17 @@
+name: Notify site of new release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger alfred-site-web redeploy
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.SITE_DISPATCH_TOKEN }}" \
+            https://api.github.com/repos/do-now-io/alfred-site-web/dispatches \
+            -d '{"event_type":"alfred-release"}'

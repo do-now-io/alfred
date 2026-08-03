@@ -75,6 +75,7 @@ par nous).
 | 25  | Collaboration sur notes partagées | 🕓 | **Post-v1, spec à écrire** — commentaires (temps 1) puis ajout/modification (temps 2) sur les notes partagées ; comptes utilisateurs / droits / suivi des modifications à trancher. Étend spec/18 (ROADMAP Phase G) |
 | 26  | App mobile                  | 🕓 | **Post-v1, spec à écrire** — consultation des notes + enregistrement depuis le téléphone ; transcription on-device vs serveur à trancher, sync du vault, stack (ROADMAP Phase G) |
 | 27  | Mise à jour automatique      | 📝 | **Post-v1, spec écrite, rien de codé.** `tauri-plugin-updater`, clé de signature dédiée, `latest.json` hébergé sur la release GitHub, bandeau + Réglages. Dépend de la notarisation macOS (Phase E, en pause) pour une UX propre sur macOS |
+| 28  | Projets unifiés              | 📝 | **Post-v1, spec écrite, rien de codé.** `get_project_overview` — agrégation Rust pure (zéro appel Claude) : tâches `+Projet`, notes taguées, note de contexte (spec/16b), événements calendrier (spec/02, correspondance heuristique). Deux entrées : chat (1 seul tool call) + menu contextuel dédié (vue Projets, spec/07). Liste organisée, pas de synthèse narrative |
 | —   | Ingest « run Claude » (CLI) | ❌ | **Supprimé** — remplacé par l'ingestion API (spec 05) |
 
 ## Deux modes d'accès à l'IA

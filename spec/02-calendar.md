@@ -1,238 +1,166 @@
-# spec/02 — Calendar Integration
+# spec/02 — Calendar Integration (Google uniquement)
 
-> ⛔ **HORS V1 — retiré.** Le calendrier (et toute la connexion Google / OAuth)
-> est hors périmètre v1. Contenu conservé comme référence pour une phase future.
-> Voir `spec/README.md`.
+> **Statut :** 📝 spec réécrite (rouverte), rien de codé. Post-v1, ROADMAP
+> Phase G. **Google Calendar uniquement** — Apple Calendar est explicitement
+> **hors scope** de cette réouverture (voir §0). Contexte **actif** : le
+> calendrier n'est pas qu'un affichage, il nourrit la détection de projet
+> (spec/16b), le brief quotidien (spec/05) et le chat (spec/07b/22).
 
-> **Décision fixée : D5**
-> Port OAuth local → port aléatoire (0) assigné par l'OS, stocké dans `Mutex<u16>`
+## §0 — Pourquoi Google seul, et pas Apple Calendar
 
----
+L'ancienne version de cette spec couvrait Google **et** Apple Calendar (via
+AppleScript). **Apple Calendar est retiré de cette réouverture** :
+
+- L'entitlement macOS `com.apple.security.automation.apple-events` (et
+  `NSAppleEventsUsageDescription`) qu'il nécessite a été **explicitement
+  retiré** du packaging v1 (spec/12, durcissement du périmètre de
+  permissions pour la distribution). Le rouvrir pour Apple Calendar
+  annulerait ce durcissement — pas fait ici.
+- Google Calendar seul couvre déjà l'usage principal, sans ce compromis, et
+  sans le parsing AppleScript (fragile, macOS uniquement).
+
+**Windows n'a jamais eu d'équivalent Apple Calendar** — Google Calendar
+couvre donc les deux OS de façon uniforme, ce qu'Apple Calendar ne faisait
+pas.
 
 ## Vue d'ensemble
 
-Deux sources de calendrier synchronisées dans la table `calendar_events` :
-- **Google Calendar** via REST API + OAuth2
-- **Apple Calendar** via AppleScript (`osascript`)
+Une source de calendrier : **Google Calendar**, via REST API + OAuth2. Sync
+**pull-based** (Alfred interroge Google, pas de webhook). Les événements sont
+mis en cache dans une table SQLite locale (état/cache, pas du contenu vault —
+cohérent avec spec/00 : le vault reste la source de vérité du contenu
+*produit* par l'utilisateur, le calendrier est une donnée *externe* mise en
+cache).
 
-La sync est pull-based (Alfred interroge les sources, pas l'inverse). Aucun webhook.
-
----
-
-## Google Calendar
+## §1 — OAuth Google (repris de l'ancienne version, inchangé)
 
 ### Prérequis — Google Cloud Console
 
-1. Créer un projet dans Google Cloud Console
-2. Activer l'API **Google Calendar API**
-3. Créer des identifiants OAuth 2.0 de type **"Desktop application"** (pas "Web application")
-   - Ce type autorise `http://127.0.0.1` comme redirect URI sans l'enregistrer explicitement
-   - Google fait une exception pour le loopback (RFC 8252) : tout port sur 127.0.0.1 est accepté
-4. Télécharger le Client ID et Client Secret → stockés en Keychain (voir spec/00)
+1. Projet Google Cloud (celui d'Alfred/DoNow) ; API **Google Calendar API**
+   activée.
+2. Identifiants OAuth 2.0 type **"Desktop application"** — autorise
+   `http://127.0.0.1` en redirect URI sans enregistrement explicite du port
+   (RFC 8252, exception loopback de Google).
+3. Client ID + Client Secret **embarqués à la compilation** (même mécanisme
+   que la clé anti-spam metrics, `option_env!` + secret CI — pas dans le
+   code source). Un client "Desktop application" est un **client public** :
+   Google ne traite pas son secret comme confidentiel (documentation
+   officielle), l'embarquer dans le binaire distribué est la pratique
+   attendue pour ce type de client.
 
-### Flow OAuth2 — implémentation exacte
+> **Publication du client OAuth — décision par défaut proposée.** Le scope
+> `calendar.readonly` est un "scope sensible" chez Google : le mettre en
+> production déclenche une **vérification Google** (revue manuelle, délais
+> de plusieurs semaines, exigences supplémentaires). Pour ~10 utilisateurs
+> test, garder le client Google Cloud en statut **"Testing"** (limite ~100
+> comptes test, ajoutés explicitement par email dans la console) **évite
+> complètement cette vérification** — chaque testeur voit un écran de
+> consentement "app non vérifiée" à la 1ʳᵉ connexion (avertissement, pas un
+> blocage), acceptable à cette échelle. Passer en publication réelle sera à
+> reconsidérer si Alfred dépasse ~100 utilisateurs connectés à Google.
+
+### Flow (inchangé par rapport à l'ancienne version)
 
 ```
-1. L'utilisateur clique "Connecter Google Calendar" dans Settings
-
-2. Rust : ouvrir un serveur HTTP local sur port 0
-   let listener = TcpListener::bind("127.0.0.1:0").await?;
-   let port = listener.local_addr()?.port();
-   // Stocker port dans Arc<Mutex<u16>> dans AppState
-
-3. Rust : construire l'URL d'autorisation
-   https://accounts.google.com/o/oauth2/v2/auth
-     ?client_id={CLIENT_ID}
-     &redirect_uri=http://127.0.0.1:{port}/callback
-     &response_type=code
-     &scope=https://www.googleapis.com/auth/calendar.readonly
-     &access_type=offline
-     &prompt=consent
-
-4. Rust : ouvrir l'URL dans le navigateur système
-   tauri::api::shell::open(&app_handle, url, None)?;
-
-5. Rust : attendre la requête de callback sur le serveur local
-   let request = listener.accept().await?;
-   // Parser ?code=xxx depuis la query string
-
-6. Rust : échanger le code contre des tokens
-   POST https://oauth2.googleapis.com/token
-   Body: code=xxx&client_id=...&client_secret=...
-         &redirect_uri=http://127.0.0.1:{port}/callback
-         &grant_type=authorization_code
-   Réponse: { access_token, refresh_token, expires_in }
-
-7. Rust : stocker en Keychain
-   google_oauth_access_token = access_token
-   google_oauth_refresh_token = refresh_token
-   google_oauth_expires_at = now + expires_in (en config SQLite)
-
-8. Fermer le serveur local
+1. Réglages → "Connecter Google Calendar"
+2. Rust ouvre un serveur HTTP local sur port 0 (OS choisit le port)
+3. Ouverture navigateur système sur l'URL d'autorisation Google
+   (scope: https://www.googleapis.com/auth/calendar.readonly, access_type=offline)
+4. Callback sur le serveur local → récupère `code`
+5. Échange `code` → { access_token, refresh_token, expires_in }
+6. Stockage dans secrets.json (même mécanisme que la clé Anthropic perso,
+   spec/00 keychain.rs) : access_token, refresh_token, expires_at
+7. Fermeture du serveur local (ou timeout 5 min)
 ```
-
-Le serveur local n'existe que pendant le flow OAuth. Il est fermé après réception du code (ou timeout de 5 minutes).
 
 ### Refresh automatique
 
-Avant chaque appel à l'API Google Calendar :
-```
-if expires_at - now < 5 minutes:
-    POST https://oauth2.googleapis.com/token
-    Body: refresh_token=...&client_id=...&client_secret=...
-          &grant_type=refresh_token
-    → Mettre à jour access_token + expires_at en Keychain
-```
+Avant chaque appel API : si `expires_at - now < 5 min`, refresh via
+`refresh_token` (`POST https://oauth2.googleapis.com/token`,
+`grant_type=refresh_token`).
 
-Crate à utiliser : `reqwest` avec feature `json`.
+## §2 — Sync
 
-### Appel API
+- **Déclencheurs : au lancement de l'app + toutes les 15 minutes**
+  (`tokio::time::interval`, décision actée — pas la même logique
+  "démarrage + bouton manuel" que spec/24/27, le calendrier a besoin d'être
+  plus frais qu'une boîte mail : événements qui bougent en cours de
+  journée) + bouton manuel "Synchroniser" dans Réglages.
+- **Fenêtre récupérée** : aujourd'hui → +7 jours (comme l'ancienne version),
+  `GET .../calendars/primary/events?timeMin=...&timeMax=...&singleEvents=true&orderBy=startTime`,
+  pagination via `nextPageToken`.
+- **Cache SQLite** — nouvelle table `calendar_events` (recréée, migration
+  dédiée ; l'ancienne a été droppée en Phase D) : upsert par
+  `(source='google', external_id)`. Champs : `title`, `start_at`, `end_at`,
+  `location`, `description`, `attendees` (JSON), `all_day`.
+- **Comportement au sleep** : si l'OS suspend l'app, l'intervalle se
+  déclenche au réveil plutôt qu'à l'heure exacte — acceptable, pas de
+  rattrapage.
 
-```
-GET https://www.googleapis.com/calendar/v3/calendars/primary/events
-  ?timeMin={aujourd'hui 00:00 UTC}
-  &timeMax={aujourd'hui + 7 jours 23:59 UTC}
-  &singleEvents=true
-  &orderBy=startTime
-  &maxResults=250
-Authorization: Bearer {access_token}
-```
+## §3 — Contexte actif (le vrai objectif de cette réouverture)
 
-Gérer la pagination : si `nextPageToken` présent dans la réponse, enchaîner les appels avec `pageToken={token}`.
+Le calendrier ne se contente pas d'être affiché — il **aide activement** :
 
-### Mapping vers `calendar_events`
+### a) Nouvel écran "Agenda"
 
-```
-source = 'google'
-external_id = event.id
-title = event.summary
-start_at = event.start.dateTime (ou event.start.date si all_day)
-end_at = event.end.dateTime
-location = event.location
-description = event.description
-attendees = JSON.stringify(event.attendees.map(a => a.email))
-all_day = event.start.date != null ? 1 : 0
-```
+Nouvel onglet de navigation (§4) : liste des événements du jour + de la
+semaine (titre, heure, participants, lieu). Lecture seule — pas de création/
+modification d'événement depuis Alfred.
 
-Upsert par `(source, external_id)` :
-```sql
-INSERT INTO calendar_events (...) VALUES (...)
-ON CONFLICT (source, external_id) DO UPDATE SET
-  title = excluded.title,
-  start_at = excluded.start_at,
-  ...
-  last_synced_at = excluded.last_synced_at;
-```
+### b) Brief quotidien enrichi (spec/05)
 
----
+`generate_daily_brief` gagne une section **Agenda** : nombre de réunions du
+jour + liste (titre + heure), dans le même style que le reste du brief.
+Simple ajout de données au prompt existant, pas de nouvelle logique IA.
 
-## Apple Calendar
+### c) Indice de détection de projet (spec/16b, spec/17 §3)
 
-### Approche — AppleScript via `osascript`
+Au moment de l'**analyse** d'une transcription (`analyze_transcription`), si
+un événement du calendrier **chevauche la fenêtre de l'enregistrement**
+(commencé avant/pendant, pas fini depuis trop longtemps — tolérance ±15 min
+proposée par défaut), son **titre + participants** sont ajoutés au prompt
+comme **indice supplémentaire** pour `projects_detected` — ça n'ajoute pas
+un nouveau champ, ça enrichit l'entrée du même mécanisme déjà construit pour
+spec/16b (aucun changement de schéma de sortie).
 
-On interroge Calendar.app via AppleScript. Cela ne nécessite pas de SDK tiers ni d'accès direct EventKit.
+### d) Nouvel outil de lecture dans le chat agentique (spec/07b/22)
 
-**Entitlement requis** : `com.apple.security.automation.apple-events` (Hardened Runtime)
+Nouvel outil **read-only** (même famille que les 15 outils de spec/22, mais
+lecture, pas mutation) : `get_calendar_events(period: "today"|"week")` →
+permet à Alfred de répondre à « qu'est-ce que j'ai aujourd'hui/cette
+semaine ? » en chat.
 
-⚠️ Ne pas confondre avec `com.apple.security.personal-information.calendars` qui est pour EventKit (API programmatique Swift/ObjC) — ce n'est pas ce qu'on utilise.
+## §4 — UI
 
-**Info.plist requis** : `NSAppleEventsUsageDescription` avec une description explicite.
+- **Nouvel onglet de navigation "Agenda"** (nav réduite, spec/10 — à
+  réintroduire spécifiquement pour cette feature, contrairement au reste de
+  la nav qui a été volontairement simplifiée en Phase D).
+- **Réglages** (spec/11) : section "Connecter Google Calendar" (statut
+  connecté/déconnecté, bouton connecter/déconnecter, bouton "Synchroniser
+  maintenant").
 
-### Script AppleScript
+## Commandes Tauri
 
-```applescript
-set startDate to current date
-set endDate to startDate + (7 * days)
-
-set eventList to {}
-tell application "Calendar"
-    repeat with cal in calendars
-        set theEvents to (every event of cal whose start date ≥ startDate and start date ≤ endDate)
-        repeat with ev in theEvents
-            set evData to {|id|: uid of ev, |title|: summary of ev, |start|: start date of ev as string, |end|: end date of ev as string, |location|: location of ev, |description|: description of ev}
-            set end of eventList to evData
-        end repeat
-    end repeat
-end tell
-return eventList
-```
-
-Exécution depuis Rust :
-```rust
-let output = std::process::Command::new("osascript")
-    .arg("-e")
-    .arg(APPLESCRIPT_TEMPLATE)
-    .output()?;
-let stdout = String::from_utf8(output.stdout)?;
-// Parser la sortie AppleScript
-```
-
-La sortie AppleScript est parsée avec un parser dédié (format liste AppleScript → structs Rust).
-
-### Mapping vers `calendar_events`
-
-```
-source = 'apple'
-external_id = uid de l'événement AppleScript
-title = summary
-start_at = date parsée en ISO 8601
-end_at = date parsée en ISO 8601
-location = location (peut être vide)
-description = description (peut être vide)
-```
-
----
-
-## Sync
-
-### Déclencheurs
-
-1. Au lancement de l'application
-2. Toutes les 15 minutes via `tokio::time::interval`
-
-```rust
-let mut interval = tokio::time::interval(Duration::from_secs(15 * 60));
-loop {
-    interval.tick().await;
-    sync_all_calendars(&state).await;
-}
-```
-
-### Comportement pendant le sleep macOS
-
-Quand le Mac dort, Tokio est suspendu. L'intervalle ne se déclenche pas exactement à 15 min — il se déclenche au réveil du Mac. Ce comportement est acceptable pour v1. Pas de mécanisme de rattrapage.
-
-### Ordre de sync
-
-1. Apple Calendar en premier (plus rapide, pas d'I/O réseau)
-2. Google Calendar ensuite (réseau)
-
-Les deux s'exécutent en séquence dans la même tâche Tokio pour éviter les race conditions sur la DB.
-
----
-
-## Commandes Tauri exposées
-
-```rust
-#[tauri::command]
-async fn get_today_events(state: State<AppState>) -> Result<Vec<CalendarEvent>, String>
-
-#[tauri::command]
-async fn get_week_events(state: State<AppState>) -> Result<Vec<CalendarEvent>, String>
-
-#[tauri::command]
-async fn trigger_calendar_sync(state: State<AppState>) -> Result<(), String>
-
-#[tauri::command]
-async fn get_calendar_auth_status(state: State<AppState>) -> Result<CalendarAuthStatus, String>
-// CalendarAuthStatus: { google: "connected" | "disconnected", apple: "available" | "permission_denied" }
-
-#[tauri::command]
-async fn start_google_oauth(state: State<AppState>, app: AppHandle) -> Result<(), String>
-```
+| Commande | Rôle |
+|---|---|
+| `start_google_oauth()` | lance le flow §1 |
+| `disconnect_google_calendar()` | retire les tokens de `secrets.json` |
+| `get_calendar_auth_status() -> {connected}` | statut Réglages |
+| `trigger_calendar_sync()` | sync manuelle (bouton) |
+| `get_today_events()` / `get_week_events()` | pour l'écran Agenda + le brief |
 
 ### Événement émis après sync
 
-```
-"calendar-synced" → { event_count: number, synced_at: string }
-```
+`"calendar-synced" → { event_count, synced_at }`
+
+## Migration SQLite
+
+Nouvelle table `calendar_events` (recréée — l'ancienne a été droppée
+Phase D, migration 008).
+
+## Hors scope (explicite)
+
+- **Apple Calendar** (voir §0).
+- **Écriture/création d'événements** — lecture seule.
+- **Publication du client OAuth en production** (vérification Google) — on
+  reste en mode "Testing" tant que ~10 utilisateurs (§1).

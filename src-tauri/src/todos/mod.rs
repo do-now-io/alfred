@@ -34,6 +34,10 @@ pub struct Todo {
     pub source_note: Option<String>,
     /// Provenance : date de la note source.
     pub source_date: Option<String>,
+    /// Provenance mail (spec/24 §3) — texte déjà formaté `✉️ <objet> (<date>)`,
+    /// non cliquable (jamais de note derrière un mail). Mutuellement exclusif
+    /// avec `source_note`/`source_date`.
+    pub email_provenance: Option<String>,
     /// Sous-puces libres (fiche tâche, spec/06 2e passe).
     pub notes: Vec<String>,
     /// Description longue — un paragraphe par ligne.
@@ -114,6 +118,7 @@ fn to_todo(t: todo_md::ParsedTask) -> Todo {
         estimate: t.fields.estimate,
         source_note: t.fields.source_note,
         source_date: t.fields.source_date,
+        email_provenance: t.fields.email_provenance,
         notes: t.block.notes,
         description: t.block.description,
     }
@@ -160,6 +165,7 @@ pub async fn create_todo(input: &CreateTodoInput, db: &SqlitePool, vault_root: O
         // Ajout rapide : pas de projet à la création — posable ensuite via la
         // fiche tâche (`update_todo_fields`).
         project: None,
+        email_provenance: None,
     };
     todo_md::append_tasks(root, &rel, std::slice::from_ref(&task), None, &crate::ai::app_language(db).await).await?;
 
@@ -182,6 +188,7 @@ pub async fn create_todo(input: &CreateTodoInput, db: &SqlitePool, vault_root: O
         estimate: None,
         source_note: None,
         source_date: None,
+        email_provenance: None,
         notes: vec![],
         description: vec![],
     })
@@ -255,6 +262,7 @@ pub async fn update_todo(id: &str, input: &CreateTodoInput, db: &SqlitePool, vau
         estimate: current.fields.estimate,
         source_note: None, // preserved automatically by edit_task regardless
         source_date: None,
+        email_provenance: None,
     };
     let new_content = todo_md::edit_task(&content, id, &patch)?;
     write_file(&path, &new_content).await?;
@@ -287,6 +295,7 @@ pub async fn update_todo_fields(id: &str, input: &TaskFieldsInput, db: &SqlitePo
         estimate: input.estimate.clone().filter(|s| !s.trim().is_empty()),
         source_note: None,
         source_date: None,
+        email_provenance: None,
     };
     let new_content = todo_md::edit_task(&content, id, &patch)?;
     write_file(&path, &new_content).await?;

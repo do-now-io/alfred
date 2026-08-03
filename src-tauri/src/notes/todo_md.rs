@@ -31,6 +31,12 @@ pub struct IngestTask {
     /// sur la ligne, pour que le filtre projet du Kanban couvre les tâches
     /// extraites par l'ingestion sans tagage manuel.
     pub project: Option<String>,
+    /// Provenance mail (spec/24 §3) — texte déjà formaté `✉️ <objet> (<date>)`,
+    /// posé PAR TÂCHE (contrairement au `provenance` partagé de `merge_tasks`/
+    /// `append_tasks` : un batch d'e-mails mélange plusieurs mails, chacun avec
+    /// son propre objet/date). Mutuellement exclusif avec le `provenance`
+    /// wikilink des comptes-rendus — jamais les deux sur une même tâche.
+    pub email_provenance: Option<String>,
 }
 
 /// The full set of fields a task LINE can carry (spec/06 2e passe). Sub-bullets
@@ -52,6 +58,10 @@ pub struct TaskFields {
     pub source_note: Option<String>,
     /// Provenance : date de la note source (YYYY-MM-DD).
     pub source_date: Option<String>,
+    /// Provenance mail (spec/24 §3) — texte déjà formaté `✉️ <objet> (<date>)`,
+    /// non cliquable (pas de note/wikilink derrière un mail). Mutuellement
+    /// exclusif avec `source_note`/`source_date`.
+    pub email_provenance: Option<String>,
 }
 
 impl From<&IngestTask> for TaskFields {
@@ -61,6 +71,7 @@ impl From<&IngestTask> for TaskFields {
             responsable: t.responsable.clone(),
             echeance: t.echeance.clone(),
             project: t.project.clone(),
+            email_provenance: t.email_provenance.clone(),
             ..Default::default()
         }
     }
@@ -181,6 +192,12 @@ fn render_line(fields: &TaskFields) -> String {
                 None => line.push_str(&format!(" — [[{}]]", note.trim())),
             }
         }
+    } else if let Some(ref email) = fields.email_provenance {
+        // Texte brut, JAMAIS un wikilink (spec/24 §3) : il n'y a rien à ouvrir
+        // dans le vault derrière un mail.
+        if !email.trim().is_empty() {
+            line.push_str(&format!(" — {}", email.trim()));
+        }
     }
     line
 }
@@ -227,6 +244,28 @@ fn extract_provenance(rest: &str) -> (String, Option<String>, Option<String>) {
     (before, Some(target), date)
 }
 
+/// Extrait la provenance mail `✉️ <objet> (<date>)` en FIN de ligne (spec/24
+/// §3) — texte brut, jamais un wikilink. Ne s'applique que si
+/// `extract_provenance` n'a rien trouvé (mutuellement exclusif). Repère le `✉️`
+/// le plus à droite et prend tout le reste comme provenance, sur le même
+/// principe que `extract_provenance` (l'objet du mail peut lui-même contenir
+/// " — ").
+fn extract_email_provenance(rest: &str) -> (String, Option<String>) {
+    let Some(idx) = rest.rfind('✉') else { return (rest.to_string(), None) };
+    let email_text = rest[idx..].trim().to_string();
+    if email_text.is_empty() {
+        return (rest.to_string(), None);
+    }
+    let mut before = rest[..idx].to_string();
+    for sep in [" — ", " - "] {
+        if before.ends_with(sep) {
+            before.truncate(before.len() - sep.len());
+            break;
+        }
+    }
+    (before, Some(email_text))
+}
+
 /// Parse one checkbox line into `(checked, TaskFields)`. Requires the line to
 /// start at column 0 (indented lines belong to a task's trailing block, not a
 /// new task — see `is_task_checkbox_line`).
@@ -242,6 +281,11 @@ fn parse_line(line: &str) -> Option<(bool, TaskFields)> {
     };
 
     let (rest, source_note, source_date) = extract_provenance(rest.trim());
+    let (rest, email_provenance) = if source_note.is_none() {
+        extract_email_provenance(rest.trim())
+    } else {
+        (rest, None)
+    };
 
     let mut titre = rest.trim().to_string();
     let mut responsable = None;
@@ -276,7 +320,7 @@ fn parse_line(line: &str) -> Option<(bool, TaskFields)> {
     }
     Some((
         checked,
-        TaskFields { titre, responsable, echeance, project, priority, estimate, source_note, source_date },
+        TaskFields { titre, responsable, echeance, project, priority, estimate, source_note, source_date, email_provenance },
     ))
 }
 
@@ -850,6 +894,7 @@ pub fn edit_task(content: &str, id: &str, patch: &TaskFields) -> Result<String> 
         let mut new_fields = patch.clone();
         new_fields.source_note = current.source_note.clone();
         new_fields.source_date = current.source_date.clone();
+        new_fields.email_provenance = current.email_provenance.clone();
         let mut line0 = render_line(&new_fields);
         if checked {
             line0 = line0.replacen("- [ ]", "- [x]", 1);
@@ -880,6 +925,7 @@ mod tests {
             titre: titre.to_string(),
             responsable: responsable.map(|s| s.to_string()),
             echeance: echeance.map(|s| s.to_string()),
+            email_provenance: None,
         }
     }
 
@@ -942,6 +988,7 @@ mod tests {
             responsable: Some("Jean".into()),
             echeance: None,
             project: Some("Refonte Site".into()),
+            email_provenance: None,
         };
         let (out, added) = merge_tasks(None, &[ingested], Some(("Réunion kickoff", "2026-07-21")), "fr");
         assert_eq!(added, 1);

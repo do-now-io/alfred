@@ -34,6 +34,12 @@ source_note: string | null,
  */
 source_date: string | null, 
 /**
+ * Provenance mail (spec/24 §3) — texte déjà formaté `✉️ <objet> (<date>)`,
+ * non cliquable (jamais de note derrière un mail). Mutuellement exclusif
+ * avec `source_note`/`source_date`.
+ */
+email_provenance: string | null, 
+/**
  * Sous-puces libres (fiche tâche, spec/06 2e passe).
  */
 notes: Array<string>, 

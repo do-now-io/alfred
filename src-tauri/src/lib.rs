@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod audio;
 pub mod db;
+pub mod email;
 pub mod feedback;
 pub mod keychain;
 pub mod metrics;
@@ -1513,6 +1514,33 @@ fn save_secret(account: String, value: String) -> Result<(), String> {
     keychain::save_secret(&account, &value).map_err(|e| e.to_string())
 }
 
+// ─── E-mails (spec/24) ────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn connect_imap_account(host: String, port: u16, username: String, password: String, use_ssl: bool) -> Result<(), String> {
+    email::connect_imap_account(host, port, username, password, use_ssl)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn disconnect_imap_account(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    email::disconnect_imap_account(&state.db).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_imap_status(state: tauri::State<'_, AppState>) -> Result<email::ImapStatus, String> {
+    email::get_imap_status(&state.db).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn sync_emails(state: tauri::State<'_, AppState>, app: tauri::AppHandle) -> Result<(), String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    email::sync_emails(&state.db, vault_root.as_deref(), &app)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // ─── System commands ──────────────────────────────────────────────────────────
 
 #[cfg(target_os = "macos")]
@@ -1735,6 +1763,19 @@ pub fn run() {
             // Start transcription worker
             tauri::async_runtime::spawn(transcription::run_transcription_worker(transcription_rx));
 
+            // Sync e-mails une fois au lancement (spec/24 §2) — no-op silencieux
+            // si aucun compte IMAP n'est configuré. Pas de polling périodique.
+            {
+                let db_email = db.clone();
+                let vault_root = vault_path.clone();
+                let app_handle_email = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = email::sync_emails(&db_email, vault_root.as_deref(), &app_handle_email).await {
+                        eprintln!("[email] startup sync failed: {}", e);
+                    }
+                });
+            }
+
             let _ = app_handle; // kept for future setup steps
 
             Ok(())
@@ -1828,6 +1869,11 @@ pub fn run() {
             get_recording_folder,
             get_secret,
             save_secret,
+            // E-mails (spec/24)
+            connect_imap_account,
+            disconnect_imap_account,
+            get_imap_status,
+            sync_emails,
             // System
             get_launch_at_login,
             set_launch_at_login,

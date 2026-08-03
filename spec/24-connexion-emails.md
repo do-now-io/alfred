@@ -1,6 +1,6 @@
 # spec/24 — Connexion e-mails (extraction de tâches & contexte)
 
-> **Statut :** 📝 spec écrite, rien de codé. Post-v1. Pivot de la vision
+> **Statut :** ✅ construit. Post-v1. Pivot de la vision
 > « projets unifiés » (ROADMAP Phase G) — **cette spec se limite** à
 > l'extraction de tâches + rattachement projet + alimentation du contexte
 > (spec/16b). Le chat/RAG croisant mails + notes + tâches par projet est une

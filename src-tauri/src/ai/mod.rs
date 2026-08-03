@@ -515,6 +515,7 @@ async fn run_ingestion_core(
                     responsable: t.responsable.clone(),
                     echeance: t.echeance.clone(),
                     project: main_project.clone(),
+                    email_provenance: None,
                 })
                 .collect();
             // Provenance (spec/05/06 « fiche tâche ») : wikilink + date sur la
@@ -1226,6 +1227,229 @@ pub(crate) async fn extract_project_facts(history_text: &str, project: &str, db:
 
     let facts: Vec<String> = serde_json::from_value(block["input"]["facts"].clone()).unwrap_or_default();
     Ok(facts)
+}
+
+// ─── Extraction par batch d'e-mails (spec/24) ────────────────────────────────
+//
+// Un seul appel Claude par batch de mails (défaut ~15 mails, `BATCH_SIZE` dans
+// `email.rs`) — pas un appel par mail, pour limiter le coût sur une boîte
+// active. Réutilise EXACTEMENT le schéma `ContextAddition` (spec/16b) pour les
+// faits appris ; pas de second schéma parallèle. Contrairement à l'ingestion
+// (spec/17 §3), tout est automatique ici (spec/24) : pas de `/resolve`, pas de
+// "projets confirmés" — le routage des `context_additions` à `scope: "project"`
+// se fait directement sur les `projects` que Claude indique, sans intersection
+// avec une liste validée par l'utilisateur.
+
+/// Un mail du batch envoyé à Claude — corps déjà tronqué par l'appelant.
+pub struct EmailInput {
+    pub message_id: String,
+    pub subject: String,
+    pub from: String,
+    pub date: String,
+    pub body: String,
+}
+
+/// Une tâche détectée dans un mail (spec/24 §4) — mêmes champs que les tâches
+/// d'ingestion (spec/05), sans `project` (porté séparément par `projects` sur
+/// l'e-mail entier).
+#[derive(Debug, Serialize, Deserialize, Clone, Default, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct EmailTask {
+    pub title: String,
+    #[serde(default)]
+    pub responsable: Option<String>,
+    #[serde(default)]
+    pub echeance: Option<String>,
+}
+
+/// Sortie par mail (identifié par son `Message-ID`) — absent de la liste si
+/// rien d'exploitable (spec/24 §4 : pas de trace pour une newsletter/notif).
+#[derive(Debug, Serialize, Deserialize, Clone, Default, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct EmailExtraction {
+    pub message_id: String,
+    #[serde(default)]
+    pub tasks: Vec<EmailTask>,
+    #[serde(default)]
+    pub projects: Vec<String>,
+}
+
+/// Sortie complète d'un batch (spec/24 §4).
+#[derive(Debug, Serialize, Deserialize, Clone, Default, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct EmailBatchOutput {
+    #[serde(default)]
+    pub emails: Vec<EmailExtraction>,
+    #[serde(default)]
+    pub context_additions: Vec<ContextAddition>,
+}
+
+const EMAIL_BATCH_SYSTEM: &str = r#"Tu es Alfred. On te donne un lot de mails récents d'une boîte mail (objet, expéditeur, date, corps), chacun identifié par son Message-ID. Pour CHAQUE mail, analyse s'il contient une tâche à faire clairement énoncée et/ou un fait durable à retenir. Soumets via l'outil `submit_email_batch`.
+
+Sois SÉLECTIF : la plupart des mails (newsletters, notifications, échanges sans action) ne contiennent RIEN d'exploitable — dans ce cas, ce mail est simplement ABSENT de `emails` (pas d'entrée vide). Ne force jamais une tâche ou un fait qui n'est pas clairement là.
+
+- `emails[].message_id` : recopié tel quel depuis l'entrée.
+- `emails[].tasks` : tâches à faire clairement énoncées dans CE mail (`title`, `responsable` optionnel si un nom est explicitement mentionné, `echeance` optionnelle au format YYYY-MM-DD si une date est explicite). Liste vide si aucune.
+- `emails[].projects` : le(s) projet(s) concernés par ce mail (0, 1 ou plusieurs), à partir du vocabulaire/noms déjà connus (contexte fourni) ou de noms de projet/client explicitement cités dans le mail. Liste vide si aucun projet identifiable.
+- `context_additions` : UNIQUEMENT des faits DURABLES et réutilisables toutes conversations confondues — jamais un fait ponctuel propre à un seul mail (ça devient une tâche, pas un fait). Chaque fait porte un `scope` — deux critères DISTINCTS selon le niveau :
+  - `scope: "global"` — réservé aux faits durables NON liés à un projet précis : qui sont les personnes/entreprises et leur rôle/relation, ce que fait l'entreprise, le vocabulaire/jargon métier général.
+  - `scope: "project"` — critère PLUS PERMISSIF, réservé à ce qui concerne spécifiquement un ou plusieurs projets/clients identifiés dans CE batch : tarifs, décisions, état du projet, personnes impliquées côté client, jargon spécifique. `projects` = les projets concernés (obligatoire, non vide, si `scope: "project"`).
+  Test mental avant de proposer, quel que soit le niveau : « Est-ce encore utile dans 3 mois pour bien traiter un futur mail (sur ce projet, ou en général) ? » Si la réponse est non, ne le propose pas."#;
+
+fn email_batch_tool(lang: &str) -> serde_json::Value {
+    let en = lang == "en";
+    json!([{
+        "name": "submit_email_batch",
+        "description": if en { "Submit the tasks/facts extracted from this batch of emails." } else { "Soumets les tâches/faits extraits de ce lot de mails." },
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "emails": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "message_id": { "type": "string" },
+                            "tasks": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "title": { "type": "string" },
+                                        "responsable": { "type": "string" },
+                                        "echeance": { "type": "string", "description": "YYYY-MM-DD" }
+                                    },
+                                    "required": ["title"]
+                                }
+                            },
+                            "projects": { "type": "array", "items": { "type": "string" } }
+                        },
+                        "required": ["message_id"]
+                    },
+                    "description": if en {
+                        "Only emails with an exploitable task or fact — omit any email with nothing to extract (newsletters, notifications, no-action threads)."
+                    } else {
+                        "Uniquement les mails avec une tâche ou un fait exploitable — omets tout mail sans rien à en tirer (newsletters, notifications, échanges sans action)."
+                    }
+                },
+                "context_additions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "fact": { "type": "string" },
+                            "scope": { "type": "string", "enum": ["global", "project"] },
+                            "projects": { "type": "array", "items": { "type": "string" } }
+                        },
+                        "required": ["fact", "scope"]
+                    },
+                    "description": if en {
+                        "ONLY durable, reusable facts — never a one-off fact specific to a single email."
+                    } else {
+                        "UNIQUEMENT des faits durables et réutilisables — jamais un fait ponctuel propre à un seul mail."
+                    }
+                }
+            },
+            "required": ["emails", "context_additions"]
+        }
+    }])
+}
+
+/// Un appel Claude pour tout le batch (spec/24 §4) — pas d'injection du
+/// contexte interne pour cette v1 (pas demandé par la spec ; le batching
+/// limite déjà le coût).
+pub async fn extract_email_batch(emails: &[EmailInput], db: &SqlitePool) -> Result<EmailBatchOutput> {
+    if emails.is_empty() {
+        return Ok(EmailBatchOutput::default());
+    }
+    let access = resolve_access(db).await?;
+    let client = reqwest::Client::new();
+    let lang = if app_language(db).await == "en" { "en" } else { "fr" };
+    let system_text = format!("{}\n{}", EMAIL_BATCH_SYSTEM, language_directive(lang));
+
+    let mut user_text = String::new();
+    for e in emails {
+        user_text.push_str(&format!(
+            "--- Mail (Message-ID: {}) ---\nObjet : {}\nDe : {}\nDate : {}\n\n{}\n\n",
+            e.message_id, e.subject, e.from, e.date, e.body
+        ));
+    }
+
+    let body = json!({
+        "model": MODEL,
+        "max_tokens": 4096,
+        "thinking": {"type": "disabled"},
+        "system": [{ "type": "text", "text": system_text, "cache_control": {"type": "ephemeral"} }],
+        "tools": email_batch_tool(lang),
+        "tool_choice": {"type": "tool", "name": "submit_email_batch"},
+        "messages": [{ "role": "user", "content": user_text }]
+    });
+
+    let resp = call_claude_with_retry(&client, &access, &body).await?;
+    let block = resp["content"]
+        .as_array()
+        .and_then(|c| c.iter().find(|b| b["type"] == "tool_use" && b["name"] == "submit_email_batch"))
+        .ok_or_else(|| anyhow!("Claude did not call submit_email_batch: {:?}", resp))?;
+
+    serde_json::from_value(block["input"].clone())
+        .map_err(|e| anyhow!("Invalid submit_email_batch input: {} — {:?}", e, block["input"]))
+}
+
+/// Route les `context_additions` d'un batch d'e-mails vers le contexte
+/// global/projet (spec/16b, même fonctions d'écriture que `finalize_ingestion`)
+/// — SANS gate de "projets confirmés" (spec/24 : tout est automatique, pas de
+/// `/resolve` pour les mails). `scope: "project"` s'applique directement à
+/// chaque projet listé dans `c.projects`, quel qu'il soit.
+pub async fn route_email_context_additions(db: &SqlitePool, vault_root: &Path, additions: &[ContextAddition]) -> Result<()> {
+    if additions.is_empty() {
+        return Ok(());
+    }
+    let mut glossary_dirty = false;
+
+    let global_facts: Vec<String> = additions
+        .iter()
+        .filter(|c| c.scope != "project")
+        .map(|c| c.fact.trim().to_string())
+        .filter(|f| !f.is_empty())
+        .collect();
+    if !global_facts.is_empty() {
+        match crate::notes::context::append_learned_facts(vault_root, db, &global_facts).await {
+            Ok(n) if n > 0 => {
+                eprintln!("[email] {} fait(s) appris ajouté(s) au contexte global", n);
+                glossary_dirty = true;
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("[email] append learned facts (global) failed: {}", e),
+        }
+    }
+
+    let mut by_project: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for c in additions.iter().filter(|c| c.scope == "project") {
+        let fact = c.fact.trim().to_string();
+        if fact.is_empty() {
+            continue;
+        }
+        for p in &c.projects {
+            let p = p.trim();
+            if !p.is_empty() {
+                by_project.entry(p.to_string()).or_default().push(fact.clone());
+            }
+        }
+    }
+    for (project, facts) in by_project {
+        match crate::notes::project_context::write_project_context_fact(vault_root, db, &project, &facts).await {
+            Ok(n) if n > 0 => eprintln!("[email] {} fait(s) appris ajouté(s) au contexte du projet {}", n, project),
+            Ok(_) => {}
+            Err(e) => eprintln!("[email] write_project_context_fact({}) failed: {}", project, e),
+        }
+    }
+
+    if glossary_dirty {
+        if let Err(e) = generate_glossary_from_context(db, Some(vault_root)).await {
+            eprintln!("[email] glossary regen failed: {}", e);
+        }
+    }
+    Ok(())
 }
 
 const STOPWORDS: &[&str] = &[

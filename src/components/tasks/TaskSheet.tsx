@@ -194,6 +194,17 @@ export default function TaskSheet({
           </div>
         )}
 
+        {/* Provenance mail (spec/24 §3) — texte simple, PAS cliquable : un mail
+            n'est jamais une note du vault, il n'y a rien à ouvrir derrière. */}
+        {!todo.source_note && todo.email_provenance && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+            background: "var(--active-bg)", borderRadius: 8, padding: "7px 11px", fontSize: 12.5,
+          }}>
+            <span style={{ color: "var(--text-secondary)" }}>{todo.email_provenance}</span>
+          </div>
+        )}
+
         {/* Champs de ligne */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <Field>

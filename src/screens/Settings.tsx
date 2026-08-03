@@ -7,6 +7,7 @@ import { useTourStore } from "../store/tourStore";
 import { useProfileStore } from "../store/profileStore";
 import WhisperModelPicker from "../components/WhisperModelPicker";
 import type { NoteFile } from "../bindings/NoteFile";
+import type { ImapStatus } from "../bindings/ImapStatus";
 import { useI18nStore, useT, type Lang } from "../i18n";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -429,6 +430,151 @@ function AiAccessSection() {
   );
 }
 
+// ─── E-mails (spec/24) — connexion IMAP + sync manuelle ────────────────────────
+
+function EmailSection() {
+  const t = useT();
+  const [status, setStatus] = useState<ImapStatus | null>(null);
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("993");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [useSsl, setUseSsl] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    invoke<ImapStatus>("get_imap_status").then(setStatus).catch(() => setStatus(null));
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const handleConnect = async () => {
+    setError(null);
+    setConnecting(true);
+    try {
+      await invoke("connect_imap_account", { host, port: Number(port) || 993, username, password, useSsl });
+      setPassword("");
+      refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    await invoke("disconnect_imap_account");
+    setHost("");
+    setUsername("");
+    setPassword("");
+    refresh();
+  };
+
+  const handleSync = async () => {
+    setError(null);
+    setSyncing(true);
+    try {
+      await invoke("sync_emails");
+      refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  if (status?.connected) {
+    return (
+      <>
+        <SettingRow label={t("settings.emailSection.status")}>
+          <span style={{ fontSize: 13, color: "#34C759" }}>✓ {t("settings.emailSection.connected")}</span>
+        </SettingRow>
+        <SettingRow label={t("settings.emailSection.lastSync")}>
+          <span style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
+            {status.last_synced_at ? new Date(status.last_synced_at).toLocaleString() : t("settings.emailSection.never")}
+          </span>
+        </SettingRow>
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            style={{
+              background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6,
+              padding: "5px 12px", cursor: syncing ? "not-allowed" : "pointer", fontSize: 13,
+            }}
+          >
+            {syncing ? t("settings.emailSection.syncing") : t("settings.emailSection.syncNow")}
+          </button>
+          <button
+            onClick={handleDisconnect}
+            style={{
+              background: "transparent", color: "var(--danger)", border: "1px solid var(--border)",
+              borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 13,
+            }}
+          >
+            {t("settings.emailSection.disconnect")}
+          </button>
+        </div>
+        {error && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 6 }}>{error}</div>}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+        <input
+          value={host}
+          onChange={(e) => setHost(e.target.value)}
+          placeholder={t("settings.emailSection.host")}
+          style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", fontSize: 13, background: "var(--card-bg)", color: "var(--text-primary)" }}
+        />
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={port}
+            onChange={(e) => setPort(e.target.value)}
+            placeholder={t("settings.emailSection.port")}
+            style={{ width: 90, border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", fontSize: 13, background: "var(--card-bg)", color: "var(--text-primary)" }}
+          />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-primary)" }}>
+            <input type="checkbox" checked={useSsl} onChange={(e) => setUseSsl(e.target.checked)} />
+            {t("settings.emailSection.useSsl")}
+          </label>
+        </div>
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder={t("settings.emailSection.username")}
+          style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", fontSize: 13, background: "var(--card-bg)", color: "var(--text-primary)" }}
+        />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder={t("settings.emailSection.password")}
+          style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", fontSize: 13, background: "var(--card-bg)", color: "var(--text-primary)" }}
+        />
+      </div>
+      <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 10 }}>
+        {t("settings.emailSection.help")}
+      </div>
+      <button
+        onClick={handleConnect}
+        disabled={connecting || !host.trim() || !username.trim() || !password.trim()}
+        style={{
+          background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6,
+          padding: "5px 12px", cursor: connecting ? "not-allowed" : "pointer", fontSize: 13,
+        }}
+      >
+        {connecting ? t("settings.emailSection.connecting") : t("settings.emailSection.connect")}
+      </button>
+      {error && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 6 }}>{error}</div>}
+    </>
+  );
+}
+
 // ─── Settings screen ──────────────────────────────────────────────────────────
 
 export default function Settings() {
@@ -514,6 +660,10 @@ export default function Settings() {
         <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
           {t("settings.notesSection.contextHelp")}
         </div>
+      </Section>
+
+      <Section title={t("settings.sections.emails")}>
+        <EmailSection />
       </Section>
 
       <Section title={t("settings.sections.tasks")}>

@@ -183,6 +183,40 @@ async fn append_facts(path: &Path, facts: &[String]) -> Result<usize> {
     Ok(to_add.len())
 }
 
+/// Nombre de lignes non vides gardées dans l'extrait (spec/28) — un lien +
+/// court extrait, pas le contenu intégral (« liste organisée », pas une
+/// synthèse narrative).
+const OVERVIEW_EXCERPT_LINES: usize = 3;
+
+/// Court extrait de la note de contexte de ce projet (spec/28), pour
+/// `ProjectOverview.context_note` — présence + 2-3 lignes, jamais le contenu
+/// complet. `None` si le projet n'a pas encore de note de contexte (jamais
+/// créée ici — lecture seule, contrairement à `write_project_context_fact`).
+pub async fn project_context_excerpt(
+    vault_root: &Path,
+    db: &SqlitePool,
+    project: &str,
+) -> Option<super::project_overview::ContextExcerpt> {
+    let folder = vault_root.join(crate::ai::intelligence_folder(db).await);
+    let path = find_project_context_note(&folder, project)?;
+    let raw = tokio::fs::read_to_string(&path).await.ok()?;
+    let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let (_, body) = frontmatter::parse(&raw, &stem);
+
+    let excerpt = body
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .take(OVERVIEW_EXCERPT_LINES)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if excerpt.is_empty() {
+        return None;
+    }
+
+    Some(super::project_overview::ContextExcerpt { path: path.to_string_lossy().to_string(), excerpt })
+}
+
 /// Écrit `facts` dans la note de contexte de ce projet (créée lazily — avec
 /// reconstruction rétroactive au besoin, spec/16b §4). Point d'entrée utilisé
 /// par `finalize_ingestion` pour router les `context_addition` à `scope:

@@ -1067,6 +1067,20 @@ async fn get_notes_by_project(
         .map_err(|e| e.to_string())
 }
 
+/// Vue d'ensemble d'un projet (spec/28) — agrégation Rust pure (zéro appel
+/// Claude), utilisée par le panneau dédié « Voir l'état du projet » (vue
+/// Projets) ET, côté chat, par le tool `get_project_overview` (`ai::chat`).
+#[tauri::command]
+async fn get_project_overview(
+    project: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<notes::project_overview::ProjectOverview, String> {
+    let root = get_vault_root(&state)?;
+    notes::project_overview::get_project_overview(&root, &state.db, &project)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Valeurs `project` distinctes du vault (combobox Projet + drag-drop, spec/07).
 #[tauri::command]
 async fn list_projects(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
@@ -1890,6 +1904,7 @@ pub fn run() {
             delete_folder,
             get_recent_notes,
             get_notes_by_project,
+            get_project_overview,
             get_vault_graph,
             list_projects,
             list_tags,

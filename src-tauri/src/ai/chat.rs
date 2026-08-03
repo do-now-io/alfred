@@ -55,6 +55,7 @@ fn chat_system(lang: &str) -> String {
 Reading method:
 - Use `search_notes` to find relevant notes (run several searches with different keywords if needed).
 - Use `read_note` to read a note in full BEFORE relying on it.
+- If the question is about an identifiable project (named or clearly designated), call `get_project_overview` **once** for that project instead of iterating `search_notes`/`read_note` — it's a single structured call that already gathers tasks/notes/context/calendar, cheaper and more reliable than a free-form search.
 - Only answer from what the notes actually say. If the information isn't there, say so clearly, never invent it.
 
 Action tools (notes and tasks):
@@ -75,6 +76,7 @@ Final answer:
 Méthode de lecture :
 - Utilise l'outil `search_notes` pour trouver les notes pertinentes (fais plusieurs recherches avec des mots-clés différents si besoin).
 - Utilise l'outil `read_note` pour lire en entier une note qui semble utile AVANT de t'en servir.
+- Si la question porte sur un projet identifiable (nommé ou clairement désigné), appelle `get_project_overview` **une seule fois** pour ce projet plutôt que d'itérer `search_notes`/`read_note` — c'est un appel structuré unique qui rassemble déjà tâches/notes/contexte/agenda, moins coûteux et plus fiable qu'une recherche libre.
 - Ne réponds qu'à partir de ce que disent réellement les notes. Si l'information ne s'y trouve pas, dis-le clairement, sans inventer.
 
 Outils d'action (notes et tâches) :
@@ -131,6 +133,17 @@ fn tools(lang: &str) -> Value {
                     }
                 },
                 "required": ["period"]
+            }
+        }),
+        json!({
+            "name": "get_project_overview",
+            "description": if en { "Pure Rust aggregation (no further AI call needed) of everything known about a project: open tasks, tagged notes, a short context excerpt, and calendar events — use this ONCE for any project-scoped question instead of iterating search_notes/read_note." } else { "Agrégation Rust pure (aucun autre appel IA nécessaire) de tout ce qu'on sait d'un projet : tâches ouvertes, notes taguées, court extrait de contexte, événements d'agenda — utilise-le UNE SEULE FOIS pour toute question portant sur un projet, plutôt que d'itérer search_notes/read_note." },
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "project": { "type": "string", "description": if en { "Exact project name (as returned by list_projects / seen in note frontmatter)" } else { "Nom exact du projet (tel que renvoyé par list_projects / vu dans le frontmatter des notes)" } }
+                },
+                "required": ["project"]
             }
         }),
     ];
@@ -379,6 +392,30 @@ pub async fn answer_question(
                             .collect::<Vec<_>>()
                             .join("\n"),
                         Err(e) => e.to_string(),
+                    }
+                }
+                "get_project_overview" => {
+                    let project = input["project"].as_str().unwrap_or("").trim().to_string();
+                    let _ = app.emit("chat-progress", json!({ "kind": "project_overview", "label": project.clone() }));
+                    let r = root.clone();
+                    let known = tokio::task::spawn_blocking(move || crate::notes::vault::list_projects(&r))
+                        .await
+                        .unwrap_or_else(|_| Ok(vec![]))
+                        .unwrap_or_default();
+                    if !known.iter().any(|p| p.eq_ignore_ascii_case(&project)) {
+                        if lang == "en" {
+                            format!("No project named \"{}\" exists in the vault.", project)
+                        } else {
+                            format!("Aucun projet nommé « {} » n'existe dans le coffre.", project)
+                        }
+                    } else {
+                        match crate::notes::project_overview::get_project_overview(&root, db, &project).await {
+                            Ok(overview) => match serde_json::to_string(&overview) {
+                                Ok(s) => s,
+                                Err(e) => e.to_string(),
+                            },
+                            Err(e) => e.to_string(),
+                        }
                     }
                 }
                 other if super::agent_actions::is_unitary_agent_tool(other) => {

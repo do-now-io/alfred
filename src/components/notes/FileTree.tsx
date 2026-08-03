@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { MdMoveToInbox, MdAutorenew, MdCheck, MdErrorOutline, MdStickyNote2, MdFolderSpecial, MdCreateNewFolder, MdArchive, MdUnarchive } from "react-icons/md";
+import { MdMoveToInbox, MdAutorenew, MdCheck, MdErrorOutline, MdStickyNote2, MdFolderSpecial, MdCreateNewFolder, MdArchive, MdUnarchive, MdInfoOutline } from "react-icons/md";
 import type { VaultNode } from "../../bindings/VaultNode";
 import type { ProjectNote } from "../../bindings/ProjectNote";
 import type { NoteFile } from "../../bindings/NoteFile";
 import { useNotesStore } from "../../store/notesStore";
 import { NoteTypeIcon, noteKind } from "../../utils/noteType";
 import FileTreeNode from "./FileTreeNode";
+import ProjectOverviewPanel from "./ProjectOverviewPanel";
+import { menuItemStyle } from "./NoteContextMenu";
 import { useT } from "../../i18n";
 
 /** Une entrée de la vue Projets : la note « porteuse » + éventuellement sa
@@ -51,6 +53,11 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
   // défaut sous une seule ligne — un chevron la déplie (au lieu d'être toujours
   // affichée en retrait sous son compte-rendu).
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
+  // Menu contextuel de l'en-tête de groupe (spec/28, entrée #2) — une seule
+  // entrée « Voir l'état du projet » pour l'instant (renommer/fusionner un
+  // projet est une tâche séparée de spec/07, pas encore codée).
+  const [projectMenu, setProjectMenu] = useState<{ x: number; y: number; project: string } | null>(null);
+  const [viewingProject, setViewingProject] = useState<string | null>(null);
   const toggleEntryExpanded = (path: string) => {
     setExpandedEntries((prev) => {
       const next = new Set(prev);
@@ -382,7 +389,13 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
                 if (path) handleDropOnProject(path, project);
               }}
             >
-              <div style={{
+              <div
+                onContextMenu={(e) => {
+                  if (!project) return; // « Sans projet » n'a pas d'état à afficher
+                  e.preventDefault();
+                  setProjectMenu({ x: e.clientX, y: e.clientY, project });
+                }}
+                style={{
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "5px 8px", fontSize: 11, fontWeight: 700,
                 color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em",
@@ -500,6 +513,30 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
             <button onClick={() => setFolderDialog(null)} style={btnStyle("transparent", "var(--text-secondary)", true)}>{t("notes.fileTree.cancel")}</button>
           </div>
         </div>
+      )}
+
+      {/* Menu contextuel de l'en-tête de groupe (spec/28, entrée #2) */}
+      {projectMenu && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={() => setProjectMenu(null)} />
+          <div style={{
+            position: "fixed", left: projectMenu.x, top: projectMenu.y,
+            background: "var(--card-bg)", border: "1px solid var(--border)",
+            borderRadius: 8, padding: 4, zIndex: 1000, minWidth: 180,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+          }}>
+            <button
+              onClick={() => { setViewingProject(projectMenu.project); setProjectMenu(null); }}
+              style={menuItemStyle}
+            >
+              <MdInfoOutline size={15} /> {t("notes.projectOverview.menuEntry")}
+            </button>
+          </div>
+        </>
+      )}
+
+      {viewingProject && (
+        <ProjectOverviewPanel project={viewingProject} onClose={() => setViewingProject(null)} />
       )}
 
     </div>

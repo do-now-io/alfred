@@ -28,34 +28,41 @@ local — jamais automatique.
 - `manage_token` (propriétaire) reste distinct des deux — lui seul peut
   révoquer/supprimer des commentaires.
 
-## 2. Édition en direct — décision d'architecture
+## 2. Édition en direct — moteur CRDT (Yjs/yrs)
 
-**Pas de moteur collaboratif temps réel complet (OT/CRDT type Yjs)** pour
-cette v1 — décision explicite pour rester dans l'esprit "volontairement
-minimal" de spec/18 et ne pas ajouter une brique d'infra (serveur
-WebSocket + moteur de fusion) au backend axum/Postgres actuel. À la place,
-un modèle **beaucoup plus simple**, qui couvre déjà l'usage réel (edits
-rarement simultanés à la seconde près) :
+**Décision actée : vrai temps réel, avec curseurs live**, comme Google Docs
+— pas un simple autosave avec détection de collision. Choix technique après
+étude de l'écosystème existant (pas besoin de réinventer un moteur de
+fusion) :
 
-- **Page d'édition** (`GET /s/{edit_slug}/edit`) : éditeur Markdown en
-  page (CodeMirror, comme l'éditeur desktop) chargé dans le navigateur —
-  toujours **auto-porté** (pas de dépendance externe, cohérent avec spec/18).
-- **Autosave débouncée** : `PUT /share/{slug}/content` envoyé ~2-3 s après
-  la dernière frappe (pas à chaque caractère).
-- **Détection de collision simple (pas de fusion)** : `shares` gagne un
-  compteur **`version`** (int, incrémenté à chaque écriture). Le client
-  garde la version chargée ; s'il tente d'écrire avec une version périmée
-  (un autre éditeur a sauvegardé entre-temps), le serveur **refuse**
-  (409) → le client recharge le contenu à jour (perd sa frappe en cours,
-  rare en pratique) plutôt que d'écraser silencieusement le travail de
-  quelqu'un d'autre.
-- **Rafraîchissement en tâche de fond** : polling léger (ex. toutes les 5 s)
-  pendant que la page d'édition est ouverte, pour limiter la fenêtre de
-  collision — **pas de WebSocket**, pas de curseurs live d'autres personnes
-  affichés (contrairement à Google Docs) — décision de scope explicite,
-  vraie "présence" collaborative serait un chantier bien plus gros, à
-  reconsidérer seulement si ce modèle simple se révèle insuffisant en usage
-  réel.
+- **[`yrs`](https://docs.rs/yrs)** — port Rust du CRDT Yjs (la référence du
+  domaine pour l'édition collaborative sans serveur d'autorité centrale).
+- **[`yrs-axum`](https://crates.io/crates/yrs-axum)** — intégration
+  WebSocket du protocole Yjs directement sur **axum** (le backend
+  `alfred-backend` existant, pas un nouveau service à côté) — avec un
+  binding déjà fait pour **CodeMirror 6**, l'éditeur déjà utilisé partout
+  côté desktop (spec/07). La page d'édition web réutilise donc la même
+  brique d'édition que l'app, pas un nouvel éditeur à écrire.
+- **Persistance** : ni `yrs` ni `yrs-axum` n'ont de connecteur Postgres
+  natif (ils ciblent SQLite/S3 dans l'écosystème `yrs-persistence`) — pas
+  un problème : le document Yjs se **sérialise en binaire** et se
+  snapshot **périodiquement** (débounce, ex. quelques secondes après la
+  dernière modification) dans `shares.markdown` (colonne `BYTEA` en plus
+  du texte rendu, ou remplace le `TEXT` actuel — à trancher à
+  l'implémentation), cohérent avec "tout en Postgres" (spec/18).
+- **Alternative de repli** si `yrs-axum` s'avère trop jeune/instable en
+  pratique : **[`hocuspocus-rs`](https://github.com/jagtesh/hocuspocus-rs)**
+  (protocole Hocuspocus, plus balisé côté écosystème JS historique, mais
+  adopte plus de protocole en plus).
+- **Page d'édition** (`GET /s/{edit_slug}/edit`) : ouvre une connexion
+  WebSocket vers le backend, CodeMirror 6 + binding Yjs synchronise les
+  frappes en direct entre tous les éditeurs connectés à ce moment — **avec
+  curseurs des autres participants visibles** (couleur + nom si renseigné,
+  §3), comme Google Docs.
+- **Résolution de conflit gérée par le CRDT** — plus de notion de
+  "version périmée"/409 à gérer côté app : c'est tout l'intérêt du CRDT,
+  deux personnes qui tapent en même temps voient leurs modifications
+  fusionnées automatiquement, sans perte, sans confirmation.
 
 ## 3. Identité des contributeurs
 
@@ -85,22 +92,27 @@ rarement simultanés à la seconde près) :
 
 - **Décision actée : oui, une notification.** Cohérent avec le pattern déjà
   retenu pour les mises à jour (spec/27) et les mails (spec/24) : vérifié **au
-  démarrage de l'app** (pas de push temps réel). Nouveau champ sur le suivi
-  local des partages (`note_shares`, spec/18) : `last_seen_version` /
-  `last_seen_comment_count`. Un **badge** (compteur) apparaît sur le bouton
-  Partager de la note concernée + une entrée récapitulative si plusieurs
-  partages ont du nouveau (Réglages → Partages, ou notification dans le
-  bandeau existant, à trancher au design UI).
-- Comparaison simple : `version` du document et/ou nombre de commentaires
-  côté serveur vs. la dernière valeur vue localement.
+  démarrage de l'app** (pas de push temps réel) — indépendant du WebSocket
+  temps réel de §2, qui ne tourne que pendant qu'une page d'édition est
+  ouverte dans un navigateur, pas depuis l'app desktop. Nouveau champ sur le
+  suivi local des partages (`note_shares`, spec/18) : `last_seen_snapshot_at` /
+  `last_seen_comment_count`.
+- **`snapshot_revision`** (compteur simple, incrémenté à chaque snapshot
+  périodique du document Yjs vers `shares.markdown`, §2) — sert **seulement**
+  à détecter "il y a du nouveau depuis la dernière fois", plus à gérer des
+  conflits (le CRDT s'en occupe déjà côté édition). Un **badge** (compteur)
+  apparaît sur le bouton Partager de la note concernée + une entrée
+  récapitulative si plusieurs partages ont du nouveau (Réglages → Partages,
+  ou notification dans le bandeau existant, à trancher au design UI).
 
 ## 6. Rapatriement dans le vault local — jamais automatique
 
 - **Bouton explicite** "Récupérer les modifications" (écran Notes, à côté de
   "Partager"/"Copier le lien") — **uniquement quand une nouvelle version
   existe côté serveur** (§5).
-- Au clic : récupère `shares.markdown` à jour et **remplace** le contenu de
-  la note locale (`update_note_file`).
+- Au clic : récupère `shares.markdown` à jour — le **dernier snapshot texte**
+  du document Yjs (§2, pas le format binaire interne) — et **remplace** le
+  contenu de la note locale (`update_note_file`).
 - **Garde-fou simple (pas de fusion à 3 voies)** : si le fichier local a été
   modifié **après** le dernier partage/récupération (mtime), avertir
   explicitement (`window.confirm`, même pattern que le reste de l'app) :
@@ -124,8 +136,8 @@ rarement simultanés à la seconde près) :
 
 | Endpoint | Rôle |
 |---|---|
-| `PUT /share/{slug}/content` | body `{ markdown, version }` (via `edit_slug`) → 200 + nouvelle `version`, ou 409 si périmé |
-| `GET /share/{slug}/content` | poll léger : `{ markdown, version }` |
+| `WS /share/{edit_slug}/sync` | connexion **WebSocket** Yjs (`yrs-axum`) — édition temps réel, curseurs live |
+| `GET /share/{slug}/content` | poll léger (démarrage app, pas pendant l'édition) : `{ markdown, snapshot_revision }` — dernier snapshot texte |
 | `GET /share/{slug}/comments` | liste des commentaires |
 | `POST /share/{slug}/comments` | `{ author_name?, body }` → ajoute (vue ou édition) |
 | `DELETE /share/{slug}/comments/{id}` | `manage_token` → supprime |
@@ -133,7 +145,10 @@ rarement simultanés à la seconde près) :
 ## Données (PostgreSQL, ajouts)
 
 - `shares` gagne : `view_slug`, `edit_slug` (remplace l'unique `slug`
-  actuel — migration), `version INT DEFAULT 1`.
+  actuel — migration), `snapshot_revision INT DEFAULT 1`, `yjs_state BYTEA`
+  (état binaire du document CRDT, pour reprendre une session d'édition
+  après un redémarrage du backend — `shares.markdown` reste le **snapshot
+  texte** dérivé, utilisé par le rendu spec/18 et le rapatriement §6).
 - Nouvelle table `share_comments (id SERIAL PRIMARY KEY, slug TEXT
   REFERENCES shares, author_name TEXT, body TEXT, created_at TIMESTAMPTZ
   DEFAULT now())`.
@@ -143,16 +158,17 @@ rarement simultanés à la seconde près) :
 | Commande | Rôle |
 |---|---|
 | `get_share_edit_link(note_path) -> ShareLink` | récupère/génère le lien d'édition |
-| `check_share_updates() -> Vec<ShareUpdate>` | au démarrage — versions/comptes de commentaires vs. `last_seen_*` local |
+| `check_share_updates() -> Vec<ShareUpdate>` | au démarrage — `snapshot_revision`/comptes de commentaires vs. `last_seen_*` local |
 | `pull_share_changes(note_path)` | rapatrie le markdown à jour dans la note locale (§6) |
 | `delete_share_comment(slug, comment_id)` | modération (`manage_token`) |
 
 ## Hors scope (explicite)
 
-- **Vrai temps réel multi-curseurs** (OT/CRDT, WebSocket) — décision actée
-  §2, à reconsidérer seulement si le modèle simple s'avère insuffisant.
-- **Fusion automatique** des changements locaux vs. distants — avertissement
-  + écrasement conscient uniquement (§6).
+- **Fusion automatique** entre le vault local et la version en ligne —
+  avertissement + écrasement conscient uniquement (§6). Le CRDT fusionne
+  les éditeurs **en ligne** entre eux (§2), pas "l'édition locale déconnectée
+  vs. le document collaboratif" — ce sont deux choses différentes.
 - **Commentaires ancrés par paragraphe/sélection** — fil plat uniquement (§4).
 - **Historique des versions** (revenir à une version antérieure) — seule la
-  dernière version compte, pas de journal.
+  dernière version compte, pas de journal, même si Yjs le permettrait
+  techniquement (snapshots successifs) — pas construit pour cette v1.

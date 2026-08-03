@@ -51,7 +51,7 @@ par nous).
 | 04  | Transcription               | ✅ | Whisper **par défaut** (Windows + macOS), `small` **embarqué** ; **qualité décodage** (beam + seuils) + **glossaire** + **transcription parallèle par tranches** sur les longs fichiers (spec 17) ; langue détectée stockée ; **progression pondérée par tranche** (`transcription-progress`, feedback tests) |
 | 05  | AI Brain + Ingestion        | ✅ | **Ingestion fusionnée** (compte-rendu + tâches) ✅ à **sortie découplée** (`{summary, tasks}`, 1 appel conditionnel, rien de coché → pas d'appel) ✅ ; **ingestion augmentée** (analyse → écran `/resolve`) ✅ ; **chat (RAG)** + historique ✅ ; **brief quotidien** ✅ ; 2 modes d'accès ; **contexte interne** (spec 16) ✅ |
 | 06  | Todos                       | ✅ | `Todo.md` = source unique ; table SQLite supprimée (migration 007) ; commandes refondues sur le fichier |
-| 07  | Notes (vault)               | ✅ | Structure `alfred-*` ✅ ; skills/`.claude` retirés ✅ ; **frontmatter `project`/`participants` peuplés par l'ingestion** ✅ ; **regroupement par projet** (vue « Projets », dossiers virtuels) ✅. *Rangement physique par projet = hors v1* |
+| 07  | Notes (vault)               | ✅ | Structure `alfred-*` ✅ ; skills/`.claude` retirés ✅ ; **frontmatter `project`/`participants` peuplés par l'ingestion** ✅ ; **regroupement par projet** (vue « Projets », dossiers virtuels) ✅. *Rangement physique par projet = hors v1*. **Reste (post-v1, spec écrite) : renommage/fusion/suppression de projet** |
 | 07b | Notes — Chat (RAG)          | ✅ | Construit (`ask_notes`) + spec faite |
 | 07c | Notes — Graphe              | ✅ | Construit (`get_vault_graph`) + spec faite |
 | 08  | Suggestions                 | 🕓 | **Hors v1** — code retiré (Phase D) |

@@ -99,6 +99,52 @@ ne permet de le corriger. On ajoute :
 - **Backend** : `list_projects()` (valeurs `project` distinctes du vault, pour la
   combobox et l'autocomplétion) ; la mise à jour du projet passe par le frontmatter.
 
+### Renommer / fusionner / supprimer un projet — 📝 spec écrite, rien de codé (post-v1)
+
+`project` n'est aujourd'hui qu'une **valeur de texte libre**, répétée dans
+plusieurs endroits (pas d'entité "projet" avec un identifiant stable) : le
+frontmatter `project` (liste) des comptes-rendus, et le marqueur `+Projet` des
+lignes de tâches dans `Todo.md` (spec/06). Renommer un projet doit mettre à
+jour **toutes** ces occurrences en une fois, sinon on se retrouve avec un
+ancien nom orphelin qui réapparaît (une tâche ou une note oubliée) en plus du
+nouveau. Note liée : une fois spec/16b (contexte par projet) codée, la note
+de contexte du projet (`alfred-intelligence/<Projet>.md`) doit suivre le
+renommage — **dépendance explicite**, cette tâche-ci doit être livrée avant.
+
+- **Déclencheur** : **clic droit sur l'en-tête de groupe** dans la vue
+  "Projets" de l'arbre Notes (`FileTree.tsx` — nouveau menu contextuel, n'existe
+  pas aujourd'hui sur cet en-tête, contrairement aux notes/dossiers) →
+  **"Renommer le projet"** et **"Supprimer le projet"**.
+- **Portée du renommage** (correspondance **tolérante** — espaces/casse — pour
+  repérer toutes les occurrences à modifier, mais la nouvelle valeur écrite
+  partout est la graphie exacte saisie par l'utilisateur ; effet de bord
+  assumé : ça uniformise au passage les variantes de casse/espace d'un même
+  projet) :
+  1. `project` sur toutes les notes qui le contiennent dans leur liste
+     (frontmatter).
+  2. Tous les marqueurs `+Projet` dans `Todo.md`.
+  3. La note de contexte du projet (spec/16b) — renommage du fichier +
+     mise à jour de son frontmatter `project`.
+- **Collision** — renommer vers un nom de projet **déjà existant** revient à
+  **fusionner** les deux projets en un seul (toutes les notes/tâches des deux
+  se retrouvent sous le même nom). **Confirmation explicite** requise
+  (`window.confirm`, même pattern que le reste de l'app) : « Ceci va fusionner
+  avec le projet existant "X" — toutes les notes et tâches seront regroupées
+  sous ce nom. Continuer ? »
+- **Suppression** — vide/retire ce projet de toutes les notes et tâches qui le
+  référencent (une note qui n'avait que ce projet retombe dans "Sans projet",
+  comme aujourd'hui pour une note isolée) ; supprime aussi sa note de contexte
+  (spec/16b) si elle existe. **Confirmation explicite** requise (même pattern).
+- **Renommage simple** : une **confirmation `window.confirm`** suffit (pas
+  besoin d'aperçu détaillé du nombre de notes/tâches touchées avant de
+  valider).
+
+**Commandes Tauri à créer** : `rename_project(old: String, new: String)`,
+`delete_project(name: String)` — réécrivent en batch le frontmatter des notes
+concernées (`update_note_file`) et `Todo.md` (réutilise l'infra de
+`todo_md.rs`, même famille que `move_task`/`merge_tasks`), puis (une fois
+spec/16b codée) la note de contexte du projet.
+
 ### Paire transcription ↔ compte-rendu — ✅ fait (feedback tests)
 
 Un enregistrement produit **deux notes** liées par le même `recording_id` : la
@@ -301,14 +347,10 @@ la v1** — à rouvrir plus tard si besoin (restera à concevoir : où le fichie
 atterrit — copié dans le vault ? pièce jointe d'une note ? — et comment
 réconcilier avec `dragDropEnabled: false`).
 
-### Nom du dossier des transcriptions brutes — 📝 décision ouverte
+### Nom du dossier des transcriptions brutes — ✅ décidé
 
-`alfred-raw` est le nom par défaut actuel (`recording_folder`, spec/11) mais
-n'a jamais été validé comme définitif produit — à rouvrir si un nom plus
-parlant pour l'utilisateur final est souhaité (ex. reflétant mieux « brut/non
-retravaillé » qu'un terme technique). Renommer implique une migration des
-vaults existants (dossier physique déjà créé chez les utilisateurs en test) —
-en tenir compte dans la décision.
+`alfred-raw` (`recording_folder`, spec/11) est confirmé comme nom définitif
+produit.
 
 ## Commandes Tauri (réel)
 

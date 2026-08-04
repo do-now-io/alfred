@@ -216,9 +216,24 @@ export default function ChatPanel() {
         )}
       </div>
 
-      {/* Conversation */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
-        <div style={{ maxWidth: COLUMN_MAX, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Conversation. À vide, le contenu est centré via flex (au lieu d'un
+          paddingTop fixe) : il ne dépasse jamais la hauteur disponible et
+          n'a donc jamais besoin de scroller (feedback tests — un ascenseur
+          apparaissait sur l'état vide dès que la colonne devenait plus
+          courte, ex. brief quotidien affiché au-dessus). */}
+      <div
+        ref={scrollRef}
+        style={{
+          flex: 1, overflowY: isEmpty ? "hidden" : "auto", padding: "24px",
+          display: isEmpty ? "flex" : "block",
+        }}
+      >
+        <div style={{
+          maxWidth: COLUMN_MAX, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16,
+          width: isEmpty ? "100%" : undefined,
+          flex: isEmpty ? 1 : undefined,
+          justifyContent: isEmpty ? "center" : undefined,
+        }}>
           {isEmpty ? (
             <EmptyState onPick={submit} />
           ) : (
@@ -284,7 +299,7 @@ function EmptyState({ onPick }: { onPick: (q: string) => void }) {
   const suggestions = useSuggestions();
   return (
     <div style={{
-      paddingTop: 56, display: "flex", flexDirection: "column",
+      display: "flex", flexDirection: "column",
       alignItems: "center", gap: 14, textAlign: "center",
     }}>
       <div style={{

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useNotesStore } from "../store/notesStore";
+import { usePendingEmailReviewStore } from "../store/pendingEmailReviewStore";
 import { useTourStore } from "../store/tourStore";
 import { useProfileStore } from "../store/profileStore";
 import { useUpdateStore } from "../store/updateStore";
@@ -436,6 +437,8 @@ function AiAccessSection() {
 
 function EmailSection() {
   const t = useT();
+  const navigate = useNavigate();
+  const pendingReviewCount = usePendingEmailReviewStore((s) => s.count);
   const [status, setStatus] = useState<ImapStatus | null>(null);
   const [host, setHost] = useState("");
   const [port, setPort] = useState("993");
@@ -519,6 +522,21 @@ function EmailSection() {
             {t("settings.emailSection.disconnect")}
           </button>
         </div>
+        {/* Badge de notification (spec/24 §5) — propositions issues des mails
+            en attente de validation, ici en plus du badge global de la
+            sidebar (emplacement le plus proche de la connexion IMAP). */}
+        {pendingReviewCount > 0 && (
+          <button
+            onClick={() => navigate("/resolve-emails")}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8,
+              background: "var(--active-bg)", color: "var(--accent)", border: "1px solid var(--accent)",
+              borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12.5, fontWeight: 600,
+            }}
+          >
+            {t(pendingReviewCount > 1 ? "settings.emailSection.reviewPendingPlural" : "settings.emailSection.reviewPending", { count: pendingReviewCount })}
+          </button>
+        )}
         {error && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 6 }}>{error}</div>}
       </>
     );

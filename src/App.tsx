@@ -17,8 +17,10 @@ import RecordingGuide from "./screens/RecordingGuide";
 import Feedback from "./screens/Feedback";
 import Onboarding from "./screens/Onboarding";
 import Resolve from "./screens/Resolve";
+import ResolveEmails from "./screens/ResolveEmails";
 import { useResolveStore } from "./store/resolveStore";
 import { usePendingReviewStore } from "./store/pendingReviewStore";
+import { usePendingEmailReviewStore } from "./store/pendingEmailReviewStore";
 import type { Clarifications } from "./bindings/Clarifications";
 import { useRecordingStore } from "./store/recordingStore";
 import { useNotesStore } from "./store/notesStore";
@@ -183,8 +185,8 @@ function AlfredLogo() {
 // ─── Nav item ─────────────────────────────────────────────────────────────────
 
 function NavItem({
-  to, icon, label, end = false, tourId,
-}: { to: string; icon: React.ReactNode; label: string; end?: boolean; tourId?: string }) {
+  to, icon, label, end = false, tourId, badge,
+}: { to: string; icon: React.ReactNode; label: string; end?: boolean; tourId?: string; badge?: number }) {
   // Guided tour (spec/13) spotlights specific nav items (e.g. Tâches) by id.
   const tourRef = useTourTarget(tourId ?? to);
   return (
@@ -205,6 +207,18 @@ function NavItem({
     >
       <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 20, fontSize: 18 }}>{icon}</span>
       {label}
+      {/* Badge de notification (spec/24 §5) — ex. propositions de mails en
+          attente de validation, comptées globalement (pas de section dédiée
+          par nav item dans la sidebar). */}
+      {!!badge && (
+        <span style={{
+          marginLeft: "auto", minWidth: 18, height: 18, borderRadius: 9,
+          background: "var(--accent)", color: "#fff", fontSize: 10.5, fontWeight: 700,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px",
+        }}>
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </NavLink>
   );
 }
@@ -346,6 +360,7 @@ function Recents() {
 
 function Sidebar() {
   const t = useT();
+  const pendingEmailReviewCount = usePendingEmailReviewStore((s) => s.count);
   return (
     <aside style={{
       width: 240, minWidth: 240,
@@ -368,7 +383,7 @@ function Sidebar() {
       </nav>
 
       <div style={{ borderTop: "1px solid var(--border)", padding: "8px" }}>
-        <NavItem to="/settings" icon={<MdSettings />} label={t("nav.sidebar.settings")} />
+        <NavItem to="/settings" icon={<MdSettings />} label={t("nav.sidebar.settings")} badge={pendingEmailReviewCount} />
       </div>
     </aside>
   );
@@ -407,6 +422,7 @@ function AppInner() {
   const setAlfredProgress = useAlfredStatusStore((s) => s.setProgress);
   const setResolveSession = useResolveStore((s) => s.setSession);
   const fetchPendingReview = usePendingReviewStore((s) => s.fetch);
+  const fetchPendingEmailReview = usePendingEmailReviewStore((s) => s.fetch);
   // Ingestion failures must be VISIBLE: a silent one is indistinguishable from
   // "the feature doesn't work" (compte-rendu + tasks just never appear).
   const [ingestError, setIngestError] = useState<string | null>(null);
@@ -431,6 +447,12 @@ function AppInner() {
     // vérification en attente OU résolue par un Valider ailleurs).
     fetchPendingReview();
     listen("pending-clarifications-changed", () => fetchPendingReview()).then(fn => unsubs.push(fn));
+
+    // Badge de propositions de mails en attente (spec/24 §5) — même pattern :
+    // chargé au démarrage, rafraîchi sur l'événement émis par `sync_emails`/
+    // `resolve_email_reviews` (back-end).
+    fetchPendingEmailReview();
+    listen("pending-email-reviews-changed", () => fetchPendingEmailReview()).then(fn => unsubs.push(fn));
 
     listen<{ status: string; duration_seconds: number; volume?: number; recording_id?: string; purpose?: string }>("recording-status-changed", (e) => {
       setStatus(
@@ -525,7 +547,7 @@ function AppInner() {
     ).then(fn => unsubs.push(fn));
 
     return () => unsubs.forEach(fn => fn());
-  }, [setStatus, setAlfredState, setAlfredTarget, setAlfredProgress, setResolveSession, fetchPendingReview]);
+  }, [setStatus, setAlfredState, setAlfredTarget, setAlfredProgress, setResolveSession, fetchPendingReview, fetchPendingEmailReview]);
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
@@ -543,6 +565,7 @@ function AppInner() {
             <Route path="/graph" element={<Graph />} />
             <Route path="/feedback" element={<Feedback />} />
             <Route path="/resolve" element={<Resolve />} />
+            <Route path="/resolve-emails" element={<ResolveEmails />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>

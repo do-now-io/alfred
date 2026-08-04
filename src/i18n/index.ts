@@ -13,6 +13,7 @@ import notes from "./catalogs/notes";
 import tasks from "./catalogs/tasks";
 import recording from "./catalogs/recording";
 import resolve from "./catalogs/resolve";
+import resolveEmails from "./catalogs/resolveEmails";
 import feedback from "./catalogs/feedback";
 import graph from "./catalogs/graph";
 import errors from "./catalogs/errors";
@@ -23,7 +24,7 @@ import calendar from "./catalogs/calendar";
 // exporte { fr, en } pour SON namespace ; on les assemble ici.
 const NAMESPACES = {
   common, nav, onboarding, tour, settings, dashboard, chat, notes, tasks,
-  recording, resolve, feedback, graph, errors, calendar,
+  recording, resolve, resolveEmails, feedback, graph, errors, calendar,
 };
 
 function buildCatalog(lang: Lang): Catalog {

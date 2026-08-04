@@ -1556,6 +1556,31 @@ async fn sync_emails(state: tauri::State<'_, AppState>, app: tauri::AppHandle) -
         .map_err(|e| e.to_string())
 }
 
+/// Écran de validation des mails (spec/24 §5).
+#[tauri::command]
+async fn list_pending_email_reviews(state: tauri::State<'_, AppState>) -> Result<Vec<email::PendingEmailReview>, String> {
+    email::list_pending_email_reviews(&state.db).await.map_err(|e| e.to_string())
+}
+
+/// Compte de badge (spec/24 §5).
+#[tauri::command]
+async fn get_pending_email_review_count(state: tauri::State<'_, AppState>) -> Result<i64, String> {
+    email::get_pending_email_review_count(&state.db).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn resolve_email_reviews(
+    accepted_ids: Vec<i64>,
+    rejected_ids: Vec<i64>,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let vault_root = state.vault_path.lock().unwrap().clone();
+    email::resolve_email_reviews(&state.db, vault_root.as_deref(), &accepted_ids, &rejected_ids, &app)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // ─── Calendrier Google (spec/02) ──────────────────────────────────────────────
 
 #[tauri::command]
@@ -1946,6 +1971,9 @@ pub fn run() {
             disconnect_imap_account,
             get_imap_status,
             sync_emails,
+            list_pending_email_reviews,
+            get_pending_email_review_count,
+            resolve_email_reviews,
             // Calendrier Google (spec/02)
             start_google_oauth,
             disconnect_google_calendar,

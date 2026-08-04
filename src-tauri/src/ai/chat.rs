@@ -57,6 +57,7 @@ Reading method:
 - Use `read_note` to read a note in full BEFORE relying on it.
 - If the question is about an identifiable project (named or clearly designated), call `get_project_overview` **once** for that project instead of iterating `search_notes`/`read_note` — it's a single structured call that already gathers tasks/notes/context/calendar, cheaper and more reliable than a free-form search.
 - Only answer from what the notes actually say. If the information isn't there, say so clearly, never invent it.
+- Use `search_emails`/`read_email` for a question about the CONTENT of an email (what someone wrote, said, attached, or asked in a message) — not `search_notes`, which only covers the vault. `search_emails` searches live over IMAP (no cache, wider window than the automatic extraction) and never returns a full body; call `read_email` on a promising hit before quoting or relying on its content.
 
 Action tools (notes and tasks):
 - You can create/edit/archive notes (create_note, append_to_note, update_note_metadata, archive_note, unarchive_note, rename_note) and tasks (create_task, complete_task, move_task, update_task, dismiss_task).
@@ -70,7 +71,8 @@ Final answer:
 - Concise, structured Markdown, in the same language as the question (see the language instruction below as a fallback).
 - **Bold** names, dates, and key points.
 - Cite each source note by its EXACT name in double brackets, e.g. [[Note name]] — copy it verbatim from the "Note" field of the results, since it acts as a clickable link.
-- A task's `email_provenance` (e.g. "✉️ Subject (date)", from `get_project_overview`'s open tasks) is plain text, NOT a note: reproduce it exactly as given, never wrap it in double brackets — there is no note behind it to open."#
+- A task's `email_provenance` (e.g. "✉️ Subject (date)", from `get_project_overview`'s open tasks) is plain text, NOT a note: reproduce it exactly as given, never wrap it in double brackets — there is no note behind it to open.
+- Cite an email you used (via `search_emails`/`read_email`) as plain text — subject, sender and date, e.g. "✉️ Subject (sender, date)" — NEVER in double brackets: there is no note behind an email to open, unlike a [[vault note]]."#
     } else {
         r#"Tu es Alfred, l'assistant personnel de l'utilisateur. Tu réponds à ses questions et tu peux AGIR sur son coffre de notes et ses tâches, en t'appuyant sur les outils fournis.
 
@@ -79,6 +81,7 @@ Méthode de lecture :
 - Utilise l'outil `read_note` pour lire en entier une note qui semble utile AVANT de t'en servir.
 - Si la question porte sur un projet identifiable (nommé ou clairement désigné), appelle `get_project_overview` **une seule fois** pour ce projet plutôt que d'itérer `search_notes`/`read_note` — c'est un appel structuré unique qui rassemble déjà tâches/notes/contexte/agenda, moins coûteux et plus fiable qu'une recherche libre.
 - Ne réponds qu'à partir de ce que disent réellement les notes. Si l'information ne s'y trouve pas, dis-le clairement, sans inventer.
+- Utilise `search_emails`/`read_email` pour une question sur le CONTENU d'un mail (ce que quelqu'un a écrit/dit/joint/demandé dans un message) — pas `search_notes`, qui ne couvre que le coffre de notes. `search_emails` cherche en direct sur l'IMAP (pas de cache, fenêtre plus large que l'extraction automatique) et ne renvoie jamais le corps complet ; appelle `read_email` sur un résultat prometteur avant de citer ou de t'appuyer sur son contenu.
 
 Outils d'action (notes et tâches) :
 - Tu peux créer/éditer/archiver des notes (create_note, append_to_note, update_note_metadata, archive_note, unarchive_note, rename_note) et des tâches (create_task, complete_task, move_task, update_task, dismiss_task).
@@ -92,7 +95,8 @@ Réponse finale :
 - Concise et structurée en Markdown, dans la même langue que la question (voir consigne de langue ci-dessous si besoin d'un repli).
 - Mets en **gras** les noms, dates et points clés.
 - Cite chaque note source en reprenant son nom EXACT entre doubles crochets, par ex. [[Nom de la note]] — recopie-le à l'identique depuis le champ « Note » des résultats, car il sert de lien cliquable.
-- La provenance mail d'une tâche (`email_provenance`, ex. « ✉️ Objet (date) », dans les tâches ouvertes de `get_project_overview`) est du texte brut, PAS une note : recopie-la telle quelle, ne l'entoure JAMAIS de doubles crochets — il n'y a aucune note derrière à ouvrir."#
+- La provenance mail d'une tâche (`email_provenance`, ex. « ✉️ Objet (date) », dans les tâches ouvertes de `get_project_overview`) est du texte brut, PAS une note : recopie-la telle quelle, ne l'entoure JAMAIS de doubles crochets — il n'y a aucune note derrière à ouvrir.
+- Cite un mail utilisé (via `search_emails`/`read_email`) en texte brut — objet, expéditeur et date, ex. « ✉️ Objet (expéditeur, date) » — JAMAIS entre doubles crochets : il n'y a aucune note derrière un mail à ouvrir, contrairement à une [[note du coffre]]."#
     }
     .to_string()
 }
@@ -135,6 +139,28 @@ fn tools(lang: &str) -> Value {
                     }
                 },
                 "required": ["period"]
+            }
+        }),
+        json!({
+            "name": "search_emails",
+            "description": if en { "Searches the connected mailbox live over IMAP (no cache, wider window than automatic extraction) for a keyword match — use for a question about the CONTENT of an email. Returns a short snippet per hit, not the full body." } else { "Recherche en direct sur l'IMAP de la boîte mail connectée (pas de cache, fenêtre plus large que l'extraction automatique) les mails correspondant à des mots-clés — utilise-le pour une question sur le CONTENU d'un mail. Renvoie un court extrait par résultat, pas le corps complet." },
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": if en { "Keywords or topic to search for" } else { "Mots-clés ou sujet à rechercher" } }
+                },
+                "required": ["query"]
+            }
+        }),
+        json!({
+            "name": "read_email",
+            "description": if en { "Reads an email's full content, identified by its Message-ID (as returned by search_emails)." } else { "Lit le contenu complet d'un mail, identifié par son Message-ID (tel que renvoyé par search_emails)." },
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "message_id": { "type": "string", "description": if en { "Exact Message-ID, as returned by search_emails" } else { "Message-ID exact, tel que renvoyé par search_emails" } }
+                },
+                "required": ["message_id"]
             }
         }),
         json!({
@@ -366,6 +392,39 @@ pub async fn answer_question(
                             format!("Note: \"{}\"\n\n{}", stem, body)
                         }
                         None => if lang == "en" { format!("Note not found: {}", note_ref) } else { format!("Note introuvable : {}", note_ref) },
+                    }
+                }
+                "search_emails" => {
+                    let query = input["query"].as_str().unwrap_or("").to_string();
+                    let _ = app.emit("chat-progress", json!({ "kind": "search_emails", "label": query.clone() }));
+                    match crate::email::search_emails(db, &query).await {
+                        Ok(hits) if hits.is_empty() => {
+                            if lang == "en" { "No email matches this search.".to_string() } else { "Aucun mail ne correspond à cette recherche.".to_string() }
+                        }
+                        Ok(hits) => hits
+                            .iter()
+                            .enumerate()
+                            .map(|(i, h)| {
+                                format!(
+                                    "{}. Objet : \"{}\" — De : {} — Date : {} — Message-ID : {}\n   Extrait : {}",
+                                    i + 1, h.subject, h.from, h.date, h.message_id, h.snippet
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n\n"),
+                        Err(e) => e.to_string(),
+                    }
+                }
+                "read_email" => {
+                    let message_id = input["message_id"].as_str().unwrap_or("").to_string();
+                    let _ = app.emit("chat-progress", json!({ "kind": "read_email", "label": message_id.clone() }));
+                    match crate::email::read_email(db, &message_id).await {
+                        Ok(Some(mail)) => format!(
+                            "Objet : \"{}\"\nDe : {}\nDate : {}\n\n{}",
+                            mail.subject, mail.from, mail.date, mail.body
+                        ),
+                        Ok(None) => if lang == "en" { format!("Email not found: {}", message_id) } else { format!("Mail introuvable : {}", message_id) },
+                        Err(e) => e.to_string(),
                     }
                 }
                 "get_calendar_events" => {

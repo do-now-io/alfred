@@ -144,6 +144,14 @@ jobs:
       # (spec/15 §D) embarquée à la compilation — doit correspondre au
       # METRICS_APP_KEY configuré côté Coolify. Vide en local (pas bloquant,
       # le backend n'exige le header que s'il a lui-même une clé configurée).
+      # ALFRED_GOOGLE_CLIENT_ID/SECRET (spec/02 §1, secrets repo) : client OAuth
+      # "Desktop app" du calendrier Google, embarqué à la compilation
+      # (`option_env!`, calendar.rs) — client PUBLIC (Google ne traite pas son
+      # secret comme confidentiel pour ce type de client), c'est la pratique
+      # attendue. Vide en local (bouton "Connecter Google Calendar" désactivé
+      # avec une erreur explicite) — sans effet bloquant sur le reste du build.
+      # Garder le client en statut "Testing" côté Google Cloud Console tant
+      # qu'on reste à ~10 utilisateurs (voir commentaire en tête de calendar.rs).
       # APPLE_* (macOS uniquement, secrets repo) : signature — cf. étape
       # précédente. `APPLE_SIGNING_IDENTITY` vient de `$GITHUB_ENV`, posé par
       # elle ; vide sur Windows/Linux et sans effet là-bas (Tauri ne signe
@@ -160,6 +168,8 @@ jobs:
       - name: Build Tauri
         env:
           ALFRED_METRICS_APP_KEY: ${{ secrets.ALFRED_METRICS_APP_KEY }}
+          ALFRED_GOOGLE_CLIENT_ID: ${{ secrets.ALFRED_GOOGLE_CLIENT_ID }}
+          ALFRED_GOOGLE_CLIENT_SECRET: ${{ secrets.ALFRED_GOOGLE_CLIENT_SECRET }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

@@ -1,20 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { MdUploadFile } from "react-icons/md";
 import { useRecordingStore, useRecordingElapsed } from "../store/recordingStore";
-import { useNotesStore } from "../store/notesStore";
+import { useChatStore } from "../store/chatStore";
 import { useTourTarget } from "../store/tourStore";
 import BriefingContent from "../components/BriefingContent";
 import ChatPanel from "../components/chat/ChatPanel";
-import type { NoteFile } from "../bindings/NoteFile";
-import type { NoteMetadata } from "../bindings/NoteMetadata";
-import { toggleChecked, groupTasksBySection, type TaskLine } from "../utils/todoTasks";
-import { renderInlineMd } from "../utils/inlineMd";
+import type { CalendarEvent } from "../bindings/CalendarEvent";
+import type { GoogleAuthStatus } from "../bindings/GoogleAuthStatus";
 import { useInternalLink } from "../utils/useInternalLink";
-import { useI18nStore, useT } from "../i18n";
-import { TODO_SECTION_LABELS, type TodoSectionKey } from "../i18n/todoSections";
+import { useT } from "../i18n";
 
 // ─── Hero card — enregistrement ───────────────────────────────────────────────
 
@@ -147,174 +144,90 @@ function HeroCard() {
   );
 }
 
-// ─── Section tâches — sections À faire / En cours (spec/06 v2/10) ──────────────
-// Reads/writes Todo.md directly (same pattern as Tasks.tsx), grouped by the
-// `## Section` headings the file already uses (spec/06) — a lighter, in-place
-// summary rather than the full editor.
+// ─── Agenda — aperçu du jour (spec/02 §3a/10) ──────────────────────────────────
+// Résumé compact des événements du jour, en lecture seule (même source que
+// l'écran Agenda dédié) ; « Voir l'agenda → » ouvre la vue complète (jour/semaine).
 
-const DEFAULT_TODO_RELATIVE = "wiki/Todo.md";
-// Clés stables (spec/21) — reconnues en FR et EN par `groupTasksBySection`,
-// affichées via `TODO_SECTION_LABELS[lang]`.
-const SECTIONS_SHOWN: TodoSectionKey[] = ["todo", "in_progress"];
-const SECTION_LIMIT = 5;
-
-function TaskRow({ task, onToggle, onOpen }: {
-  task: TaskLine; onToggle: () => void; onOpen: () => void;
-}) {
-  const t = useT();
-  const handleLink = useInternalLink();
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 12,
-      padding: "8px 0", borderBottom: "1px solid var(--border)",
-    }}>
-      <input
-        type="checkbox"
-        checked={task.checked}
-        onChange={onToggle}
-        style={{ width: 15, height: 15, cursor: "pointer", accentColor: "var(--accent)", flexShrink: 0 }}
-      />
-      <span
-        onClick={onOpen}
-        title={t("dashboard.tasksSection.openInTasks")}
-        style={{
-          flex: 1, fontSize: 13.5, color: "var(--text-primary)", cursor: "pointer",
-          textDecoration: task.checked ? "line-through" : "none",
-          opacity: task.checked ? 0.5 : 1,
-        }}
-      >
-        {renderInlineMd(task.text, handleLink)}
-      </span>
-    </div>
-  );
+function formatEventTime(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}h${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function TaskSectionBlock({ name, tasks, onToggle, onOpen }: {
-  name: string; tasks: TaskLine[];
-  onToggle: (taskIndex: number) => void; onOpen: () => void;
-}) {
-  if (tasks.length === 0) return null;
-  const pending = tasks.filter(t => !t.checked).length;
-
-  return (
-    <div style={{ marginBottom: 6 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0 4px" }}>
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-          {name}
-        </span>
-        {pending > 0 && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{pending}</span>}
-      </div>
-      {tasks.slice(0, SECTION_LIMIT).map(t => (
-        <TaskRow key={t.taskIndex} task={t} onToggle={() => onToggle(t.taskIndex)} onOpen={onOpen} />
-      ))}
-    </div>
-  );
-}
-
-function TasksSection() {
+function AgendaCard() {
   const t = useT();
-  const lang = useI18nStore((s) => s.lang);
   const navigate = useNavigate();
-  const vaultPath = useNotesStore(s => s.vaultPath);
-  const fetchVaultPath = useNotesStore(s => s.fetchVaultPath);
-  const fetchRecents = useNotesStore(s => s.fetchRecents);
-  const [collapsed, setCollapsed] = useState(false);
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [rel, setRel] = useState<string | null>(null);
-  const [body, setBody] = useState("");
-  const metaRef = useRef<NoteMetadata | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
-
-  const path = vaultPath && rel ? `${vaultPath}/${rel}` : null;
-
-  useEffect(() => { fetchVaultPath(); }, [fetchVaultPath]);
-  useEffect(() => {
-    invoke<string>("get_todo_file")
-      .then(r => setRel(r || DEFAULT_TODO_RELATIVE))
-      .catch(() => setRel(DEFAULT_TODO_RELATIVE));
+  const fetchEvents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const evs = await invoke<CalendarEvent[]>("get_today_events");
+      setEvents(evs);
+    } catch {
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const load = useCallback(async () => {
-    if (!path) return;
-    try {
-      const file = await invoke<NoteFile>("get_note_file", { path });
-      metaRef.current = file.metadata;
-      setBody(file.body);
-    } catch {
-      metaRef.current = null;
-      setBody("");
-    }
-  }, [path]);
+  useEffect(() => {
+    invoke<GoogleAuthStatus>("get_calendar_auth_status")
+      .then((s) => setConnected(s.connected))
+      .catch(() => setConnected(false));
+  }, []);
+
+  useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
   useEffect(() => {
-    load();
-    const unsubs: Array<() => void> = [];
-    // notes-updated: file rewritten elsewhere. todos-updated: the merged
-    // ingestion (spec/05) dual-writes SQLite + this file — either means "reload".
-    listen("notes-updated", () => load()).then(fn => unsubs.push(fn));
-    listen("todos-updated", () => load()).then(fn => unsubs.push(fn));
-    return () => unsubs.forEach(fn => fn());
-  }, [load]);
-
-  const save = useCallback((newBody: string) => {
-    if (!path || !metaRef.current) return;
-    const meta = metaRef.current;
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      invoke<NoteFile>("update_note_file", { path, metadata: meta, body: newBody })
-        .then(() => fetchRecents())
-        .catch(e => console.error("Tasks: save failed:", e));
-    }, 600);
-  }, [path, fetchRecents]);
-
-  const apply = (newBody: string) => { setBody(newBody); save(newBody); };
-
-  if (!path) return null;
-
-  const groups = groupTasksBySection(body);
-  const totalPending = SECTIONS_SHOWN.reduce(
-    (n, s) => n + (groups.get(s) ?? []).filter(t => !t.checked).length, 0
-  );
+    let unsub: (() => void) | undefined;
+    listen("calendar-synced", () => fetchEvents()).then((fn) => { unsub = fn; });
+    return () => unsub?.();
+  }, [fetchEvents]);
 
   return (
     <div className="card" style={{ padding: "20px 24px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>
-          {t("dashboard.tasksSection.yourTasks")}
+          {t("dashboard.agendaCard.today")}
         </h2>
-        <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-          {totalPending > 0 ? t("dashboard.tasksSection.pending", { count: totalPending }) : t("dashboard.tasksSection.allDone")}
-        </span>
         <button
-          onClick={() => setCollapsed(c => !c)}
-          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 12 }}
-        >
-          {collapsed ? t("dashboard.tasksSection.expand") : t("dashboard.tasksSection.collapse")}
-        </button>
-        <button
-          onClick={() => navigate("/tasks")}
+          onClick={() => navigate("/calendar")}
           style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 12.5, fontWeight: 500 }}
         >
-          {t("dashboard.tasksSection.seeAllTasks")}
+          {t("dashboard.agendaCard.seeAgenda")}
         </button>
       </div>
 
-      {!collapsed && (
-        totalPending === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "10px 0 2px" }}>
-            {t("dashboard.tasksSection.nothingPending")}
+      {connected === false ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "10px 0 2px" }}>
+          {t("dashboard.agendaCard.notConnected")}{" "}
+          <button
+            onClick={() => navigate("/settings")}
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--accent)", fontSize: 13, textDecoration: "underline" }}
+          >
+            {t("dashboard.agendaCard.goToSettings")}
+          </button>
+        </div>
+      ) : loading ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "10px 0 2px" }}>
+          {t("dashboard.agendaCard.loading")}
+        </div>
+      ) : events.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "10px 0 2px" }}>
+          {t("dashboard.agendaCard.empty")}
+        </div>
+      ) : (
+        events.map((ev) => (
+          <div key={ev.id} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "7px 0", borderBottom: "1px solid var(--border)" }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent)", flexShrink: 0, minWidth: 48 }}>
+              {ev.all_day ? t("calendar.allDay") : formatEventTime(ev.start_at)}
+            </span>
+            <span style={{ fontSize: 13.5, color: "var(--text-primary)" }}>{ev.title}</span>
           </div>
-        ) : (
-          SECTIONS_SHOWN.map(key => (
-            <TaskSectionBlock
-              key={key}
-              name={TODO_SECTION_LABELS[lang][key]}
-              tasks={groups.get(key) ?? []}
-              onToggle={(taskIndex) => apply(toggleChecked(body, taskIndex))}
-              onOpen={() => navigate("/tasks")}
-            />
-          ))
-        )
+        ))
       )}
     </div>
   );
@@ -448,24 +361,35 @@ function DemoContentBanner() {
 }
 
 // ─── Dashboard — fusion Alfred/Aujourd'hui, layout 2 colonnes (spec/10 cible) ──
-// Gauche : conversation Alfred (ChatPanel, avec son propre historique) — la
-// route `/ai-actions` disparaît, la page "/" EST la conversation. Droite :
-// prise de note & résumé (carte d'enregistrement, brief, tâches), en lecture
-// pendant qu'on discute avec Alfred dans l'autre colonne.
+// Centre : carte d'enregistrement + brief quotidien (tant qu'aucune conversation
+// n'est en cours) au-dessus de la conversation Alfred (ChatPanel). Droite :
+// agenda du jour — et le brief, qui migre ici, AU-DESSUS de l'agenda, dès
+// qu'une conversation démarre (`messages.length > 0`) : la place qu'il
+// occupait au centre sert alors entièrement au fil de discussion.
 
 export default function Dashboard() {
+  const hasMessages = useChatStore((s) => s.messages.length > 0);
+
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <DemoContentBanner />
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        <div style={{ flex: "1.3 1 0%", minWidth: 0, borderRight: "1px solid var(--border)", overflow: "hidden" }}>
-          <ChatPanel />
+        <div style={{
+          flex: "1.3 1 0%", minWidth: 0, borderRight: "1px solid var(--border)",
+          overflow: "hidden", display: "flex", flexDirection: "column",
+        }}>
+          <div style={{ padding: "24px 24px 0", flexShrink: 0, display: "flex", flexDirection: "column", gap: 20 }}>
+            <HeroCard />
+            {!hasMessages && <BriefCard />}
+          </div>
+          <div style={{ flex: 1, minHeight: 0, marginTop: 20, borderTop: "1px solid var(--border)" }}>
+            <ChatPanel />
+          </div>
         </div>
         <div style={{ flex: "1 1 0%", minWidth: 340, maxWidth: 480, overflowY: "auto" }}>
           <div style={{ padding: "24px 24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
-            <HeroCard />
-            <BriefCard />
-            <TasksSection />
+            {hasMessages && <BriefCard />}
+            <AgendaCard />
           </div>
         </div>
       </div>

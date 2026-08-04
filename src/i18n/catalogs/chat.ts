@@ -7,6 +7,9 @@ export default {
       weekWork: "Sur quoi ai-je travaillé cette semaine ?",
     },
     conversationList: {
+      header: "Conversations",
+      expand: "Afficher les conversations",
+      collapse: "Masquer les conversations",
       newConversation: "Nouvelle conversation",
       empty: "Vos conversations passées apparaîtront ici.",
       delete: "Supprimer",
@@ -47,6 +50,9 @@ export default {
       weekWork: "What have I worked on this week?",
     },
     conversationList: {
+      header: "Conversations",
+      expand: "Show conversations",
+      collapse: "Hide conversations",
       newConversation: "New conversation",
       empty: "Your past conversations will appear here.",
       delete: "Delete",

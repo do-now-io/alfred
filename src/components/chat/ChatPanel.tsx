@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MdAdd, MdDeleteOutline, MdChatBubbleOutline, MdCheckCircle, MdCheck, MdClose } from "react-icons/md";
+import { MdAdd, MdDeleteOutline, MdChatBubbleOutline, MdCheckCircle, MdCheck, MdClose, MdChevronLeft, MdChevronRight } from "react-icons/md";
 import { useChatStore, type ChatTurn } from "../../store/chatStore";
 import { useNotesStore } from "../../store/notesStore";
 import { useTourTarget } from "../../store/tourStore";
@@ -25,7 +25,10 @@ function useSuggestions() {
 const COLUMN_MAX = 760;
 
 // Second-level nav (spec/10): past conversations, newest activity first.
-function ConversationList() {
+// Repliée par défaut (feedback tests — même esprit que le panneau Propriétés
+// des notes) : une fine bande avec un chevron ouvre/ferme la liste, plutôt
+// qu'une colonne fixe de 220px en permanence à l'écran.
+function ConversationList({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const t = useT();
   const conversations = useChatStore(s => s.conversations);
   const conversationId = useChatStore(s => s.conversationId);
@@ -45,13 +48,49 @@ function ConversationList() {
     }
   };
 
+  if (collapsed) {
+    return (
+      <div style={{
+        width: 28, minWidth: 28, borderRight: "1px solid var(--border)",
+        display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 10,
+        background: "var(--sidebar-bg)",
+      }}>
+        <button
+          onClick={onToggle}
+          title={t("chat.conversationList.expand")}
+          style={{
+            background: "none", border: "none", cursor: "pointer", padding: 4,
+            color: "var(--text-muted)", display: "flex", alignItems: "center",
+          }}
+        >
+          <MdChevronRight size={16} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <aside style={{
       width: 220, minWidth: 220, borderRight: "1px solid var(--border)",
       display: "flex", flexDirection: "column", overflow: "hidden",
       background: "var(--sidebar-bg)",
     }}>
-      <div style={{ padding: "12px 12px 8px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 8px 0 12px" }}>
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+          {t("chat.conversationList.header")}
+        </span>
+        <button
+          onClick={onToggle}
+          title={t("chat.conversationList.collapse")}
+          style={{
+            background: "none", border: "none", cursor: "pointer", padding: 4,
+            color: "var(--text-muted)", display: "flex", alignItems: "center",
+          }}
+        >
+          <MdChevronLeft size={16} />
+        </button>
+      </div>
+      <div style={{ padding: "8px 12px 8px" }}>
         <button
           onClick={clear}
           disabled={loading}
@@ -124,6 +163,8 @@ export default function ChatPanel() {
   const selectFile = useNotesStore(s => s.selectFile);
   const handleLink = useInternalLink();
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Masquée par défaut (feedback tests) — voir `ConversationList`.
+  const [conversationsCollapsed, setConversationsCollapsed] = useState(true);
 
   // Keep the latest message / progress in view.
   useEffect(() => {
@@ -147,7 +188,7 @@ export default function ChatPanel() {
 
   return (
     <div style={{ height: "100%", display: "flex", overflow: "hidden" }}>
-      <ConversationList />
+      <ConversationList collapsed={conversationsCollapsed} onToggle={() => setConversationsCollapsed(v => !v)} />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Header */}

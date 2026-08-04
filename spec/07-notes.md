@@ -99,7 +99,7 @@ ne permet de le corriger. On ajoute :
 - **Backend** : `list_projects()` (valeurs `project` distinctes du vault, pour la
   combobox et l'autocomplétion) ; la mise à jour du projet passe par le frontmatter.
 
-### Fusionner / renommer un projet — ✅ construit (fusion+renommage) ; suppression seule 📝 pas codée
+### Fusionner / renommer / supprimer un projet — ✅ construit
 
 `project` n'est aujourd'hui qu'une **valeur de texte libre**, répétée dans
 plusieurs endroits (pas d'entité "projet" avec un identifiant stable) : le
@@ -110,9 +110,27 @@ avec un ancien nom orphelin qui réapparaît (une tâche ou une note oubliée) e
 plus du nouveau.
 
 - **Déclencheur** : **clic droit sur l'en-tête de groupe** dans la vue
-  "Projets" de l'arbre Notes (`FileTree.tsx`) → **« Fusionner avec… »**, un
-  champ texte (autocomplétion sur les projets existants, `datalist`) pour
-  saisir la cible.
+  "Projets" de l'arbre Notes (`FileTree.tsx`) — mêmes entrées que le clic
+  droit sur un dossier (vue Dossiers, `NoteContextMenu`) plus les deux
+  spécifiques au projet :
+  - **« Voir l'état du projet »** (spec/28, inchangé).
+  - **« Fusionner avec… »** : un champ texte (autocomplétion sur les projets
+    existants, `datalist`) pour saisir la cible.
+  - **« Renommer »** : dialogue dédié, simple champ texte préréempli du nom
+    actuel — appelle la MÊME commande que la fusion (`merge_projects`,
+    voir ci-dessous), une cible qui n'existe pas encore comme groupe étant un
+    renommage pur.
+  - **« Supprimer »** : `delete_project(project)` — retire `project` de la
+    liste `project` de toutes les notes qui le portaient (une note qui n'avait
+    que celui-ci retombe dans « Sans projet », comme toute note isolée),
+    retire le marqueur `+Projet` des tâches `Todo.md` concernées, et supprime
+    la note de contexte du projet (spec/16b) si elle existe. **Ne supprime
+    aucune note/tâche elle-même**, seulement le tag. `window.confirm` simple
+    avant l'action (même pattern que la suppression d'une note/d'un dossier).
+- **Clic sur le TITRE** (pas le clic droit) : ouvre la note de contexte du
+  projet (spec/16b) — créée lazily au besoin. Cette note n'apparaît **plus**
+  comme une entrée de la liste sous son groupe (elle n'est pas une note
+  d'« activité » du projet), seul ce clic y donne accès.
 - **Fusion = renommage** (`merge_projects(source, target)`, `notes/
   project_context.rs`) : `target` n'a pas besoin d'exister déjà — retagger
   `source` vers un nom entièrement nouveau EST un renommage. Met à jour :
@@ -130,12 +148,10 @@ plus du nouveau.
     directement depuis le menu contextuel, sans étape de confirmation
     supplémentaire) — à ajouter si l'usage en test montre un besoin de
     filet de sécurité.
-- **Suppression seule** (vider/retirer un projet de toutes les notes/tâches
-  sans le fusionner ailleurs) : **pas codée** — reste une tâche séparée si le
-  besoin se confirme (ROADMAP Phase G).
-
-**Commande Tauri** : `merge_projects(source: String, target: String) ->
-usize` (nombre de notes retaguées) — `notes/project_context.rs`.
+**Commandes Tauri** : `merge_projects(source: String, target: String) ->
+usize` (nombre de notes retaguées), `delete_project(project: String) ->
+usize`, `open_project_context_note(project: String) -> NoteFile` —
+`notes/project_context.rs`.
 
 ### Paire transcription ↔ compte-rendu — ✅ fait (feedback tests)
 

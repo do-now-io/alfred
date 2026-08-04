@@ -999,6 +999,34 @@ mod tests {
     }
 
     #[test]
+    fn email_provenance_task_round_trips_with_project() {
+        // spec/24 §3 + spec/28 : une tâche issue de mail garde son `+Projet`
+        // (filtre `get_project_overview`) et sa provenance texte brute, jamais
+        // un wikilink — même sans `source_note` (mutuellement exclusifs).
+        let ingested = IngestTask {
+            titre: "Relire la proposition tarifaire".into(),
+            responsable: None,
+            echeance: None,
+            project: Some("Refonte Site".into()),
+            email_provenance: Some("✉️ RE: Proposition tarifaire (2026-08-01)".into()),
+        };
+        let (out, added) = merge_tasks(None, &[ingested], None, "fr");
+        assert_eq!(added, 1);
+        assert!(out.contains("- [ ] Relire la proposition tarifaire — +Refonte Site — ✉️ RE: Proposition tarifaire (2026-08-01)"));
+
+        let (_, fields) = parse_line(
+            "- [ ] Relire la proposition tarifaire — +Refonte Site — ✉️ RE: Proposition tarifaire (2026-08-01)",
+        )
+        .unwrap();
+        assert_eq!(fields.project.as_deref(), Some("Refonte Site"));
+        assert_eq!(fields.source_note, None);
+        assert_eq!(fields.email_provenance.as_deref(), Some("✉️ RE: Proposition tarifaire (2026-08-01)"));
+        // `get_project_overview` (spec/28) filtre uniquement sur `project` —
+        // cette tâche doit y apparaître même sans `source_note`.
+        assert_eq!(fields.project.as_deref(), Some("Refonte Site"));
+    }
+
+    #[test]
     fn dedups_across_sections_by_normalized_title() {
         let existing = "## En cours\n- [ ] Relire   le contrat — @Jean\n\n## À faire\n\n## Fait\n\n## Archivé\n";
         let (out, added) = merge_tasks(Some(existing), &[task("relire le contrat", None, None)], None, "fr");

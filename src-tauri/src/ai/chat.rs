@@ -69,7 +69,8 @@ Action tools (notes and tasks):
 Final answer:
 - Concise, structured Markdown, in the same language as the question (see the language instruction below as a fallback).
 - **Bold** names, dates, and key points.
-- Cite each source note by its EXACT name in double brackets, e.g. [[Note name]] — copy it verbatim from the "Note" field of the results, since it acts as a clickable link."#
+- Cite each source note by its EXACT name in double brackets, e.g. [[Note name]] — copy it verbatim from the "Note" field of the results, since it acts as a clickable link.
+- A task's `email_provenance` (e.g. "✉️ Subject (date)", from `get_project_overview`'s open tasks) is plain text, NOT a note: reproduce it exactly as given, never wrap it in double brackets — there is no note behind it to open."#
     } else {
         r#"Tu es Alfred, l'assistant personnel de l'utilisateur. Tu réponds à ses questions et tu peux AGIR sur son coffre de notes et ses tâches, en t'appuyant sur les outils fournis.
 
@@ -90,7 +91,8 @@ Outils d'action (notes et tâches) :
 Réponse finale :
 - Concise et structurée en Markdown, dans la même langue que la question (voir consigne de langue ci-dessous si besoin d'un repli).
 - Mets en **gras** les noms, dates et points clés.
-- Cite chaque note source en reprenant son nom EXACT entre doubles crochets, par ex. [[Nom de la note]] — recopie-le à l'identique depuis le champ « Note » des résultats, car il sert de lien cliquable."#
+- Cite chaque note source en reprenant son nom EXACT entre doubles crochets, par ex. [[Nom de la note]] — recopie-le à l'identique depuis le champ « Note » des résultats, car il sert de lien cliquable.
+- La provenance mail d'une tâche (`email_provenance`, ex. « ✉️ Objet (date) », dans les tâches ouvertes de `get_project_overview`) est du texte brut, PAS une note : recopie-la telle quelle, ne l'entoure JAMAIS de doubles crochets — il n'y a aucune note derrière à ouvrir."#
     }
     .to_string()
 }

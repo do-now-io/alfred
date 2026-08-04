@@ -8,7 +8,7 @@ import { useNotesStore } from "../../store/notesStore";
 import { NoteTypeIcon, noteKind } from "../../utils/noteType";
 import FileTreeNode from "./FileTreeNode";
 import ProjectOverviewPanel from "./ProjectOverviewPanel";
-import { menuItemStyle } from "./NoteContextMenu";
+import NoteContextMenu, { menuItemStyle } from "./NoteContextMenu";
 import { useT } from "../../i18n";
 
 /** Une entrée de la vue Projets : la note « porteuse » + éventuellement sa
@@ -495,6 +495,8 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
                       note={n}
                       active={n.path === selectedPath}
                       onSelect={onSelect}
+                      onRename={handleRename}
+                      onDelete={handleDelete}
                       expandable={!!pair}
                       expanded={isExpanded}
                       onToggleExpand={() => toggleEntryExpanded(n.path)}
@@ -503,7 +505,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
                     {/* Transcription appariée (même recording_id) — repliée par
                         défaut, dépliée via le chevron (spec/07, feedback tests). */}
                     {pair && isExpanded && (
-                      <ProjectNoteRow note={pair} active={pair.path === selectedPath} onSelect={onSelect} indent t={t} />
+                      <ProjectNoteRow note={pair} active={pair.path === selectedPath} onSelect={onSelect} onRename={handleRename} onDelete={handleDelete} indent t={t} />
                     )}
                   </div>
                 );
@@ -729,11 +731,15 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
  *  `expandable` (spec/07, feedback tests) : un chevron déplie/replie la
  *  transcription appariée au lieu de toujours l'afficher en retrait. */
 function ProjectNoteRow({
-  note, active, onSelect, indent, expandable, expanded, onToggleExpand, t,
+  note, active, onSelect, onRename, onDelete, indent, expandable, expanded, onToggleExpand, t,
 }: {
   note: ProjectNote;
   active: boolean;
   onSelect: (path: string) => void;
+  /** Clic droit → menu « Renommer/Supprimer » (spec/07), même que la vue
+   *  Dossiers — absent auparavant sur les notes de la vue Projets. */
+  onRename?: (path: string, currentName: string) => void;
+  onDelete?: (path: string, name: string) => void;
   indent?: boolean;
   expandable?: boolean;
   expanded?: boolean;
@@ -743,46 +749,64 @@ function ProjectNoteRow({
   // Même traitement visuel que la vue Dossiers (spec/07, feedback tests —
   // « UI identique Folders ↔ Projects ») : estompé + badge « archivé ».
   const isArchived = note.status === "archived";
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   return (
-    <div
-      onClick={() => onSelect(note.path)}
-      title={note.title}
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData("text/alfred-note-path", note.path);
-        e.dataTransfer.effectAllowed = "link";
-      }}
-      style={{
-        display: "flex", alignItems: "center", gap: 7,
-        padding: `4px 8px 4px ${indent ? 36 : expandable ? 6 : 22}px`, cursor: "pointer", fontSize: 13,
-        borderRadius: 6, color: active ? "var(--accent)" : "var(--text-secondary)",
-        background: active ? "var(--active-bg)" : "transparent",
-        overflow: "hidden", whiteSpace: "nowrap",
-        opacity: isArchived ? 0.55 : 1,
-      }}
-    >
-      {expandable ? (
-        <span
-          onClick={(e) => { e.stopPropagation(); onToggleExpand?.(); }}
-          title={expanded ? t("notes.fileTree.hideLinkedRecording") : t("notes.fileTree.showLinkedRecording")}
-          style={{ fontSize: 10, width: 16, flexShrink: 0, color: "var(--text-muted)", textAlign: "center" }}
-        >
-          {expanded ? "▼" : "▶"}
-        </span>
-      ) : !indent ? (
-        <span style={{ width: 16, flexShrink: 0 }} />
-      ) : null}
-      <NoteTypeIcon path={note.path} noteType={note.type} recordingId={note.recording_id} size={13} />
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{note.title}</span>
-      {isArchived && (
-        <span style={{
-          fontSize: 10, color: "var(--text-muted)", border: "1px solid var(--border)",
-          borderRadius: 8, padding: "0 5px", flexShrink: 0, marginLeft: "auto",
-        }}>
-          {t("notes.fileTree.archivedBadge")}
-        </span>
+    <>
+      <div
+        onClick={() => onSelect(note.path)}
+        onContextMenu={(e) => {
+          if (!onRename && !onDelete) return;
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY });
+        }}
+        title={note.title}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData("text/alfred-note-path", note.path);
+          e.dataTransfer.effectAllowed = "link";
+        }}
+        style={{
+          display: "flex", alignItems: "center", gap: 7,
+          padding: `4px 8px 4px ${indent ? 36 : expandable ? 6 : 22}px`, cursor: "pointer", fontSize: 13,
+          borderRadius: 6, color: active ? "var(--accent)" : "var(--text-secondary)",
+          background: active ? "var(--active-bg)" : "transparent",
+          overflow: "hidden", whiteSpace: "nowrap",
+          opacity: isArchived ? 0.55 : 1,
+        }}
+      >
+        {expandable ? (
+          <span
+            onClick={(e) => { e.stopPropagation(); onToggleExpand?.(); }}
+            title={expanded ? t("notes.fileTree.hideLinkedRecording") : t("notes.fileTree.showLinkedRecording")}
+            style={{ fontSize: 10, width: 16, flexShrink: 0, color: "var(--text-muted)", textAlign: "center" }}
+          >
+            {expanded ? "▼" : "▶"}
+          </span>
+        ) : !indent ? (
+          <span style={{ width: 16, flexShrink: 0 }} />
+        ) : null}
+        <NoteTypeIcon path={note.path} noteType={note.type} recordingId={note.recording_id} size={13} />
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{note.title}</span>
+        {isArchived && (
+          <span style={{
+            fontSize: 10, color: "var(--text-muted)", border: "1px solid var(--border)",
+            borderRadius: 8, padding: "0 5px", flexShrink: 0, marginLeft: "auto",
+          }}>
+            {t("notes.fileTree.archivedBadge")}
+          </span>
+        )}
+      </div>
+
+      {contextMenu && (
+        <NoteContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onRename={() => onRename?.(note.path, note.title)}
+          onDelete={() => onDelete?.(note.path, note.title)}
+          onClose={() => setContextMenu(null)}
+        />
       )}
-    </div>
+    </>
   );
 }
 

@@ -131,6 +131,11 @@ export default {
       reviewIntroduction: "Revoir l'introduction",
       guidedTour: "Visite guidée",
       reviewGuidedTour: "Revoir la visite guidée",
+      checkUpdates: "Vérifier les mises à jour",
+      checking: "Vérification…",
+      upToDate: "À jour",
+      updateAvailable: "Nouvelle version dispo ({version})",
+      checkError: "Échec de la vérification (réseau ?)",
     },
   },
   en: {
@@ -264,6 +269,11 @@ export default {
       reviewIntroduction: "Replay the introduction",
       guidedTour: "Guided tour",
       reviewGuidedTour: "Replay the guided tour",
+      checkUpdates: "Check for updates",
+      checking: "Checking…",
+      upToDate: "Up to date",
+      updateAvailable: "New version available ({version})",
+      checkError: "Check failed (network?)",
     },
   },
 };

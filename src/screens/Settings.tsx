@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useNotesStore } from "../store/notesStore";
 import { useTourStore } from "../store/tourStore";
 import { useProfileStore } from "../store/profileStore";
+import { useUpdateStore } from "../store/updateStore";
 import WhisperModelPicker from "../components/WhisperModelPicker";
 import type { NoteFile } from "../bindings/NoteFile";
 import type { ImapStatus } from "../bindings/ImapStatus";
@@ -820,6 +821,7 @@ export default function Settings() {
             {t("settings.systemSection.reviewGuidedTour")}
           </button>
         </SettingRow>
+        <UpdateCheckRow />
       </Section>
 
       {/* Tout en bas (feedback Tanguy) : le gestionnaire de modèles est la
@@ -859,6 +861,45 @@ export default function Settings() {
         </SettingRow>
       </Section>
     </div>
+  );
+}
+
+/** Entrée manuelle « Vérifier les mises à jour » (spec/27) — relance `check()`
+ *  sans attendre le prochain démarrage. Le check silencieux au lancement de
+ *  l'app vit dans `App.tsx` (useUpdateStore.checkForUpdate) ; ce bouton
+ *  réutilise le même store, donc une mise à jour trouvée ici affiche aussi le
+ *  bandeau global. */
+function UpdateCheckRow() {
+  const t = useT();
+  const status = useUpdateStore((s) => s.status);
+  const info = useUpdateStore((s) => s.info);
+  const checkForUpdate = useUpdateStore((s) => s.checkForUpdate);
+
+  return (
+    <SettingRow label={t("settings.systemSection.checkUpdates")}>
+      {status === "up_to_date" && (
+        <span style={{ fontSize: 12, color: "#34C759" }}>✓ {t("settings.systemSection.upToDate")}</span>
+      )}
+      {status === "available" && info && (
+        <span style={{ fontSize: 12, color: "var(--accent)" }}>
+          {t("settings.systemSection.updateAvailable", { version: info.version })}
+        </span>
+      )}
+      {status === "error" && (
+        <span style={{ fontSize: 12, color: "var(--danger)" }}>{t("settings.systemSection.checkError")}</span>
+      )}
+      <button
+        onClick={() => checkForUpdate()}
+        disabled={status === "checking"}
+        style={{
+          background: "transparent", color: "var(--accent)",
+          border: "1px solid var(--border)", borderRadius: 6,
+          padding: "4px 10px", cursor: status === "checking" ? "not-allowed" : "pointer", fontSize: 12,
+        }}
+      >
+        {status === "checking" ? t("settings.systemSection.checking") : t("settings.systemSection.checkUpdates")}
+      </button>
+    </SettingRow>
   );
 }
 

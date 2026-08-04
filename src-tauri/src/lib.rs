@@ -1714,6 +1714,10 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // Mise à jour automatique (spec/27) : check() au démarrage + bouton manuel
+        // côté front, relaunch() après installation via tauri-plugin-process.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
 

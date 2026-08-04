@@ -42,6 +42,12 @@ export default {
       title: "Le compte-rendu n'a pas pu être rédigé",
       fallback: "Erreur inconnue pendant la rédaction du compte-rendu",
     },
+    updateBanner: {
+      ready: "Une nouvelle version d'Alfred est prête",
+      update: "Mettre à jour",
+      installing: "Installation…",
+      dismissTitle: "Masquer — la mise à jour reste proposée au prochain démarrage",
+    },
   },
   en: {
     logo: {
@@ -84,6 +90,12 @@ export default {
     ingestError: {
       title: "The summary could not be written",
       fallback: "Unknown error while writing the summary",
+    },
+    updateBanner: {
+      ready: "A new version of Alfred is ready",
+      update: "Update",
+      installing: "Installing…",
+      dismissTitle: "Hide — the update will be offered again next launch",
     },
   },
 };

@@ -24,6 +24,7 @@ import { useRecordingStore } from "./store/recordingStore";
 import { useNotesStore } from "./store/notesStore";
 import { useTourStore, useTourTarget } from "./store/tourStore";
 import { useAlfredStatusStore, alfredStatusLabel } from "./store/alfredStatusStore";
+import { useUpdateStore } from "./store/updateStore";
 import RecordingBar from "./components/RecordingBar";
 import { NoteTypeIcon } from "./utils/noteType";
 import NoteContextMenu from "./components/notes/NoteContextMenu";
@@ -415,6 +416,13 @@ function AppInner() {
     useState<{ message: string; modelMissing: boolean } | null>(null);
   const navigate = useNavigate();
 
+  // Vérification de mise à jour au démarrage (spec/27) — une seule fois par
+  // session, fire-and-forget : un échec réseau reste silencieux ici (pas de
+  // toast), contrairement au bouton manuel des Réglages qui affiche l'erreur.
+  useEffect(() => {
+    useUpdateStore.getState().checkForUpdate();
+  }, []);
+
   useEffect(() => {
     const unsubs: (() => void)[] = [];
 
@@ -523,6 +531,7 @@ function AppInner() {
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
       <Sidebar />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <UpdateBanner />
         <Topbar />
         <main style={{ flex: 1, overflow: "auto" }}>
           <Routes>
@@ -661,6 +670,67 @@ function ResolveBanner() {
       >
         ✕
       </button>
+    </div>
+  );
+}
+
+// ─── Bandeau de mise à jour (spec/27) ──────────────────────────────────────────
+// Non intrusif, cohérent avec les autres bandeaux flottants de l'app
+// (ResolveBanner/ingestError) : visible dès qu'une mise à jour est trouvée
+// (démarrage ou bouton manuel des Réglages), masquable sans perdre la mise à
+// jour (reproposée au prochain lancement). Aucune installation sans clic
+// explicite sur « Mettre à jour ».
+function UpdateBanner() {
+  const t = useT();
+  const status = useUpdateStore((s) => s.status);
+  const info = useUpdateStore((s) => s.info);
+  const installing = useUpdateStore((s) => s.installing);
+  const progress = useUpdateStore((s) => s.progress);
+  const error = useUpdateStore((s) => s.error);
+  const dismissed = useUpdateStore((s) => s.dismissed);
+  const installUpdate = useUpdateStore((s) => s.installUpdate);
+  const dismiss = useUpdateStore((s) => s.dismiss);
+
+  if (status !== "available" || dismissed || !info) return null;
+
+  // Barre en flux normal au-dessus de la Topbar (même esprit que le bandeau
+  // « données de démo », spec/13/10) plutôt qu'une carte flottante — évite de
+  // se superposer au ResolveBanner (bas-gauche) ou aux toasts d'erreur (bas-droite).
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12,
+      padding: "8px 24px", borderBottom: "1px solid var(--border)",
+      background: "var(--dark-card)", fontSize: 12.5, color: "var(--text-muted)",
+      flexShrink: 0,
+    }}>
+      <span>{t("nav.updateBanner.ready")} ({info.version})</span>
+      {error && <span style={{ color: "var(--danger)" }}>{error}</span>}
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        <button
+          onClick={() => installUpdate()}
+          disabled={installing}
+          style={{
+            background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6,
+            padding: "3px 10px", cursor: installing ? "not-allowed" : "pointer", fontSize: 12,
+          }}
+        >
+          {installing
+            ? `${t("nav.updateBanner.installing")}${progress != null ? ` ${progress}%` : ""}`
+            : t("nav.updateBanner.update")}
+        </button>
+        {!installing && (
+          <button
+            onClick={dismiss}
+            title={t("nav.updateBanner.dismissTitle")}
+            style={{
+              background: "none", border: "1px solid var(--border)", borderRadius: 6,
+              padding: "3px 10px", cursor: "pointer", fontSize: 12, color: "var(--text-secondary)",
+            }}
+          >
+            ✕
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -148,11 +148,22 @@ jobs:
       # précédente. `APPLE_SIGNING_IDENTITY` vient de `$GITHUB_ENV`, posé par
       # elle ; vide sur Windows/Linux et sans effet là-bas (Tauri ne signe
       # macOS que pour la cible macOS).
+      # TAURI_SIGNING_PRIVATE_KEY* (spec/27, secrets repo) : signature du CONTENU
+      # de mise à jour (paire de clés dédiée, générée une fois via
+      # `npm run tauri signer generate`, distincte de la signature Windows/macOS
+      # ci-dessus) — le bundler Tauri génère automatiquement un `.sig` à côté de
+      # chaque artefact éligible à l'update (nsis/msi, .app.tar.gz) dès que
+      # `plugins.updater` est configuré (tauri.conf.json) ET que ces variables
+      # sont présentes. No-op silencieux si les secrets sont absents : pas de
+      # `.sig` généré, `latest.json` (job `release`) sera alors incomplet pour
+      # cette plateforme plutôt que d'échouer le build.
       - name: Build Tauri
         env:
           ALFRED_METRICS_APP_KEY: ${{ secrets.ALFRED_METRICS_APP_KEY }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri -- build
 
       # Signature Windows via SSL.com eSigner — étape CI À PART plutôt qu'un hook
@@ -185,12 +196,16 @@ jobs:
       #   alfred_0.2.11_amd64.AppImage   → Alfred_amd64.AppImage
       #   alfred_0.2.11_amd64.deb        → Alfred_amd64.deb
       #   alfred-0.2.11-1.x86_64.rpm     → Alfred-1.x86_64.rpm
+      # Inclut aussi les artefacts de mise à jour (spec/27) : `.sig` (à côté de
+      # chaque installeur signé updater) et `.app.tar.gz`/`.sig` (macOS — c'est
+      # cette archive, pas le .dmg, que le plugin updater télécharge).
       - name: Retirer le numéro de version des noms de fichiers
         shell: bash
         run: |
           find src-tauri/target/release/bundle -type f \
             \( -name "*.msi" -o -name "*.exe" -o -name "*.dmg" \
-               -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" \) \
+               -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" \
+               -o -name "*.sig" -o -name "*.tar.gz" \) \
             | while read -r f; do
                 dir=$(dirname "$f")
                 base=$(basename "$f")
@@ -201,7 +216,12 @@ jobs:
               done
 
       # Le .app macOS n'est pas uploadé : upload-artifact ne préserve ni les
-      # permissions ni les liens symboliques — le .dmg est le livrable.
+      # permissions ni les liens symboliques — le .dmg est le livrable (installeur
+      # manuel) ; le `.app.tar.gz` (spec/27) est le livrable de MISE À JOUR, une
+      # simple archive donc sans ce problème.
+      # `*.sig` : présents seulement si les secrets TAURI_SIGNING_PRIVATE_KEY*
+      # étaient configurés à l'étape "Build Tauri" — absents sinon, sans faire
+      # échouer l'upload (pas de `if-no-files-found: error` par pattern individuel).
       - name: Artefacts
         uses: actions/upload-artifact@v4
         with:
@@ -209,11 +229,16 @@ jobs:
           if-no-files-found: error
           path: |
             src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.sig
             src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.sig
             src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.tar.gz
+            src-tauri/target/release/bundle/macos/*.sig
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/rpm/*.rpm
             src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/appimage/*.sig
 
   # Sur un tag v* uniquement : une fois TOUS les builds verts, crée la release
   # GitHub du tag avec les binaires en pièces jointes (notes générées depuis
@@ -231,6 +256,56 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      # Manifest de mise à jour (spec/27) : lu par tauri-plugin-updater via
+      # l'endpoint `releases/latest/download/latest.json` (tauri.conf.json).
+      # Écrit dans `artifacts/` AVANT l'étape suivante pour être uploadé avec
+      # les binaires par le même `gh release upload`, sans étape dédiée.
+      # Windows → le NSIS `.exe` (pas le `.msi`, moins fiable pour un remplacement
+      # silencieux) ; macOS → `.app.tar.gz` (PAS le `.dmg` : c'est l'archive que
+      # le plugin updater attend). Linux non prioritaire (spec/27, décision) :
+      # jamais d'entrée `linux-*`, comportement identique à aujourd'hui (pas
+      # d'auto-update sur Linux) — pas juste "pas encore fait".
+      # Un `.sig` manquant pour une plateforme (secrets TAURI_SIGNING_PRIVATE_KEY*
+      # absents à l'étape "Build Tauri") omet silencieusement son entrée
+      # (`::warning::`) plutôt que de faire échouer la release : les autres
+      # plateformes restent mises à jour normalement.
+      - name: Générer latest.json (spec/27)
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          PUB_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          BASE_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          NOTES="Notes de version : https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
+
+          PLATFORMS="{}"
+
+          WIN_EXE=$(find artifacts -path "*/nsis/*.exe" -type f | head -1 || true)
+          WIN_SIG=$(find artifacts -path "*/nsis/*.exe.sig" -type f | head -1 || true)
+          if [ -n "$WIN_EXE" ] && [ -n "$WIN_SIG" ]; then
+            SIG=$(cat "$WIN_SIG")
+            URL="$BASE_URL/$(basename "$WIN_EXE")"
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$SIG" --arg url "$URL" '. + {"windows-x86_64": {signature: $sig, url: $url}}')
+          else
+            echo "::warning::Pas de .exe/.sig NSIS Windows trouvé — windows-x86_64 omis de latest.json."
+          fi
+
+          MAC_TARGZ=$(find artifacts -path "*/macos/*.tar.gz" -type f | head -1 || true)
+          MAC_SIG=$(find artifacts -path "*/macos/*.tar.gz.sig" -type f | head -1 || true)
+          if [ -n "$MAC_TARGZ" ] && [ -n "$MAC_SIG" ]; then
+            SIG=$(cat "$MAC_SIG")
+            URL="$BASE_URL/$(basename "$MAC_TARGZ")"
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg sig "$SIG" --arg url "$URL" '. + {"darwin-aarch64": {signature: $sig, url: $url}}')
+          else
+            echo "::warning::Pas de .app.tar.gz/.sig macOS trouvé — darwin-aarch64 omis de latest.json."
+          fi
+
+          jq -n --arg version "$VERSION" --arg notes "$NOTES" --arg pub_date "$PUB_DATE" --argjson platforms "$PLATFORMS" \
+            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}' > artifacts/latest.json
+
+          echo "--- latest.json ---"
+          cat artifacts/latest.json
 
       - name: Release + binaires
         env:

@@ -448,12 +448,31 @@ function EmailSection() {
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Barre de progression de `sync_emails` (`email-sync-progress`, back-end) —
+  // écoutée en continu (pas seulement pendant le clic manuel) : la sync au
+  // démarrage de l'app émet les mêmes événements, et doit se refléter ici si
+  // l'utilisateur a Réglages ouvert à ce moment-là.
+  const [progress, setProgress] = useState<{ phase: string; processed: number; total: number } | null>(null);
 
   const refresh = useCallback(() => {
     invoke<ImapStatus>("get_imap_status").then(setStatus).catch(() => setStatus(null));
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    let unsub: (() => void) | undefined;
+    listen<{ phase: string; processed: number; total: number }>("email-sync-progress", (e) => {
+      setProgress(e.payload);
+      if (e.payload.phase === "done") {
+        refresh();
+        // Laisse la barre à 100 % un court instant plutôt que de la faire
+        // disparaître d'un coup (feedback visuel de complétion).
+        setTimeout(() => setProgress((p) => (p?.phase === "done" ? null : p)), 700);
+      }
+    }).then((fn) => { unsub = fn; });
+    return () => unsub?.();
+  }, [refresh]);
 
   const handleConnect = async () => {
     setError(null);
@@ -490,6 +509,10 @@ function EmailSection() {
     }
   };
 
+  const isSyncing = syncing || (!!progress && progress.phase !== "done");
+  const progressPercent =
+    progress?.phase === "analyzing" && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : null;
+
   if (status?.connected) {
     return (
       <>
@@ -504,24 +527,48 @@ function EmailSection() {
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           <button
             onClick={handleSync}
-            disabled={syncing}
+            disabled={isSyncing}
             style={{
               background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6,
-              padding: "5px 12px", cursor: syncing ? "not-allowed" : "pointer", fontSize: 13,
+              padding: "5px 12px", cursor: isSyncing ? "not-allowed" : "pointer", fontSize: 13,
             }}
           >
-            {syncing ? t("settings.emailSection.syncing") : t("settings.emailSection.syncNow")}
+            {isSyncing ? t("settings.emailSection.syncing") : t("settings.emailSection.syncNow")}
           </button>
           <button
             onClick={handleDisconnect}
+            disabled={isSyncing}
             style={{
               background: "transparent", color: "var(--danger)", border: "1px solid var(--border)",
-              borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 13,
+              borderRadius: 6, padding: "5px 12px", cursor: isSyncing ? "not-allowed" : "pointer", fontSize: 13,
+              opacity: isSyncing ? 0.5 : 1,
             }}
           >
             {t("settings.emailSection.disconnect")}
           </button>
         </div>
+        {/* Barre de progression `sync_emails` (`email-sync-progress`) — phase
+            "fetching" (durée non prévisible, IMAP) affichée indéterminée,
+            "analyzing" (batchs Claude) affichée proportionnelle. */}
+        {progress && progress.phase !== "done" && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 11.5, color: "var(--text-secondary)", marginBottom: 4 }}>
+              {progress.phase === "fetching"
+                ? t("settings.emailSection.progressFetching")
+                : t("settings.emailSection.progressAnalyzing", { processed: progress.processed, total: progress.total })}
+            </div>
+            <div style={{ height: 5, borderRadius: 3, background: "var(--border)", overflow: "hidden" }}>
+              <div
+                style={{
+                  height: "100%", borderRadius: 3, background: "var(--accent)",
+                  transition: "width 0.25s ease",
+                  width: progressPercent != null ? `${progressPercent}%` : "35%",
+                  animation: progressPercent == null ? "alfred-progress-indeterminate 1.2s ease-in-out infinite" : "none",
+                }}
+              />
+            </div>
+          </div>
+        )}
         {/* Badge de notification (spec/24 §5) — propositions issues des mails
             en attente de validation, ici en plus du badge global de la
             sidebar (emplacement le plus proche de la connexion IMAP). */}

@@ -36,6 +36,8 @@ export default {
       help: "Alfred lit les mails récents de INBOX (14 derniers jours) pour en extraire des tâches et du contexte — en lecture seule, jamais d'action sortante. Pour Gmail/Outlook, utilisez un mot de passe applicatif.",
       reviewPending: "{count} proposition à valider",
       reviewPendingPlural: "{count} propositions à valider",
+      progressFetching: "Récupération des mails…",
+      progressAnalyzing: "Analyse des mails… ({processed}/{total})",
     },
     calendarSection: {
       status: "Statut",
@@ -176,6 +178,8 @@ export default {
       help: "Alfred reads recent INBOX emails (last 14 days) to extract tasks and context — read-only, never an outgoing action. For Gmail/Outlook, use an app password.",
       reviewPending: "{count} proposal to review",
       reviewPendingPlural: "{count} proposals to review",
+      progressFetching: "Fetching emails…",
+      progressAnalyzing: "Analyzing emails… ({processed}/{total})",
     },
     calendarSection: {
       status: "Status",

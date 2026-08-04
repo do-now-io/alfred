@@ -108,3 +108,12 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+
+/* Barre de progression indéterminée (spec/24 — sync mails, phase "fetching"
+   IMAP dont la durée n'est pas connue à l'avance) : un segment glisse d'un
+   bout à l'autre plutôt qu'un remplissage figé, pour signaler une activité
+   réelle sans donner une fausse estimation de progression. */
+@keyframes alfred-progress-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(280%); }
+}

@@ -394,12 +394,33 @@ pub async fn sync_emails(db: &SqlitePool, vault_root: Option<&Path>, app_handle:
         return Ok(());
     }
 
-    let mut session = connect_and_login(&creds).await?;
+    // Barre de progression (Réglages → E-mails) : phase "fetching" pendant le
+    // FETCH IMAP (durée non prévisible à l'avance — pas de `total` fiable tant
+    // qu'on ne sait pas combien de mails sont nouveaux), puis "analyzing"
+    // batch par batch une fois `raw_emails` connu.
+    let emit_progress = |phase: &str, processed: usize, total: usize| {
+        let _ = app_handle.emit("email-sync-progress", serde_json::json!({ "phase": phase, "processed": processed, "total": total }));
+    };
+    emit_progress("fetching", 0, 0);
+
+    let mut session = match connect_and_login(&creds).await {
+        Ok(s) => s,
+        Err(e) => {
+            emit_progress("done", 0, 0);
+            return Err(e);
+        }
+    };
     let processed = already_processed(db).await;
     let days = window_days(db).await;
     let raw_emails = fetch_new_emails(&mut session, days, &processed).await;
     let _ = session.logout().await;
-    let raw_emails = raw_emails?;
+    let raw_emails = match raw_emails {
+        Ok(e) => e,
+        Err(e) => {
+            emit_progress("done", 0, 0);
+            return Err(e);
+        }
+    };
 
     let now = chrono::Utc::now().to_rfc3339();
     let _ = sqlx::query("INSERT OR REPLACE INTO config (key, value) VALUES ('imap_last_synced_at', ?)")
@@ -408,8 +429,12 @@ pub async fn sync_emails(db: &SqlitePool, vault_root: Option<&Path>, app_handle:
         .await;
 
     if raw_emails.is_empty() {
+        emit_progress("done", 0, 0);
         return Ok(());
     }
+
+    let total_batches = raw_emails.chunks(BATCH_SIZE).len();
+    emit_progress("analyzing", 0, total_batches);
 
     // Liste des projets déjà connus (spec/16b, correctif anti-doublon) —
     // récupérée UNE fois pour tout le sync, pas par batch : sans elle,
@@ -426,7 +451,7 @@ pub async fn sync_emails(db: &SqlitePool, vault_root: Option<&Path>, app_handle:
 
     let mut new_items = 0usize;
 
-    for batch in raw_emails.chunks(BATCH_SIZE) {
+    for (batch_index, batch) in raw_emails.chunks(BATCH_SIZE).enumerate() {
         let inputs: Vec<EmailInput> = batch
             .iter()
             .map(|e| EmailInput {
@@ -486,7 +511,11 @@ pub async fn sync_emails(db: &SqlitePool, vault_root: Option<&Path>, app_handle:
         // « analysé » ≠ « écrit ».
         let ids: Vec<String> = batch.iter().map(|e| e.message_id.clone()).collect();
         mark_processed(db, &ids).await;
+
+        emit_progress("analyzing", batch_index + 1, total_batches);
     }
+
+    emit_progress("done", total_batches, total_batches);
 
     if new_items > 0 {
         let _ = app_handle.emit("pending-email-reviews-changed", serde_json::json!({ "count": new_items }));

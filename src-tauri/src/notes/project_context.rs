@@ -471,3 +471,53 @@ pub async fn merge_projects(vault_root: &Path, db: &SqlitePool, source: &str, ta
 
     Ok(retagged)
 }
+
+/// Supprime `project` de toutes les notes/tâches qui le référencent, SANS le
+/// fusionner ailleurs (spec/07 « Supprimer le projet », même menu que
+/// « Fusionner avec… » sur la vue Projets) : retire la valeur de la liste
+/// `project` de chaque note (une note qui n'avait que celui-ci retombe dans
+/// « Sans projet », comme toute note isolée), retire le marqueur `+Projet`
+/// des tâches `Todo.md` concernées, et supprime la note de contexte du projet
+/// si elle existe. Retourne le nombre de notes retaguées.
+pub async fn delete_project(vault_root: &Path, db: &SqlitePool, project: &str) -> Result<usize> {
+    let project = project.trim();
+    if project.is_empty() {
+        return Ok(0);
+    }
+
+    let intelligence = vault_root.join(crate::ai::intelligence_folder(db).await);
+    if let Some(context_path) = find_project_context_note(&intelligence, project) {
+        tokio::fs::remove_file(&context_path).await.ok();
+    }
+
+    let notes = super::vault::list_notes_with_project(vault_root)?;
+    let mut updated = 0usize;
+    for n in notes {
+        if n.note_type == "context" || !n.project.iter().any(|p| p == project) {
+            continue;
+        }
+        let path = PathBuf::from(&n.path);
+        let mut note = super::vault::get_note_file(&path).await?;
+        note.metadata.project.retain(|p| p != project);
+        super::vault::update_note_file(&path, note.metadata, &note.body).await?;
+        updated += 1;
+    }
+
+    let todo_rel_path = crate::todos::todo_file_path(db).await;
+    let todo_path = vault_root.join(&todo_rel_path);
+    if let Ok(content) = tokio::fs::read_to_string(&todo_path).await {
+        let tasks = super::todo_md::parse_all(&content);
+        let mut updated_content = content.clone();
+        for task in tasks.iter().filter(|t| t.fields.project.as_deref() == Some(project)) {
+            let id = super::todo_md::normalize_title(&task.fields.titre);
+            let mut patch = task.fields.clone();
+            patch.project = None;
+            updated_content = super::todo_md::edit_task(&updated_content, &id, &patch)?;
+        }
+        if updated_content != content {
+            tokio::fs::write(&todo_path, updated_content).await?;
+        }
+    }
+
+    Ok(updated)
+}

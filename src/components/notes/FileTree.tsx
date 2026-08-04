@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { MdMoveToInbox, MdAutorenew, MdCheck, MdErrorOutline, MdStickyNote2, MdFolderSpecial, MdCreateNewFolder, MdArchive, MdUnarchive, MdInfoOutline, MdCallMerge } from "react-icons/md";
+import { MdMoveToInbox, MdAutorenew, MdCheck, MdErrorOutline, MdStickyNote2, MdFolderSpecial, MdCreateNewFolder, MdArchive, MdUnarchive, MdInfoOutline, MdCallMerge, MdEdit, MdDelete } from "react-icons/md";
 import type { VaultNode } from "../../bindings/VaultNode";
 import type { ProjectNote } from "../../bindings/ProjectNote";
 import type { NoteFile } from "../../bindings/NoteFile";
@@ -60,6 +60,13 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
   const [mergingProject, setMergingProject] = useState<string | null>(null);
   const [mergeTarget, setMergeTarget] = useState("");
   const [merging, setMerging] = useState(false);
+  // Renommer un projet (spec/07) — même geste que la fusion (`merge_projects`
+  // sert de renommage quand la cible n'existe pas encore comme groupe), mais
+  // une entrée de menu et un dialogue DÉDIÉS : un simple champ texte préréempli
+  // du nom actuel, pas un picker de projet existant.
+  const [renamingProject, setRenamingProject] = useState<string | null>(null);
+  const [renameProjectValue, setRenameProjectValue] = useState("");
+  const [renamingProjectBusy, setRenamingProjectBusy] = useState(false);
 
   // Clic sur le nom du projet (spec/16b, spec/07) : ouvre (crée lazily au
   // besoin) SA note de contexte unique — « un seul fichier de contexte par
@@ -92,6 +99,39 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
       setMerging(false);
     }
   };
+
+  const handleRenameProjectSubmit = async () => {
+    const newName = renameProjectValue.trim();
+    if (!renamingProject || !newName || newName === renamingProject || renamingProjectBusy) return;
+    setRenamingProjectBusy(true);
+    try {
+      await invoke("merge_projects", { source: renamingProject, target: newName });
+      setRenamingProject(null);
+      setRenameProjectValue("");
+      await fetchTree();
+      const refreshed = await invoke<ProjectNote[]>("get_notes_by_project");
+      setProjectNotes(refreshed);
+    } catch (e) {
+      console.error("[notes] rename project failed:", e);
+      window.alert(String(e));
+    } finally {
+      setRenamingProjectBusy(false);
+    }
+  };
+
+  const handleDeleteProject = async (project: string) => {
+    if (!window.confirm(t("notes.fileTree.confirmDeleteProject", { project }))) return;
+    try {
+      await invoke("delete_project", { project });
+      await fetchTree();
+      const refreshed = await invoke<ProjectNote[]>("get_notes_by_project");
+      setProjectNotes(refreshed);
+    } catch (e) {
+      console.error("[notes] delete_project failed:", e);
+      window.alert(String(e));
+    }
+  };
+
   const toggleEntryExpanded = (path: string) => {
     setExpandedEntries((prev) => {
       const next = new Set(prev);
@@ -122,7 +162,11 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
     // Masquage des archivées (spec/07, feedback tests) — bug corrigé : ce
     // filtre n'était appliqué qu'à la vue Dossiers, jamais à Projects, qui
     // les montrait donc en permanence.
-    const visible = showArchived ? projectNotes : projectNotes.filter((n) => n.status !== "archived");
+    // Note de contexte du projet (spec/16b) exclue de la liste : ce n'est pas
+    // une note d'« activité » du projet, elle s'ouvre en cliquant le TITRE du
+    // groupe (`openProjectContext`), pas comme une entrée de plus dans la liste.
+    const visible = (showArchived ? projectNotes : projectNotes.filter((n) => n.status !== "archived"))
+      .filter((n) => n.type !== "context");
 
     // « audio » = transcription datée d'un enregistrement, « transcription » =
     // note brute sans audio — les deux vivent dans alfred-raw et s'apparient pareil.
@@ -573,6 +617,20 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
             >
               <MdCallMerge size={15} /> {t("notes.fileTree.mergeMenuEntry")}
             </button>
+            {/* Mêmes actions que le clic droit sur un dossier (vue Dossiers,
+                `NoteContextMenu`) — renommer/supprimer, appliquées au projet. */}
+            <button
+              onClick={() => { setRenamingProject(projectMenu.project); setRenameProjectValue(projectMenu.project); setProjectMenu(null); }}
+              style={menuItemStyle}
+            >
+              <MdEdit size={15} /> {t("notes.contextMenu.rename")}
+            </button>
+            <button
+              onClick={() => { const p = projectMenu.project; setProjectMenu(null); handleDeleteProject(p); }}
+              style={menuItemStyle}
+            >
+              <MdDelete size={15} /> {t("notes.contextMenu.delete")}
+            </button>
           </div>
         </>
       )}
@@ -621,6 +679,42 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
               <button onClick={() => setMergingProject(null)} disabled={merging} style={btnStyle("transparent", "var(--text-secondary)", true)}>{t("notes.fileTree.cancel")}</button>
               <button onClick={handleMergeSubmit} disabled={merging || !mergeTarget.trim()} style={btnStyle("#C8914A", "#fff")}>
                 {merging ? t("notes.fileTree.merging") : t("notes.fileTree.mergeConfirm")}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Renommer un projet (spec/07) — dialogue dédié (simple champ texte),
+          distinct de la fusion même si l'action Rust sous-jacente est la même. */}
+      {renamingProject && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 999, background: "rgba(0,0,0,0.3)" }} onClick={() => !renamingProjectBusy && setRenamingProject(null)} />
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            background: "var(--card-bg)", border: "1px solid var(--border)",
+            borderRadius: 10, padding: 16, zIndex: 1000, width: 320,
+            boxShadow: "0 8px 28px rgba(0,0,0,0.25)",
+          }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)", marginBottom: 10 }}>
+              {t("notes.fileTree.renameProjectDialogTitle", { project: renamingProject })}
+            </div>
+            <input
+              autoFocus
+              value={renameProjectValue}
+              onChange={(e) => setRenameProjectValue(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              onKeyDown={(e) => { if (e.key === "Enter") handleRenameProjectSubmit(); if (e.key === "Escape") setRenamingProject(null); }}
+              style={{
+                width: "100%", border: "1px solid var(--border)", borderRadius: 6,
+                padding: "6px 9px", fontSize: 13, background: "var(--bg)", color: "var(--text-primary)",
+                marginBottom: 10, boxSizing: "border-box",
+              }}
+            />
+            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+              <button onClick={() => setRenamingProject(null)} disabled={renamingProjectBusy} style={btnStyle("transparent", "var(--text-secondary)", true)}>{t("notes.fileTree.cancel")}</button>
+              <button onClick={handleRenameProjectSubmit} disabled={renamingProjectBusy || !renameProjectValue.trim()} style={btnStyle("#C8914A", "#fff")}>
+                {t("notes.fileTree.ok")}
               </button>
             </div>
           </div>

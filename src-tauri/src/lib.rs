@@ -1114,6 +1114,19 @@ async fn merge_projects(
         .map_err(|e| e.to_string())
 }
 
+/// Supprime `project` de toutes les notes/tâches sans le fusionner ailleurs
+/// (spec/07 « Supprimer le projet ») — clic droit sur la vue Projets.
+#[tauri::command]
+async fn delete_project(
+    project: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<usize, String> {
+    let root = get_vault_root(&state)?;
+    notes::project_context::delete_project(&root, &state.db, &project)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Valeurs `project` distinctes du vault (combobox Projet + drag-drop, spec/07).
 #[tauri::command]
 async fn list_projects(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
@@ -1969,6 +1982,7 @@ pub fn run() {
             get_project_overview,
             open_project_context_note,
             merge_projects,
+            delete_project,
             get_vault_graph,
             list_projects,
             list_tags,

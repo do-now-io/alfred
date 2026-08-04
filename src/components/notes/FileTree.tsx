@@ -42,7 +42,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
   const [folderName, setFolderName] = useState("");
   const [ingest, setIngest] = useState<IngestState>("idle");
   const [ingestError, setIngestError] = useState<string | null>(null);
-  const [view, setView] = useState<"folders" | "projects">("folders");
+  const [view, setView] = useState<"folders" | "projects">("projects");
   // Masque les notes `status: archived` par défaut (spec/07 — archivage auto
   // des transcriptions après ingestion) ; le bouton « Afficher les archives »
   // les révèle (estompées, badge), sans jamais rien retirer du disque.
@@ -384,7 +384,7 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
           vit en pied d'arbre (ci-dessous), identique dans les deux vues. */}
       {vaultPath && (
         <div style={{ display: "flex", gap: 4, padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
-          {([["folders", t("notes.fileTree.viewFolders"), <MdStickyNote2 key="f" />], ["projects", t("notes.fileTree.viewProjects"), <MdFolderSpecial key="p" />]] as const).map(([id, label, icon]) => (
+          {([["projects", t("notes.fileTree.viewProjects"), <MdFolderSpecial key="p" />], ["folders", t("notes.fileTree.viewFolders"), <MdStickyNote2 key="f" />]] as const).map(([id, label, icon]) => (
             <button
               key={id}
               onClick={() => setView(id)}

@@ -8,9 +8,8 @@
 
 ## Vue d'ensemble
 
-Alfred se connecte à une boîte mail en **IMAP** (protocole universel, marche
-avec Gmail/Outlook/tout fournisseur qui l'expose), scanne une **fenêtre
-glissante** de mails récents, et pour chacun :
+Alfred se connecte à une boîte mail en **IMAP** (protocole universel), scanne
+une **fenêtre glissante** de mails récents, et pour chacun :
 - **propose des tâches** détectées → validées puis écrites dans `Todo.md`
   (spec/06), avec provenance (§5 — **revient sur** l'automatisation totale) ;
 - **détecte le(s) projet(s) concerné(s)** (comme pour une réunion, spec/16b)
@@ -34,15 +33,78 @@ peut pas s'appliquer tel quel à un mail. Voir §3.
 
 - **Config** (`secrets.json`, même fichier/mécanisme que la clé Anthropic
   perso, spec/00) : `imap_host`, `imap_port`, `imap_username`,
-  `imap_password` (mot de passe applicatif recommandé pour Gmail/Outlook —
-  documenté dans l'UI de connexion, pas géré programmatiquement), `imap_use_ssl`.
-- **UI** : nouvelle section dans Réglages (spec/11) — formulaire de connexion
-  IMAP + statut (connecté/erreur) + bouton **déconnecter**.
+  `imap_password`, `imap_use_ssl`.
 - **Dossier scanné** : `INBOX` uniquement pour cette v1 de la feature —
   **décision par défaut proposée** (pas plusieurs dossiers/labels
   sélectionnables au départ, pour limiter la complexité ; à rouvrir si le
   signal utile se trouve ailleurs, ex. un dossier "Clients").
 - **Crate suggérée** : `async-imap` (ou équivalent Rust mature) + TLS.
+
+### 1.1 Révision UI — sélection du fournisseur d'abord (retour utilisateur)
+
+> **Constat** : demander directement host/port/username/password (formulaire
+> IMAP générique) n'est pas clair pour l'utilisateur — il ne sait pas où
+> trouver ces informations ni ce qu'est un "mot de passe d'application".
+> **Nouvelle UI en 2 étapes.**
+
+**Étape 1 — Choisir le fournisseur** (Réglages → Connexion e-mails) :
+cartes/boutons **Gmail**, **iCloud Mail**, **Yahoo Mail**, **Autre serveur
+IMAP**. Le choix détermine `imap_host`/`imap_port`/`imap_use_ssl`
+**automatiquement** (tableau ci-dessous) — l'utilisateur n'a **plus à les
+connaître ni les saisir** pour les 3 fournisseurs reconnus.
+
+| Fournisseur | `imap_host` | `imap_port` | `imap_use_ssl` |
+|---|---|---|---|
+| Gmail | `imap.gmail.com` | 993 | `true` |
+| iCloud Mail | `imap.mail.me.com` | 993 | `true` |
+| Yahoo Mail | `imap.mail.yahoo.com` | 993 | `true` |
+| Autre (générique) | *saisi par l'utilisateur* | *saisi* | *saisi* |
+
+> **⚠️ Outlook / Microsoft 365 volontairement absent du sélecteur.**
+> Microsoft a désactivé l'authentification "basique" IMAP pour la quasi
+> totalité des comptes (depuis 2023) et **les mots de passe d'application
+> cessent de fonctionner** (retrait complet, plus de génération possible)
+> au **30 avril 2026** — seule l'authentification **OAuth2** reste
+> possible, explicitement **hors scope** de cette spec (§7, "pas de
+> fournisseurs OAuth dédiés"). Proposer Outlook mènerait à une impasse ; à
+> reconsidérer uniquement si un chantier OAuth dédié est fait un jour
+> (rupture du modèle "IMAP générique uniquement" de cette spec).
+
+**Étape 2 — Écran de configuration guidé, spécifique au fournisseur choisi**
+(pas un simple formulaire — des instructions numérotées avec des liens
+directs, ouverts dans le navigateur système comme les autres liens externes
+de l'app, ex. le portail Stripe/AlfredIA, `tauri_plugin_opener`) :
+
+**Gmail** :
+1. Vérifier que la **double authentification** est activée → [myaccount.google.com/security](https://myaccount.google.com/security)
+2. Générer un **mot de passe d'application** → [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) (nécessite l'étape 1)
+3. Coller l'adresse e-mail + le mot de passe généré (16 caractères) dans les 2 champs ci-dessous.
+
+**iCloud Mail** :
+1. Ouvrir [appleid.apple.com](https://appleid.apple.com) → section "Connexion et sécurité" → "Mots de passe pour application"
+2. Générer un mot de passe pour application (nécessite la double authentification, déjà obligatoire sur un compte Apple récent)
+3. Coller l'Apple ID (adresse e-mail) + le mot de passe généré ci-dessous.
+
+**Yahoo Mail** :
+1. Ouvrir [login.yahoo.com/account/security](https://login.yahoo.com/account/security)
+2. Section "Connexions externes" → "Créer un mot de passe d'application"
+3. Coller l'adresse e-mail + le mot de passe généré ci-dessous.
+
+**Autre serveur IMAP** : formulaire classique (host, port, SSL, identifiant,
+mot de passe) — comportement générique conservé pour le self-hosted / les
+fournisseurs non listés.
+
+- Pour les 3 fournisseurs reconnus, **seuls 2 champs sont demandés à
+  l'utilisateur** : adresse e-mail + mot de passe d'application (le reste
+  est pré-rempli, invisible). `connect_imap_account` (commande Tauri,
+  inchangée) reçoit toujours `host`/`port`/`use_ssl`/`username`/`password` —
+  c'est le **frontend** qui les pré-remplit selon le fournisseur choisi,
+  pas un nouveau paramètre côté backend.
+- **Test de connexion** avant de sauvegarder (`connect_imap_account` doit
+  déjà le faire, spec/24 §"Commandes" — vérifie que l'échec renvoie un
+  message actionnable, ex. "mot de passe refusé — vérifie que tu utilises
+  bien le mot de passe d'application généré, pas ton mot de passe habituel"
+  plutôt qu'une erreur IMAP brute).
 
 ## 2. Fenêtre glissante & dédoublonnage
 

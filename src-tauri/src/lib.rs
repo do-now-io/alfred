@@ -1137,6 +1137,18 @@ async fn list_projects(state: tauri::State<'_, AppState>) -> Result<Vec<String>,
         .map_err(|e| e.to_string())
 }
 
+/// Prénoms/noms connus (contexte global § Équipe + notes de contexte de
+/// projet § Personnes, spec/16b) — combobox du champ Participants (spec/07).
+#[tauri::command]
+async fn list_known_people(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+    let root = get_vault_root(&state)?;
+    let mut names = notes::context::list_known_people(&root, &state.db).await;
+    names.extend(notes::project_context::list_known_people(&root, &state.db).await);
+    names.sort();
+    names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    Ok(names)
+}
+
 /// Tags distincts du vault (autocomplétion Properties, spec/07).
 #[tauri::command]
 async fn list_tags(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
@@ -1985,6 +1997,7 @@ pub fn run() {
             delete_project,
             get_vault_graph,
             list_projects,
+            list_known_people,
             list_tags,
             get_vault_path,
             set_vault_path,

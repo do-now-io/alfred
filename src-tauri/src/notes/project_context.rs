@@ -521,3 +521,29 @@ pub async fn delete_project(vault_root: &Path, db: &SqlitePool, project: &str) -
 
     Ok(updated)
 }
+
+/// Prénoms/noms connus via TOUTES les notes de contexte de projet — section
+/// « Personnes » de chacune (spec/07, combobox du champ Participants,
+/// complète `context::list_known_people` qui ne couvre que le contexte
+/// global). Dédupliqué (insensible à la casse).
+pub async fn list_known_people(vault_root: &Path, db: &SqlitePool) -> Vec<String> {
+    let folder = vault_root.join(crate::ai::intelligence_folder(db).await);
+    let Ok(notes) = super::vault::list_notes_with_project(&folder) else { return vec![] };
+
+    let mut names: Vec<String> = Vec::new();
+    for n in notes.into_iter().filter(|n| n.note_type == "context") {
+        let Ok(raw) = std::fs::read_to_string(&n.path) else { continue };
+        let stem = Path::new(&n.path).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let (_, body) = frontmatter::parse(&raw, &stem);
+        let (_, sections) = split_sections(&body);
+        for (heading, content) in sections {
+            if heading_to_key(&heading) == Some("people") {
+                names.extend(super::context::extract_names_from_bullets(&content));
+            }
+        }
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    names.retain(|n| seen.insert(n.to_lowercase()));
+    names
+}

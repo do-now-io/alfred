@@ -98,6 +98,14 @@ ne permet de le corriger. On ajoute :
   → met à jour `project`. Déposer sur « Sans projet » vide le champ.
 - **Backend** : `list_projects()` (valeurs `project` distinctes du vault, pour la
   combobox et l'autocomplétion) ; la mise à jour du projet passe par le frontmatter.
+- **Suggestions du champ « Participants »** (spec/16b) : `list_known_people()`
+  agrège les prénoms de la section « Équipe » du contexte **global**
+  (`notes::context::list_known_people`) et de la section « Personnes » de
+  **chaque** note de contexte de **projet** (`notes::project_context::
+  list_known_people`), dédupliqués (insensible à la casse). Une puce
+  `- Prénom : rôle` → suggestion `Prénom` (repli sur la ligne entière si pas
+  de séparateur `:`/`—`). Combobox déjà existante (`ChipsInput`), suggestions
+  vides auparavant.
 
 ### Fusionner / renommer / supprimer un projet — ✅ construit
 

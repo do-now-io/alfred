@@ -460,3 +460,36 @@ pub async fn read_context(vault_root: &Path, db: &SqlitePool) -> Option<String> 
     }
     Some(body.chars().take(MAX_CONTEXT_CHARS).collect())
 }
+
+/// Extrait un nom par puce (`- Prénom : rôle` → `Prénom`) — la mise en forme
+/// écrite par `write_spoken_context`/`build_context_from_transcription`
+/// (spec/13/16). Repli sur la ligne entière si aucun séparateur `:`/`—` n'est
+/// trouvé (puce déjà éditée à la main sans ce format), plutôt que de perdre
+/// l'entrée.
+pub(crate) fn extract_names_from_bullets(section_body: &str) -> Vec<String> {
+    section_body
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("- "))
+        .filter_map(|l| {
+            let name = l.split([':', '—']).next().unwrap_or(l).trim();
+            (!name.is_empty()).then(|| name.to_string())
+        })
+        .collect()
+}
+
+/// Prénoms/noms connus via le contexte GLOBAL — section « Équipe » (spec/07,
+/// combobox du champ Participants). `None`/vide si le contexte n'existe pas
+/// ou n'a pas (encore) de section équipe remplie.
+pub async fn list_known_people(vault_root: &Path, db: &SqlitePool) -> Vec<String> {
+    let path = vault_root.join(context_note_path(db).await);
+    let Ok(raw) = tokio::fs::read_to_string(&path).await else { return vec![] };
+    let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let (_, body) = super::frontmatter::parse(&raw, &stem);
+    let (_, sections) = split_sections(&body);
+    for (heading, content) in sections {
+        if canonical_slot(&heading) == Some(1) {
+            return extract_names_from_bullets(&content);
+        }
+    }
+    vec![]
+}

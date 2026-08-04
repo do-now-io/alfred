@@ -20,16 +20,20 @@ interface Props {
 export default function PropertiesPanel({ metadata, onChange, collapsed, onToggleCollapsed }: Props) {
   const t = useT();
   // Valeurs existantes du vault, pour l'autocomplétion (spec/07 — list_tags /
-  // list_projects). Chargées à l'affichage du panneau ; un échec laisse juste
-  // les suggestions vides.
+  // list_projects / list_known_people). Chargées à l'affichage du panneau ;
+  // un échec laisse juste les suggestions vides.
   const [allTags, setAllTags] = useState<string[]>([]);
   const [allProjects, setAllProjects] = useState<string[]>([]);
+  // Prénoms connus (spec/07/16b) — contexte général § Équipe + note de
+  // contexte de CHAQUE projet § Personnes (`list_known_people`, backend).
+  const [knownPeople, setKnownPeople] = useState<string[]>([]);
   const profileName = useProfileStore((s) => s.name);
   const loadProfile = useProfileStore((s) => s.load);
 
   useEffect(() => {
     invoke<string[]>("list_tags").then(setAllTags).catch(() => {});
     invoke<string[]>("list_projects").then(setAllProjects).catch(() => {});
+    invoke<string[]>("list_known_people").then(setKnownPeople).catch(() => {});
     loadProfile();
   }, [loadProfile]);
 
@@ -127,7 +131,7 @@ export default function PropertiesPanel({ metadata, onChange, collapsed, onToggl
               <ChipsInput
                 values={metadata.participants}
                 onChange={(participants) => update({ participants })}
-                suggestions={[]}
+                suggestions={knownPeople}
                 placeholder={t("notes.properties.participantPlaceholder")}
                 selfName={profileName}
                 meLabel={t("notes.properties.me")}

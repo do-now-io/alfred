@@ -47,6 +47,10 @@ export default function Notes() {
   const [localBody, setLocalBody] = useState("");
   const editorRef = useRef<NoteEditorHandle>(null);
   const [allCollapsed, setAllCollapsed] = useState(false);
+  // Propriétés repliées sur un clic dans le texte (feedback tests — la
+  // section prenait trop de place à la lecture) ; redéployée à l'ouverture
+  // d'une nouvelle note (voir l'effet de sync ci-dessous) ou via son en-tête.
+  const [propertiesCollapsed, setPropertiesCollapsed] = useState(false);
 
   useEffect(() => {
     fetchVaultPath().then(() => {
@@ -64,6 +68,7 @@ export default function Notes() {
       setLocalMetadata(selectedFile.metadata);
       setLocalBody(selectedFile.body);
       setAllCollapsed(false);
+      setPropertiesCollapsed(false);
     }
   }, [selectedFile?.path]);
 
@@ -265,9 +270,20 @@ export default function Notes() {
                 unshare={() => invoke<void>("unshare_note", { notePath: selectedFile.path })}
               />
             </div>
-            <PropertiesPanel metadata={localMetadata} onChange={handleMetadataChange} />
+            <PropertiesPanel
+              metadata={localMetadata}
+              onChange={handleMetadataChange}
+              collapsed={propertiesCollapsed}
+              onToggleCollapsed={() => setPropertiesCollapsed((v) => !v)}
+            />
 
-            <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            {/* Un clic dans le texte replie les propriétés (feedback tests) —
+                capturé ici plutôt que dans NoteEditor pour ne pas coupler
+                l'éditeur à ce comportement d'écran. */}
+            <div
+              style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}
+              onMouseDown={() => { if (!propertiesCollapsed) setPropertiesCollapsed(true); }}
+            >
               <NoteEditor
                 ref={editorRef}
                 body={localBody}

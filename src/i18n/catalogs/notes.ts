@@ -89,6 +89,8 @@ export default {
     },
     properties: {
       header: "Propriétés",
+      collapse: "Replier les propriétés",
+      expand: "Déplier les propriétés",
       dateLabel: "date",
       tagsLabel: "tags",
       projectsLabel: "projets",
@@ -225,6 +227,8 @@ export default {
     },
     properties: {
       header: "Properties",
+      collapse: "Collapse properties",
+      expand: "Expand properties",
       dateLabel: "date",
       tagsLabel: "tags",
       projectsLabel: "projects",

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { MdCalendarToday, MdLabel, MdCategory, MdToggleOn, MdFolderSpecial, MdGroups } from "react-icons/md";
+import { MdCalendarToday, MdLabel, MdCategory, MdToggleOn, MdFolderSpecial, MdGroups, MdExpandMore, MdExpandLess } from "react-icons/md";
 import type { NoteMetadata } from "../../bindings/NoteMetadata";
 import { useProfileStore } from "../../store/profileStore";
 import ChipsInput from "./ChipsInput";
@@ -9,9 +9,15 @@ import { useT } from "../../i18n";
 interface Props {
   metadata: NoteMetadata;
   onChange: (updated: NoteMetadata) => void;
+  /** Repliée sur un clic dans le texte de la note (feedback tests — la
+   *  section propriétés prenait trop de place à la lecture) ; redépliable via
+   *  l'en-tête. État possédé par le parent (`Notes.tsx`), qui décide QUAND
+   *  replier (clic dans l'éditeur). */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }
 
-export default function PropertiesPanel({ metadata, onChange }: Props) {
+export default function PropertiesPanel({ metadata, onChange, collapsed, onToggleCollapsed }: Props) {
   const t = useT();
   // Valeurs existantes du vault, pour l'autocomplétion (spec/07 — list_tags /
   // list_projects). Chargées à l'affichage du panneau ; un échec laisse juste
@@ -32,85 +38,104 @@ export default function PropertiesPanel({ metadata, onChange }: Props) {
 
   return (
     <div style={{
-      padding: "16px 24px",
       borderBottom: "1px solid var(--border)",
       background: "var(--card-bg)",
     }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 12 }}>
+      <button
+        onClick={onToggleCollapsed}
+        title={collapsed ? t("notes.properties.expand") : t("notes.properties.collapse")}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 6,
+          padding: collapsed ? "8px 24px" : "12px 24px 4px",
+          background: "none", border: "none", cursor: "pointer",
+          fontSize: 13, fontWeight: 600, color: "var(--text-primary)",
+        }}
+      >
+        {collapsed ? <MdExpandMore size={16} /> : <MdExpandLess size={16} />}
         {t("notes.properties.header")}
-      </div>
+      </button>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {/* Date */}
-        <Row icon={<MdCalendarToday />} label={t("notes.properties.dateLabel")}>
-          <input
-            type="date"
-            value={metadata.date}
-            onChange={e => update({ date: e.target.value })}
-            style={inputStyle}
-          />
-        </Row>
+      {/* Réorganisée en 2 colonnes (feedback tests) : champs courts (date/
+          type/statut) à gauche, champs à puces (tags/projets/participants,
+          plus volumineux) à droite — moitié moins de hauteur qu'un empilement
+          vertical unique. */}
+      {!collapsed && (
+        <div style={{
+          padding: "4px 24px 16px",
+          display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr)", gap: "8px 28px",
+        }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+            <Row icon={<MdCalendarToday />} label={t("notes.properties.dateLabel")}>
+              <input
+                type="date"
+                value={metadata.date}
+                onChange={e => update({ date: e.target.value })}
+                style={inputStyle}
+              />
+            </Row>
 
-        {/* Tags — existants + autocomplétion (spec/07) */}
-        <Row icon={<MdLabel />} label={t("notes.properties.tagsLabel")}>
-          <ChipsInput
-            colored
-            values={metadata.tags}
-            onChange={(tags) => update({ tags })}
-            suggestions={allTags}
-            placeholder={t("notes.properties.tagPlaceholder")}
-            meLabel={t("notes.properties.me")}
-          />
-        </Row>
+            <Row icon={<MdCategory />} label={t("notes.properties.typeLabel")}>
+              <select
+                className="alfred-select"
+                value={metadata.type}
+                onChange={e => update({ type: e.target.value })}
+              >
+                <option value="note">note</option>
+                <option value="meeting">meeting</option>
+                <option value="task">task</option>
+              </select>
+            </Row>
 
-        {/* Projets — MULTI-sélection, combobox sur les projets du vault (spec/07) */}
-        <Row icon={<MdFolderSpecial />} label={t("notes.properties.projectsLabel")}>
-          <ChipsInput
-            values={metadata.project}
-            onChange={(project) => update({ project })}
-            suggestions={allProjects}
-            placeholder={t("notes.properties.projectPlaceholder")}
-            meLabel={t("notes.properties.me")}
-          />
-        </Row>
+            <Row icon={<MdToggleOn />} label={t("notes.properties.statusLabel")}>
+              <select
+                className="alfred-select"
+                value={metadata.status}
+                onChange={e => update({ status: e.target.value })}
+              >
+                <option value="active">active</option>
+                <option value="archived">archived</option>
+              </select>
+            </Row>
+          </div>
 
-        {/* Participants (spec/07) */}
-        <Row icon={<MdGroups />} label={t("notes.properties.participantsLabel")}>
-          <ChipsInput
-            values={metadata.participants}
-            onChange={(participants) => update({ participants })}
-            suggestions={[]}
-            placeholder={t("notes.properties.participantPlaceholder")}
-            selfName={profileName}
-            meLabel={t("notes.properties.me")}
-          />
-        </Row>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+            {/* Tags — existants + autocomplétion (spec/07) */}
+            <Row icon={<MdLabel />} label={t("notes.properties.tagsLabel")}>
+              <ChipsInput
+                colored
+                values={metadata.tags}
+                onChange={(tags) => update({ tags })}
+                suggestions={allTags}
+                placeholder={t("notes.properties.tagPlaceholder")}
+                meLabel={t("notes.properties.me")}
+              />
+            </Row>
 
-        {/* Type */}
-        <Row icon={<MdCategory />} label={t("notes.properties.typeLabel")}>
-          <select
-            className="alfred-select"
-            value={metadata.type}
-            onChange={e => update({ type: e.target.value })}
-          >
-            <option value="note">note</option>
-            <option value="meeting">meeting</option>
-            <option value="task">task</option>
-          </select>
-        </Row>
+            {/* Projets — MULTI-sélection, combobox sur les projets du vault (spec/07) */}
+            <Row icon={<MdFolderSpecial />} label={t("notes.properties.projectsLabel")}>
+              <ChipsInput
+                values={metadata.project}
+                onChange={(project) => update({ project })}
+                suggestions={allProjects}
+                placeholder={t("notes.properties.projectPlaceholder")}
+                meLabel={t("notes.properties.me")}
+              />
+            </Row>
 
-        {/* Status */}
-        <Row icon={<MdToggleOn />} label={t("notes.properties.statusLabel")}>
-          <select
-            className="alfred-select"
-            value={metadata.status}
-            onChange={e => update({ status: e.target.value })}
-          >
-            <option value="active">active</option>
-            <option value="archived">archived</option>
-          </select>
-        </Row>
-      </div>
+            {/* Participants (spec/07) */}
+            <Row icon={<MdGroups />} label={t("notes.properties.participantsLabel")}>
+              <ChipsInput
+                values={metadata.participants}
+                onChange={(participants) => update({ participants })}
+                suggestions={[]}
+                placeholder={t("notes.properties.participantPlaceholder")}
+                selfName={profileName}
+                meLabel={t("notes.properties.me")}
+              />
+            </Row>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

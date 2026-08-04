@@ -742,10 +742,39 @@ pub struct ContextAddition {
     pub scope: String,
     #[serde(default)]
     pub projects: Vec<String>,
+    /// Section de la note de projet où ranger ce fait (spec/16b — pertinent
+    /// UNIQUEMENT quand `scope: "project"`, ignoré sinon) : clé interne stable
+    /// (langue-indépendante, comme les clés de `notes::context::ContextTitles`)
+    /// — `"overview"|"people"|"decisions"|"events"|"tasks"|"vocabulary"`
+    /// (`notes::project_context::SECTION_KEYS`). Défaut `"overview"` si
+    /// absent/invalide — jamais un fait perdu faute de section reconnue.
+    #[serde(default = "default_section")]
+    pub section: String,
 }
 
 fn default_scope() -> String {
     "global".to_string()
+}
+
+fn default_section() -> String {
+    "overview".to_string()
+}
+
+/// Schéma JSON du champ `section` d'un `context_addition` (spec/16b) — partagé
+/// entre `analyze_tool` (réunions) et `email_batch_tool` (mails), les deux
+/// classant les faits `scope: "project"` dans les mêmes 6 sections
+/// (`notes::project_context::SECTION_KEYS`).
+fn context_addition_section_property(lang: &str) -> serde_json::Value {
+    let en = lang == "en";
+    json!({
+        "type": "string",
+        "enum": ["overview", "people", "decisions", "events", "tasks", "vocabulary"],
+        "description": if en {
+            "ONLY relevant when scope=\"project\" (ignored otherwise): which section of the project's context note this fact belongs to — \"overview\" (project's general nature/state), \"people\" (who's involved client-side + role), \"decisions\" (decisions made), \"events\" (durable deadlines/milestones only, not routine scheduling), \"tasks\" (durable project-level commitments to track, not fine-grained operational tasks), \"vocabulary\" (jargon/acronyms specific to this project)."
+        } else {
+            "UNIQUEMENT pertinent quand scope=\"project\" (ignoré sinon) : dans quelle section de la note de contexte du projet ranger ce fait — \"overview\" (nature/état général du projet), \"people\" (qui est impliqué côté client + rôle), \"decisions\" (décisions actées), \"events\" (échéances/jalons durables uniquement, pas le planning courant), \"tasks\" (engagements/chantiers durables à suivre au niveau projet, pas les tâches opérationnelles fines), \"vocabulary\" (jargon/sigles propres à ce projet)."
+        }
+    })
 }
 
 /// Grouped, thresholded propositions produced by the analysis pass (spec/17 §3).
@@ -783,6 +812,7 @@ Sois SÉLECTIF : ne remonte que ce qui est vraiment utile (haute confiance ou vr
 - `context_additions` : UNIQUEMENT un fait DURABLE et réutilisable — jamais un fait ponctuel propre à cette réunion (celui-là vit dans le compte-rendu et, le cas échéant, devient une tâche — ne le propose PAS ici). `fact` = le fait, en une ligne. Chaque fait porte un `scope` — deux critères DISTINCTS selon le niveau :
   - `scope: "global"` — réservé aux faits durables et NON liés à un projet précis : qui sont les personnes/entreprises et leur rôle/relation (« Toto est un nouveau prospect de DoNow »), ce que fait l'entreprise (« DoNow fait de l'infogérance »), le vocabulaire/jargon métier général. ✅ Exemples : « DoNow fait de l'infogérance » ; « Marie est cheffe de projet chez DoNow ». ❌ Pas ici : tout ce qui concerne un projet précis (ça descend au niveau `project`), planning et rendez-vous (« la prochaine réunion avec Toto se fera avec Hugo »), décisions/actions de CETTE réunion, chiffres ou états du jour.
   - `scope: "project"` — critère PLUS PERMISSIF, réservé à ce qui concerne spécifiquement un ou plusieurs projets identifiés (voir `projects_detected`) : tarifs, décisions, état du projet, personnes impliquées côté client, jargon spécifique au projet. Un fait « ponctuel » au niveau global peut être durable pour CE projet tant qu'il n'est pas re-changé. `projects` = sous-ensemble de `projects_detected` que ce fait concerne (obligatoire, non vide, si `scope: "project"`). ✅ Exemples : « Le tarif d'infogérance d'Acme est passé à 500€/mois » (`projects: ["Acme"]`) ; « Le projet Atlas est en phase de migration GKE » (`projects: ["Atlas"]`) ; une hausse de tarif commune à deux clients → `projects: ["Acme", "Beta"]`. ❌ Pas ici : ce qui est vrai « aujourd'hui » mais pas durablement même pour ce projet précis (planning ponctuel, décision de cette réunion sans portée durable).
+    - `section` (uniquement si `scope: "project"`, ignoré sinon) : la note de projet est structurée en 6 sections — range CE fait dans la bonne : `"overview"` (nature/état général du projet), `"people"` (qui est impliqué côté client + rôle), `"decisions"` (décisions actées), `"events"` (échéances/jalons/rendez-vous marquants — DURABLES seulement, pas le planning courant), `"tasks"` (engagements/chantiers durables à suivre au niveau projet — pas les tâches opérationnelles fines, déjà dans le compte-rendu), `"vocabulary"` (jargon/sigles propres à ce projet).
   Test mental avant de proposer, quel que soit le niveau : « Est-ce encore utile dans 3 mois pour bien traiter un futur enregistrement (sur ce projet, ou en général) ? » Si la réponse est non, ne le propose pas.
 - `projects_detected` : les projets identifiés dans la transcription (0, 1 ou plusieurs) — à partir du vocabulaire/noms déjà connus (contexte fourni) ou de noms de projet explicitement cités. Liste vide si aucun. Sert à pré-remplir le champ « Projets concernés » que l'utilisateur confirme.
 - `vocab_terms` : noms propres et termes techniques repérés dans la transcription (prénoms, entreprises, projets, outils, sigles, jargon) — INDÉPENDANT du `scope` des `context_additions` ci-dessus : toujours candidats au vocabulaire global (utile à la reconnaissance vocale), même si le fait qui les accompagne est `scope: "project"`. Liste plate de mots/noms uniquement, pas de phrases."#;
@@ -870,7 +900,8 @@ fn analyze_tool(lang: &str) -> serde_json::Value {
                                 } else {
                                     "OBLIGATOIRE, non vide, quand scope=\"project\" : sous-ensemble de `projects_detected` concerné par ce fait. Omis/vide quand scope=\"global\"."
                                 }
-                            }
+                            },
+                            "section": context_addition_section_property(lang)
                         },
                         "required": ["fact", "scope"]
                     },
@@ -1156,7 +1187,7 @@ pub async fn finalize_ingestion(
         if !confirmed_projects.is_empty() {
             let confirmed: std::collections::HashSet<&str> =
                 confirmed_projects.iter().map(|p| p.as_str()).collect();
-            let mut by_project: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+            let mut by_project: std::collections::HashMap<String, Vec<(String, String)>> = std::collections::HashMap::new();
             for c in context_additions.iter().filter(|c| c.scope == "project") {
                 let fact = c.fact.trim().to_string();
                 if fact.is_empty() {
@@ -1165,7 +1196,7 @@ pub async fn finalize_ingestion(
                 for p in &c.projects {
                     let p = p.trim();
                     if !p.is_empty() && confirmed.contains(p) {
-                        by_project.entry(p.to_string()).or_default().push(fact.clone());
+                        by_project.entry(p.to_string()).or_default().push((c.section.clone(), fact.clone()));
                     }
                 }
             }
@@ -1214,35 +1245,58 @@ pub async fn finalize_ingestion(
 // en extrait les faits durables en un appel Claude dédié, avant d'ajouter le fait
 // qui vient de déclencher la création (`notes::project_context`).
 
-const PROJECT_FACTS_SYSTEM: &str = r#"Tu es Alfred. On te donne l'historique des comptes-rendus déjà écrits pour UN projet précis (du plus récent au plus ancien, éventuellement tronqué). Extrais-en les faits DURABLES et réutilisables sur CE projet — tarifs, décisions, état du projet, personnes impliquées côté client, jargon spécifique — pour constituer sa fiche de contexte. Soumets via l'outil `submit_project_facts`.
+const PROJECT_FACTS_SYSTEM: &str = r#"Tu es Alfred. On te donne l'historique des comptes-rendus déjà écrits pour UN projet précis (du plus récent au plus ancien, éventuellement tronqué). Extrais-en les faits DURABLES et réutilisables sur CE projet pour constituer sa fiche de contexte, structurée en 6 sections. Soumets via l'outil `submit_project_facts`.
 
 Consignes :
+- Range chaque fait dans la bonne section : `overview` (nature/état général du projet), `people` (qui est impliqué côté client + rôle), `decisions` (décisions actées), `events` (échéances/jalons durables), `tasks` (engagements/chantiers durables à suivre), `vocabulary` (jargon/sigles propres à ce projet).
 - UNE formulation consolidée par fait — pas de paraphrases ni de doublons. Si un même sujet évolue dans le temps (ex. un tarif qui change), ne garde que l'état le PLUS RÉCENT (les comptes-rendus sont fournis du plus récent au plus ancien).
-- Écarte le ponctuel sans portée durable pour ce projet (planning, décisions du jour sans suite).
-- Liste vide si rien de fiable à en tirer — n'invente rien."#;
+- Écarte le ponctuel sans portée durable pour ce projet (planning du jour, décisions sans suite).
+- Liste vide sur une section si rien de fiable à en tirer — n'invente rien."#;
 
 fn project_facts_tool(lang: &str) -> serde_json::Value {
     let en = lang == "en";
+    let section = |desc_fr: &'static str, desc_en: &'static str| {
+        json!({ "type": "array", "items": { "type": "string" }, "description": if en { desc_en } else { desc_fr } })
+    };
     json!([{
         "name": "submit_project_facts",
-        "description": if en { "Submit the durable facts extracted from this project's meeting history." } else { "Soumets les faits durables extraits de l'historique de ce projet." },
+        "description": if en { "Submit the durable facts extracted from this project's meeting history, organized by section." } else { "Soumets les faits durables extraits de l'historique de ce projet, organisés par section." },
         "input_schema": {
             "type": "object",
             "properties": {
-                "facts": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": if en { "One durable fact per entry, deduplicated — most recent state wins on a changed fact (e.g. a rate change)." } else { "Un fait durable par entrée, dédupliqué — l'état le plus récent prime sur un fait qui a changé (ex. un tarif)." }
-                }
+                "overview": section("Nature/état général du projet.", "The project's general nature/state."),
+                "people": section("Qui est impliqué côté client + rôle.", "Who's involved client-side + role."),
+                "decisions": section("Décisions actées.", "Decisions made."),
+                "events": section("Échéances/jalons durables.", "Durable deadlines/milestones."),
+                "tasks": section("Engagements/chantiers durables à suivre.", "Durable project-level commitments to track."),
+                "vocabulary": section("Jargon/sigles propres à ce projet.", "Jargon/acronyms specific to this project.")
             },
-            "required": ["facts"]
+            "required": ["overview", "people", "decisions", "events", "tasks", "vocabulary"]
         }
     }])
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct ProjectFactSections {
+    #[serde(default)]
+    overview: Vec<String>,
+    #[serde(default)]
+    people: Vec<String>,
+    #[serde(default)]
+    decisions: Vec<String>,
+    #[serde(default)]
+    events: Vec<String>,
+    #[serde(default)]
+    tasks: Vec<String>,
+    #[serde(default)]
+    vocabulary: Vec<String>,
+}
+
 /// One Claude call → durable facts extracted from a project's concatenated
-/// meeting history (spec/16b §4, création rétroactive de la note de projet).
-pub(crate) async fn extract_project_facts(history_text: &str, project: &str, db: &SqlitePool) -> Result<Vec<String>> {
+/// meeting history, already classified by section (spec/16b §4, création
+/// rétroactive de la note de projet). Returns `(section_key, facts)` pairs in
+/// `notes::project_context::SECTION_KEYS` order.
+pub(crate) async fn extract_project_facts(history_text: &str, project: &str, db: &SqlitePool) -> Result<Vec<(String, Vec<String>)>> {
     if history_text.trim().is_empty() {
         return Ok(vec![]);
     }
@@ -1269,8 +1323,15 @@ pub(crate) async fn extract_project_facts(history_text: &str, project: &str, db:
         .and_then(|c| c.iter().find(|b| b["type"] == "tool_use" && b["name"] == "submit_project_facts"))
         .ok_or_else(|| anyhow!("Claude did not call submit_project_facts: {:?}", resp))?;
 
-    let facts: Vec<String> = serde_json::from_value(block["input"]["facts"].clone()).unwrap_or_default();
-    Ok(facts)
+    let sections: ProjectFactSections = serde_json::from_value(block["input"].clone()).unwrap_or_default();
+    Ok(vec![
+        ("overview".to_string(), sections.overview),
+        ("people".to_string(), sections.people),
+        ("decisions".to_string(), sections.decisions),
+        ("events".to_string(), sections.events),
+        ("tasks".to_string(), sections.tasks),
+        ("vocabulary".to_string(), sections.vocabulary),
+    ])
 }
 
 // ─── Extraction par batch d'e-mails (spec/24) ────────────────────────────────
@@ -1328,16 +1389,19 @@ pub struct EmailBatchOutput {
     pub context_additions: Vec<ContextAddition>,
 }
 
-const EMAIL_BATCH_SYSTEM: &str = r#"Tu es Alfred. On te donne un lot de mails récents d'une boîte mail (objet, expéditeur, date, corps), chacun identifié par son Message-ID. Pour CHAQUE mail, analyse s'il contient une tâche à faire clairement énoncée et/ou un fait durable à retenir. Soumets via l'outil `submit_email_batch`.
+const EMAIL_BATCH_SYSTEM: &str = r#"Tu es Alfred. On te donne un lot de mails récents d'une boîte mail (objet, expéditeur, date, corps), chacun identifié par son Message-ID, ainsi que la LISTE DES PROJETS DÉJÀ CONNUS d'Alfred. Pour CHAQUE mail, analyse s'il contient une tâche à faire clairement énoncée et/ou un fait durable à retenir. Soumets via l'outil `submit_email_batch`.
 
 Sois SÉLECTIF : la plupart des mails (newsletters, notifications, échanges sans action) ne contiennent RIEN d'exploitable — dans ce cas, ce mail est simplement ABSENT de `emails` (pas d'entrée vide). Ne force jamais une tâche ou un fait qui n'est pas clairement là.
 
 - `emails[].message_id` : recopié tel quel depuis l'entrée.
 - `emails[].tasks` : tâches à faire clairement énoncées dans CE mail (`title`, `responsable` optionnel si un nom est explicitement mentionné, `echeance` optionnelle au format YYYY-MM-DD si une date est explicite). Liste vide si aucune.
-- `emails[].projects` : le(s) projet(s) concernés par ce mail (0, 1 ou plusieurs), à partir du vocabulaire/noms déjà connus (contexte fourni) ou de noms de projet/client explicitement cités dans le mail. Liste vide si aucun projet identifiable.
+- `emails[].projects` : le(s) PROJET(S) (pas les clients — voir plus bas) concernés par ce mail (0, 1 ou plusieurs).
+  ⚠️ RÈGLE CRITIQUE — anti-doublon : si un projet de la liste « déjà connus » désigne clairement la même chose que ce dont parle ce mail, RÉUTILISE EXACTEMENT ce nom (même orthographe/casse), NE CRÉE PAS une variante (ex. avec un sous-titre du type « - Analyse » ou « - Communication », une casse différente, ou un synonyme). N'invente un nouveau nom que si AUCUN projet connu ne correspond.
+  ⚠️ Distingue PROJET et CLIENT : un projet est un chantier/une mission avec un objet propre (ex. « Migration GKE », « Infogérance Q1 ») ; un client/une entreprise (ex. « Acme », « Flexifleet ») peut avoir PLUSIEURS projets, ou n'être que le nom du projet lui-même si le mail ne distingue pas plus finement. Ne fabrique pas un projet distinct par simple changement de sujet de mail si c'est en réalité la même mission/le même client suivie dans le temps — recoupe avec la liste connue et le fil de discussion (objet, expéditeur) avant de trancher.
+  Liste vide si aucun projet identifiable.
 - `context_additions` : UNIQUEMENT des faits DURABLES et réutilisables toutes conversations confondues — jamais un fait ponctuel propre à un seul mail (ça devient une tâche, pas un fait). Chaque fait porte un `scope` — deux critères DISTINCTS selon le niveau :
   - `scope: "global"` — réservé aux faits durables NON liés à un projet précis : qui sont les personnes/entreprises et leur rôle/relation, ce que fait l'entreprise, le vocabulaire/jargon métier général.
-  - `scope: "project"` — critère PLUS PERMISSIF, réservé à ce qui concerne spécifiquement un ou plusieurs projets/clients identifiés dans CE batch : tarifs, décisions, état du projet, personnes impliquées côté client, jargon spécifique. `projects` = les projets concernés (obligatoire, non vide, si `scope: "project"`).
+  - `scope: "project"` — critère PLUS PERMISSIF, réservé à ce qui concerne spécifiquement un ou plusieurs projets identifiés dans CE batch (même règle anti-doublon que `emails[].projects` ci-dessus) : tarifs, décisions, état du projet, personnes impliquées côté client, jargon spécifique. `projects` = les projets concernés (obligatoire, non vide, si `scope: "project"`). `section` range le fait dans la bonne partie de la fiche projet.
   Test mental avant de proposer, quel que soit le niveau : « Est-ce encore utile dans 3 mois pour bien traiter un futur mail (sur ce projet, ou en général) ? » Si la réponse est non, ne le propose pas."#;
 
 fn email_batch_tool(lang: &str) -> serde_json::Value {
@@ -1383,7 +1447,8 @@ fn email_batch_tool(lang: &str) -> serde_json::Value {
                         "properties": {
                             "fact": { "type": "string" },
                             "scope": { "type": "string", "enum": ["global", "project"] },
-                            "projects": { "type": "array", "items": { "type": "string" } }
+                            "projects": { "type": "array", "items": { "type": "string" } },
+                            "section": context_addition_section_property(lang)
                         },
                         "required": ["fact", "scope"]
                     },
@@ -1399,10 +1464,14 @@ fn email_batch_tool(lang: &str) -> serde_json::Value {
     }])
 }
 
-/// Un appel Claude pour tout le batch (spec/24 §4) — pas d'injection du
+/// Un appel Claude pour tout le batch (spec/24 §4). Pas d'injection du
 /// contexte interne pour cette v1 (pas demandé par la spec ; le batching
-/// limite déjà le coût).
-pub async fn extract_email_batch(emails: &[EmailInput], db: &SqlitePool) -> Result<EmailBatchOutput> {
+/// limite déjà le coût) — mais `known_projects` (spec/16b, correctif
+/// anti-doublon) EST injectée : sans elle, chaque batch inventait son propre
+/// nom/casse/sous-titre pour un même projet, faute de référent (constat
+/// utilisateur — « Energy Pool », « EnergyPool - Analyse Projet »… traités
+/// comme autant de projets distincts).
+pub async fn extract_email_batch(emails: &[EmailInput], known_projects: &[String], db: &SqlitePool) -> Result<EmailBatchOutput> {
     if emails.is_empty() {
         return Ok(EmailBatchOutput::default());
     }
@@ -1412,6 +1481,19 @@ pub async fn extract_email_batch(emails: &[EmailInput], db: &SqlitePool) -> Resu
     let system_text = format!("{}\n{}", EMAIL_BATCH_SYSTEM, language_directive(lang));
 
     let mut user_text = String::new();
+    if known_projects.is_empty() {
+        user_text.push_str(if lang == "en" {
+            "Known projects: none yet.\n\n"
+        } else {
+            "Projets déjà connus : aucun pour l'instant.\n\n"
+        });
+    } else {
+        user_text.push_str(&format!(
+            "{} {}\n\n",
+            if lang == "en" { "Known projects (reuse these names exactly when they match):" } else { "Projets déjà connus (réutilise ces noms exactement quand ils correspondent) :" },
+            known_projects.join(", ")
+        ));
+    }
     for e in emails {
         user_text.push_str(&format!(
             "--- Mail (Message-ID: {}) ---\nObjet : {}\nDe : {}\nDate : {}\n\n{}\n\n",
@@ -1467,7 +1549,7 @@ pub async fn route_email_context_additions(db: &SqlitePool, vault_root: &Path, a
         }
     }
 
-    let mut by_project: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    let mut by_project: std::collections::HashMap<String, Vec<(String, String)>> = std::collections::HashMap::new();
     for c in additions.iter().filter(|c| c.scope == "project") {
         let fact = c.fact.trim().to_string();
         if fact.is_empty() {
@@ -1476,7 +1558,7 @@ pub async fn route_email_context_additions(db: &SqlitePool, vault_root: &Path, a
         for p in &c.projects {
             let p = p.trim();
             if !p.is_empty() {
-                by_project.entry(p.to_string()).or_default().push(fact.clone());
+                by_project.entry(p.to_string()).or_default().push((c.section.clone(), fact.clone()));
             }
         }
     }

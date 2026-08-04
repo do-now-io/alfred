@@ -95,14 +95,6 @@ pub(crate) fn titles(lang: &str) -> &'static ContextTitles {
     if lang == "en" { &TITLES_EN } else { &TITLES_FR }
 }
 
-/// The two (FR, EN) spellings of `## Appris automatiquement` — for modules
-/// outside `context.rs` (`notes::project_context`, spec/16b) that need to
-/// recognize the section regardless of which language it was written in,
-/// without reaching into the private `TITLES_FR`/`TITLES_EN` consts directly.
-pub(crate) fn learned_heading_variants() -> (&'static str, &'static str) {
-    (TITLES_FR.learned_auto, TITLES_EN.learned_auto)
-}
-
 async fn lang(db: &SqlitePool) -> String {
     crate::ai::app_language(db).await
 }
@@ -117,7 +109,7 @@ fn context_template(lang: &str) -> String {
 
 /// Reconnaît `## Appris automatiquement` **ou** `## Automatically learned` —
 /// peu importe dans quelle langue la note a été écrite (spec/16 « piège »).
-pub(crate) fn has_learned_heading(body: &str) -> bool {
+fn has_learned_heading(body: &str) -> bool {
     body.lines().any(|l| {
         let t = l.trim();
         t == format!("## {}", TITLES_FR.learned_auto) || t == format!("## {}", TITLES_EN.learned_auto)

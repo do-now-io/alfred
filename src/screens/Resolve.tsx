@@ -193,7 +193,7 @@ export default function Resolve() {
   const [unclearEdit, setUnclearEdit] = useState<Record<number, string>>({});
   const [taskStatus, setTaskStatus] = useState<Record<number, ItemStatus>>({});
   const [taskOwner, setTaskOwner] = useState<Record<number, string>>({});
-  const [adds, setAdds] = useState(() => contextAdds.map((c) => ({ fact: c.fact, scope: c.scope, projects: c.projects, accepted: true })));
+  const [adds, setAdds] = useState(() => contextAdds.map((c) => ({ fact: c.fact, scope: c.scope, projects: c.projects, section: c.section, accepted: true })));
   // « Projets concernés » (spec/16b §1) : pré-rempli avec `projects_detected`,
   // éditable — devient le `project` du compte-rendu et confirme le routage
   // des `context_additions` à `scope: "project"`. Non affiché/utilisé en mode
@@ -214,7 +214,7 @@ export default function Resolve() {
   // Keep local state in sync if a new session arrives.
   useEffect(() => {
     setText(session?.text ?? "");
-    setAdds((session?.clarifications.context_additions ?? []).map((c) => ({ fact: c.fact, scope: c.scope, projects: c.projects, accepted: true })));
+    setAdds((session?.clarifications.context_additions ?? []).map((c) => ({ fact: c.fact, scope: c.scope, projects: c.projects, section: c.section, accepted: true })));
     setProjectsConfirmed(session?.projectsConfirmed ?? []);
     setFixStatus({}); setFixEdit({}); setUnclearStatus({}); setUnclearEdit({}); setTaskStatus({}); setTaskOwner({});
   }, [session?.recordingId]);
@@ -278,7 +278,7 @@ export default function Resolve() {
 
       const contextAdditions: ContextAddition[] = adds
         .filter((a) => a.accepted)
-        .map((a) => ({ fact: a.fact.trim(), scope: a.scope, projects: a.projects }))
+        .map((a) => ({ fact: a.fact.trim(), scope: a.scope, projects: a.projects, section: a.section }))
         .filter((a) => a.fact);
       await invoke("finalize_ingestion", {
         recordingId: session.recordingId,
@@ -482,12 +482,30 @@ export default function Resolve() {
                 <input value={a.fact} onChange={(e) => setAdds((prev) => prev.map((x, k) => (k === i ? { ...x, fact: e.target.value } : x)))} style={{ ...smallInput, opacity: a.accepted ? 1 : 0.5 }} />
               </div>
               {/* Portée du fait (spec/16b §2/§3) : global (Contexte Alfred.md)
-                  ou un/plusieurs projets — informatif seulement, la portée elle-
-                  même n'est pas éditable ici (décidée par l'analyse). */}
-              <div style={{ fontSize: 10.5, color: "var(--text-muted)", paddingLeft: 24 }}>
-                {a.scope === "project" && a.projects.length > 0
-                  ? t("resolve.contextAdds.scopeProject", { projects: a.projects.join(", ") })
-                  : t("resolve.contextAdds.scopeGlobal")}
+                  ou un/plusieurs projets — informatif, la portée elle-même
+                  n'est pas éditable ici (décidée par l'analyse). Quand le
+                  fait est propre à un projet, la SECTION de sa note (spec/16b
+                  §4) reste éditable — la classification de Claude peut se
+                  tromper, la corriger ici évite de la reclasser à la main
+                  ensuite dans la note. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 24 }}>
+                <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+                  {a.scope === "project" && a.projects.length > 0
+                    ? t("resolve.contextAdds.scopeProject", { projects: a.projects.join(", ") })
+                    : t("resolve.contextAdds.scopeGlobal")}
+                </div>
+                {a.scope === "project" && (
+                  <select
+                    className="alfred-select"
+                    value={a.section}
+                    onChange={(e) => setAdds((prev) => prev.map((x, k) => (k === i ? { ...x, section: e.target.value } : x)))}
+                    style={{ fontSize: 10.5, padding: "1px 4px" }}
+                  >
+                    {(["overview", "people", "decisions", "events", "tasks", "vocabulary"] as const).map((key) => (
+                      <option key={key} value={key}>{t(`resolve.contextAdds.section.${key}`)}</option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
           ))}

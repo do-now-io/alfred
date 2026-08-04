@@ -9,4 +9,13 @@
  * `projects_detected`). Défaut `"global"` si absent/mal formé — le critère le
  * plus resserré, jamais un fait perdu dans un projet non voulu.
  */
-export type ContextAddition = { fact: string, scope: string, projects: Array<string>, };
+export type ContextAddition = { fact: string, scope: string, projects: Array<string>, 
+/**
+ * Section de la note de projet où ranger ce fait (spec/16b — pertinent
+ * UNIQUEMENT quand `scope: "project"`, ignoré sinon) : clé interne stable
+ * (langue-indépendante, comme les clés de `notes::context::ContextTitles`)
+ * — `"overview"|"people"|"decisions"|"events"|"tasks"|"vocabulary"`
+ * (`notes::project_context::SECTION_KEYS`). Défaut `"overview"` si
+ * absent/invalide — jamais un fait perdu faute de section reconnue.
+ */
+section: string, };

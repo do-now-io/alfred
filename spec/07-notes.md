@@ -99,51 +99,43 @@ ne permet de le corriger. On ajoute :
 - **Backend** : `list_projects()` (valeurs `project` distinctes du vault, pour la
   combobox et l'autocomplétion) ; la mise à jour du projet passe par le frontmatter.
 
-### Renommer / fusionner / supprimer un projet — 📝 spec écrite, rien de codé (post-v1)
+### Fusionner / renommer un projet — ✅ construit (fusion+renommage) ; suppression seule 📝 pas codée
 
 `project` n'est aujourd'hui qu'une **valeur de texte libre**, répétée dans
 plusieurs endroits (pas d'entité "projet" avec un identifiant stable) : le
 frontmatter `project` (liste) des comptes-rendus, et le marqueur `+Projet` des
-lignes de tâches dans `Todo.md` (spec/06). Renommer un projet doit mettre à
-jour **toutes** ces occurrences en une fois, sinon on se retrouve avec un
-ancien nom orphelin qui réapparaît (une tâche ou une note oubliée) en plus du
-nouveau. Note liée : une fois spec/16b (contexte par projet) codée, la note
-de contexte du projet (`alfred-intelligence/<Projet>.md`) doit suivre le
-renommage — **dépendance explicite**, cette tâche-ci doit être livrée avant.
+lignes de tâches dans `Todo.md` (spec/06). Fusionner/renommer un projet doit
+mettre à jour **toutes** ces occurrences en une fois, sinon on se retrouve
+avec un ancien nom orphelin qui réapparaît (une tâche ou une note oubliée) en
+plus du nouveau.
 
 - **Déclencheur** : **clic droit sur l'en-tête de groupe** dans la vue
-  "Projets" de l'arbre Notes (`FileTree.tsx` — nouveau menu contextuel, n'existe
-  pas aujourd'hui sur cet en-tête, contrairement aux notes/dossiers) →
-  **"Renommer le projet"** et **"Supprimer le projet"**.
-- **Portée du renommage** (correspondance **tolérante** — espaces/casse — pour
-  repérer toutes les occurrences à modifier, mais la nouvelle valeur écrite
-  partout est la graphie exacte saisie par l'utilisateur ; effet de bord
-  assumé : ça uniformise au passage les variantes de casse/espace d'un même
-  projet) :
-  1. `project` sur toutes les notes qui le contiennent dans leur liste
-     (frontmatter).
-  2. Tous les marqueurs `+Projet` dans `Todo.md`.
-  3. La note de contexte du projet (spec/16b) — renommage du fichier +
-     mise à jour de son frontmatter `project`.
-- **Collision** — renommer vers un nom de projet **déjà existant** revient à
-  **fusionner** les deux projets en un seul (toutes les notes/tâches des deux
-  se retrouvent sous le même nom). **Confirmation explicite** requise
-  (`window.confirm`, même pattern que le reste de l'app) : « Ceci va fusionner
-  avec le projet existant "X" — toutes les notes et tâches seront regroupées
-  sous ce nom. Continuer ? »
-- **Suppression** — vide/retire ce projet de toutes les notes et tâches qui le
-  référencent (une note qui n'avait que ce projet retombe dans "Sans projet",
-  comme aujourd'hui pour une note isolée) ; supprime aussi sa note de contexte
-  (spec/16b) si elle existe. **Confirmation explicite** requise (même pattern).
-- **Renommage simple** : une **confirmation `window.confirm`** suffit (pas
-  besoin d'aperçu détaillé du nombre de notes/tâches touchées avant de
-  valider).
+  "Projets" de l'arbre Notes (`FileTree.tsx`) → **« Fusionner avec… »**, un
+  champ texte (autocomplétion sur les projets existants, `datalist`) pour
+  saisir la cible.
+- **Fusion = renommage** (`merge_projects(source, target)`, `notes/
+  project_context.rs`) : `target` n'a pas besoin d'exister déjà — retagger
+  `source` vers un nom entièrement nouveau EST un renommage. Met à jour :
+  1. `project` sur toutes les notes qui portaient `source` dans leur liste
+     (frontmatter, `update_note_file`).
+  2. Tous les marqueurs `+Projet` de `Todo.md` portant `source`
+     (`todo_md::edit_task`, réutilise l'infra existante).
+  3. La note de contexte du projet (spec/16b) — fusionnée **section par
+     section** (dédupliqué) dans celle de `target` (créée/reconstruite
+     rétroactivement si besoin), celle de `source` supprimée.
+  - **Non couvert** (différences avec la version spec initiale ci-dessous) :
+    pas de correspondance tolérante espaces/casse pour repérer les
+    occurrences (comparaison exacte sur la valeur choisie/tapée par
+    l'utilisateur) ; pas de `window.confirm` avant fusion (action déclenchée
+    directement depuis le menu contextuel, sans étape de confirmation
+    supplémentaire) — à ajouter si l'usage en test montre un besoin de
+    filet de sécurité.
+- **Suppression seule** (vider/retirer un projet de toutes les notes/tâches
+  sans le fusionner ailleurs) : **pas codée** — reste une tâche séparée si le
+  besoin se confirme (ROADMAP Phase G).
 
-**Commandes Tauri à créer** : `rename_project(old: String, new: String)`,
-`delete_project(name: String)` — réécrivent en batch le frontmatter des notes
-concernées (`update_note_file`) et `Todo.md` (réutilise l'infra de
-`todo_md.rs`, même famille que `move_task`/`merge_tasks`), puis (une fois
-spec/16b codée) la note de contexte du projet.
+**Commande Tauri** : `merge_projects(source: String, target: String) ->
+usize` (nombre de notes retaguées) — `notes/project_context.rs`.
 
 ### Paire transcription ↔ compte-rendu — ✅ fait (feedback tests)
 

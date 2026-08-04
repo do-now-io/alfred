@@ -153,9 +153,22 @@ la plupart sans tâche) :
   pour chaque mail du batch (identifié par son `Message-ID`) → liste de
   tâches détectées (`title`, `responsable?`, `échéance?`), `projects: string[]`
   (projets concernés, même logique de détection que spec/16b §1),
-  `context_additions` (mêmes champs `scope`/`projects` que spec/16b §2 —
-  **réutilise exactement le même schéma et les mêmes critères durable/
-  ponctuel**, pas de nouvelle logique à inventer).
+  `context_additions` (mêmes champs `scope`/`projects`/`section` que spec/16b
+  §2/§4 — **réutilise exactement le même schéma et les mêmes critères
+  durable/ponctuel**, pas de nouvelle logique à inventer).
+- ✅ **Anti-doublon de projets (corrigé, feedback tests).** Constat : sans
+  aucun référent, chaque batch inventait son propre nom/casse/sous-titre pour
+  un même projet (« Energy Pool » / « EnergyPool - Analyse Projet » / «
+  EnergyPool - Communication et Interview » traités comme trois projets
+  distincts). `extract_email_batch` reçoit désormais la **liste des projets
+  déjà connus** (`list_projects`, récupérée une fois par synchronisation, pas
+  par batch) injectée dans le prompt utilisateur, avec une consigne
+  impérative : réutiliser EXACTEMENT un nom connu quand il correspond, ne
+  jamais en fabriquer une variante ; et **distinguer projet et client** (un
+  client peut porter plusieurs projets — ne pas les confondre au gré du sujet
+  du mail). Filet de rattrapage pour ce qui est déjà créé ou les cas
+  ambigus : fusion manuelle `merge_projects` (spec/07/16b, clic droit sur la
+  vue Projets → « Fusionner avec… »).
 - **Mails sans rien d'exploitable** (newsletters, notifications, spam,
   échanges sans tâche ni fait) → simplement absents de la sortie structurée,
   aucune trace n'est créée. Pas de pré-filtre par mots-clés/expéditeur avant

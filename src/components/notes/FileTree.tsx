@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { MdMoveToInbox, MdAutorenew, MdCheck, MdErrorOutline, MdStickyNote2, MdFolderSpecial, MdCreateNewFolder, MdArchive, MdUnarchive, MdInfoOutline } from "react-icons/md";
+import { MdMoveToInbox, MdAutorenew, MdCheck, MdErrorOutline, MdStickyNote2, MdFolderSpecial, MdCreateNewFolder, MdArchive, MdUnarchive, MdInfoOutline, MdCallMerge } from "react-icons/md";
 import type { VaultNode } from "../../bindings/VaultNode";
 import type { ProjectNote } from "../../bindings/ProjectNote";
 import type { NoteFile } from "../../bindings/NoteFile";
@@ -53,11 +53,45 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
   // défaut sous une seule ligne — un chevron la déplie (au lieu d'être toujours
   // affichée en retrait sous son compte-rendu).
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
-  // Menu contextuel de l'en-tête de groupe (spec/28, entrée #2) — une seule
-  // entrée « Voir l'état du projet » pour l'instant (renommer/fusionner un
-  // projet est une tâche séparée de spec/07, pas encore codée).
+  // Menu contextuel de l'en-tête de groupe (spec/28 « Voir l'état du projet »,
+  // spec/07/16b « Fusionner avec… » — nettoyage manuel des quasi-doublons).
   const [projectMenu, setProjectMenu] = useState<{ x: number; y: number; project: string } | null>(null);
   const [viewingProject, setViewingProject] = useState<string | null>(null);
+  const [mergingProject, setMergingProject] = useState<string | null>(null);
+  const [mergeTarget, setMergeTarget] = useState("");
+  const [merging, setMerging] = useState(false);
+
+  // Clic sur le nom du projet (spec/16b, spec/07) : ouvre (crée lazily au
+  // besoin) SA note de contexte unique — « un seul fichier de contexte par
+  // projet, accessible en cliquant sur son nom ».
+  const openProjectContext = async (project: string) => {
+    if (!project) return;
+    try {
+      const note = await invoke<NoteFile>("open_project_context_note", { project });
+      await fetchTree(); // la note vient peut-être d'être créée
+      onSelect(note.path);
+    } catch (e) {
+      console.error("[notes] open_project_context_note failed:", e);
+    }
+  };
+
+  const handleMergeSubmit = async () => {
+    if (!mergingProject || !mergeTarget.trim() || merging) return;
+    setMerging(true);
+    try {
+      await invoke("merge_projects", { source: mergingProject, target: mergeTarget.trim() });
+      setMergingProject(null);
+      setMergeTarget("");
+      await fetchTree();
+      const refreshed = await invoke<ProjectNote[]>("get_notes_by_project");
+      setProjectNotes(refreshed);
+    } catch (e) {
+      console.error("[notes] merge_projects failed:", e);
+      window.alert(String(e));
+    } finally {
+      setMerging(false);
+    }
+  };
   const toggleEntryExpanded = (path: string) => {
     setExpandedEntries((prev) => {
       const next = new Set(prev);
@@ -390,16 +424,18 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
               }}
             >
               <div
+                onClick={() => openProjectContext(project)}
                 onContextMenu={(e) => {
                   if (!project) return; // « Sans projet » n'a pas d'état à afficher
                   e.preventDefault();
                   setProjectMenu({ x: e.clientX, y: e.clientY, project });
                 }}
+                title={project ? t("notes.fileTree.openProjectContext") : undefined}
                 style={{
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "5px 8px", fontSize: 11, fontWeight: 700,
                 color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em",
-                borderRadius: 6,
+                borderRadius: 6, cursor: project ? "pointer" : "default",
                 background: dropTarget === project ? "var(--active-bg)" : "transparent",
                 outline: dropTarget === project ? "1px dashed var(--accent)" : "none",
               }}>
@@ -531,12 +567,64 @@ export default function FileTree({ tree, vaultPath, selectedPath, onSelect, pend
             >
               <MdInfoOutline size={15} /> {t("notes.projectOverview.menuEntry")}
             </button>
+            <button
+              onClick={() => { setMergingProject(projectMenu.project); setMergeTarget(""); setProjectMenu(null); }}
+              style={menuItemStyle}
+            >
+              <MdCallMerge size={15} /> {t("notes.fileTree.mergeMenuEntry")}
+            </button>
           </div>
         </>
       )}
 
       {viewingProject && (
         <ProjectOverviewPanel project={viewingProject} onClose={() => setViewingProject(null)} />
+      )}
+
+      {/* Fusion de projets (spec/07/16b) — nettoyage manuel des quasi-doublons
+          créés par une extraction (mail/réunion) qui a inventé un nom proche
+          d'un projet déjà connu. Action explicite, jamais automatique. */}
+      {mergingProject && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 999, background: "rgba(0,0,0,0.3)" }} onClick={() => !merging && setMergingProject(null)} />
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            background: "var(--card-bg)", border: "1px solid var(--border)",
+            borderRadius: 10, padding: 16, zIndex: 1000, width: 340,
+            boxShadow: "0 8px 28px rgba(0,0,0,0.25)",
+          }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+              {t("notes.fileTree.mergeDialogTitle", { project: mergingProject })}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10, lineHeight: 1.5 }}>
+              {t("notes.fileTree.mergeDialogHint")}
+            </div>
+            <input
+              autoFocus
+              list="alfred-merge-project-options"
+              value={mergeTarget}
+              onChange={(e) => setMergeTarget(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleMergeSubmit(); if (e.key === "Escape") setMergingProject(null); }}
+              placeholder={t("notes.fileTree.mergeDialogPlaceholder")}
+              style={{
+                width: "100%", border: "1px solid var(--border)", borderRadius: 6,
+                padding: "6px 9px", fontSize: 13, background: "var(--bg)", color: "var(--text-primary)",
+                marginBottom: 10, boxSizing: "border-box",
+              }}
+            />
+            <datalist id="alfred-merge-project-options">
+              {projectGroups.map(({ project }) => project).filter((p) => p && p !== mergingProject).map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
+            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+              <button onClick={() => setMergingProject(null)} disabled={merging} style={btnStyle("transparent", "var(--text-secondary)", true)}>{t("notes.fileTree.cancel")}</button>
+              <button onClick={handleMergeSubmit} disabled={merging || !mergeTarget.trim()} style={btnStyle("#C8914A", "#fff")}>
+                {merging ? t("notes.fileTree.merging") : t("notes.fileTree.mergeConfirm")}
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
     </div>

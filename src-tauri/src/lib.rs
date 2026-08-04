@@ -1081,6 +1081,39 @@ async fn get_project_overview(
         .map_err(|e| e.to_string())
 }
 
+/// Ouvre (crée lazily au besoin, avec reconstruction rétroactive) la note de
+/// contexte de ce projet (spec/16b, spec/07) — point d'entrée du clic sur le
+/// nom du projet dans la vue Projets : « un seul fichier de contexte par
+/// projet, accessible en cliquant sur son nom ».
+#[tauri::command]
+async fn open_project_context_note(
+    project: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<notes::NoteFile, String> {
+    let root = get_vault_root(&state)?;
+    let path = notes::project_context::open_project_context_note(&root, &state.db, &project)
+        .await
+        .map_err(|e| e.to_string())?;
+    notes::vault::get_note_file(&path).await.map_err(|e| e.to_string())
+}
+
+/// Fusionne le projet `source` dans `target` (spec/07/16b) — nettoyage manuel
+/// des quasi-doublons créés par une extraction (mail ou réunion) qui a
+/// inventé un nom légèrement différent d'un projet déjà connu. Action
+/// explicite (clic droit → « Fusionner avec… » sur la vue Projets), jamais
+/// automatique.
+#[tauri::command]
+async fn merge_projects(
+    source: String,
+    target: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<usize, String> {
+    let root = get_vault_root(&state)?;
+    notes::project_context::merge_projects(&root, &state.db, &source, &target)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Valeurs `project` distinctes du vault (combobox Projet + drag-drop, spec/07).
 #[tauri::command]
 async fn list_projects(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
@@ -1934,6 +1967,8 @@ pub fn run() {
             get_recent_notes,
             get_notes_by_project,
             get_project_overview,
+            open_project_context_note,
+            merge_projects,
             get_vault_graph,
             list_projects,
             list_tags,

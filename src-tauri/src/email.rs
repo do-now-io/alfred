@@ -411,6 +411,19 @@ pub async fn sync_emails(db: &SqlitePool, vault_root: Option<&Path>, app_handle:
         return Ok(());
     }
 
+    // Liste des projets déjà connus (spec/16b, correctif anti-doublon) —
+    // récupérée UNE fois pour tout le sync, pas par batch : sans elle,
+    // chaque batch inventait son propre nom/casse/sous-titre pour un même
+    // projet, faute de référent (constat utilisateur).
+    let known_projects: Vec<String> = {
+        let root = vault_root.expect("checked above").to_path_buf();
+        tokio::task::spawn_blocking(move || crate::notes::vault::list_projects(&root))
+            .await
+            .ok()
+            .and_then(|r| r.ok())
+            .unwrap_or_default()
+    };
+
     let mut new_items = 0usize;
 
     for batch in raw_emails.chunks(BATCH_SIZE) {
@@ -425,7 +438,7 @@ pub async fn sync_emails(db: &SqlitePool, vault_root: Option<&Path>, app_handle:
             })
             .collect();
 
-        let output = match ai::extract_email_batch(&inputs, db).await {
+        let output = match ai::extract_email_batch(&inputs, &known_projects, db).await {
             Ok(o) => o,
             Err(e) => {
                 // Pas d'IA disponible / échec de l'appel : ce batch n'est PAS

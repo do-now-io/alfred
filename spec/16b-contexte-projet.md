@@ -103,7 +103,8 @@ Pour chaque `context_addition` :
 - **`scope: "project"`** → pour chaque projet de `projects` qui est aussi dans
   les **« Projets concernés » confirmés** (intersection — un fait ne s'écrit
   jamais dans un projet que l'utilisateur a retiré de la liste) : écrit dans
-  `alfred-intelligence/<Projet>.md` § `## Appris automatiquement`.
+  `alfred-intelligence/<Projet>.md`, dans la **section** identifiée par
+  `section` (voir §4) — pas un unique bloc générique.
 - **Si « Projets concernés » est vide** (aucun projet, ni détecté ni ajouté
   manuellement) → **aucun** `context_addition` à `scope: "project"` n'est
   enregistré (perdu, pas de repli sur le global). Les `scope: "global"` de
@@ -120,39 +121,95 @@ glossaire (spec/17 §1, comportement inchangé).
   sanitizer que les autres noms de fichiers (`sanitize_filename`, gère
   accents/`/`/`:`). Collision → suffixe, comme les autres notes.
 - **Création automatique**, lazy, au premier fait qui la concerne (comme
-  `ensure_context_note` pour le contexte global, spec/16).
+  `ensure_context_note` pour le contexte global, spec/16) — ou en cliquant sur
+  le nom du projet dans la vue Projets (§4bis).
 - **Frontmatter** : marqueur `type: context` (+ `project: <Nom>`) pour être
   reconnue par le code — même mécanisme d'icône dédiée que `Contexte
-  Alfred.md` (type/07), et **exclue des Récents** (`list_recent_notes`
-  `exclude_paths`, même traitement que le contexte global aujourd'hui).
-- **Contenu** : une seule section `## Appris automatiquement`, append/dédup —
-  pas de template à 4 sections comme le global (pas de « mon entreprise »/
-  « équipe » à ce niveau). L'utilisateur peut l'éditer à la main comme
-  n'importe quelle note du vault.
+  Alfred.md` (type/07), et **exclue des Récents** (`list_recent_notes` filtre
+  sur `type: context`, plus large que l'ancien filtre par chemin unique).
+- **Contenu — ✅ révisé (feedback tests, remplace la version « bloc unique »
+  initiale) : 6 sections**, titres localisés FR/EN comme le contexte global
+  (`notes::context::titles`) — pas les 4 sections « mon entreprise »/« équipe »
+  du global (qui n'ont pas de sens à ce niveau), mais des sections pensées
+  pour un projet :
+
+  | Clé interne (stable) | FR | EN |
+  |---|---|---|
+  | `overview` | Aperçu | Overview |
+  | `people` | Personnes | People |
+  | `decisions` | Décisions | Decisions |
+  | `events` | Événements | Events |
+  | `tasks` | Tâches | Tasks |
+  | `vocabulary` | Vocabulaire | Vocabulary |
+
+  Chaque `context_addition` à `scope: "project"` porte un champ **`section`**
+  (une de ces 6 clés, défaut `overview` si absent/invalide) que Claude
+  remplit dès l'analyse (réunion, spec/17 §3) ou l'extraction e-mail
+  (spec/24) — le fait est rangé dans la bonne section à l'écriture, jamais
+  déversé dans un bloc unique. Append/dédup par section (même logique que
+  `## Appris automatiquement` du contexte global). L'utilisateur peut éditer
+  la note à la main comme n'importe quelle note du vault (y compris
+  renommer/retirer une section — une section supprimée est recréée en fin de
+  note si un nouveau fait doit y aller).
 
 ### Création rétroactive
 
 À la **première** fois qu'un projet apparaît côté contexte (premier fait
-`scope: "project"` validé pour un projet qui n'a pas encore de note), on ne
-part pas seulement de la réunion courante : on **rescanne tous les
-comptes-rendus déjà tagués `project: <Nom>`** (frontmatter existant,
-`list_notes_with_project` ou équivalent) pour construire la note en une fois
-— un appel Claude dédié qui lit l'historique du projet et en extrait les
-faits durables, avant d'ajouter le fait qui vient de déclencher la création.
+`scope: "project"` validé pour un projet qui n'a pas encore de note, ou
+premier clic sur son nom, §4bis), on ne part pas seulement de la réunion
+courante : on **rescanne tous les comptes-rendus déjà tagués `project:
+<Nom>`** (`list_notes_with_project`) pour construire la note en une fois — un
+appel Claude dédié qui lit l'historique du projet et en extrait les faits
+durables **déjà classés par section**, avant d'ajouter le fait qui vient de
+déclencher la création.
 
-> **À trancher à l'implémentation** : si l'historique d'un projet est
-> volumineux (beaucoup de comptes-rendus), il faudra un critère de troncature
-> (ex. les N plus récents, ou une limite de caractères) — pas de règle fixée
-> ici, à choisir selon les cas réels rencontrés en test.
+> **Tranché à l'implémentation** : troncature à ~8 000 caractères
+> d'historique (les comptes-rendus les plus récents en premier) — repli
+> raisonnable pour les vaults de test (~10 utilisateurs), à resserrer si un
+> cas réel dépasse ce budget.
+
+## 4bis. Accès à la note & fusion de doublons (spec/07)
+
+- **Clic sur le nom du projet** (en-tête de groupe, vue Projets, spec/07) →
+  ouvre sa note de contexte unique (créée lazily si besoin, avec
+  reconstruction rétroactive) — **« un seul fichier de contexte par projet,
+  accessible en cliquant sur son nom »**. Le clic droit garde ses entrées
+  existantes (« Voir l'état du projet », spec/28) et gagne **« Fusionner
+  avec… »**.
+- **Fusion manuelle de projets** (`merge_projects(source, target)`) —
+  nettoyage des quasi-doublons qu'une extraction peut créer en inventant un
+  nom légèrement différent d'un projet déjà connu (ex. « Energy Pool » /
+  « EnergyPool - Analyse Projet », casse différente) : retague le frontmatter
+  `project` de toutes les notes portant `source` vers `target`, fusionne les
+  deux notes de contexte section par section (dédupliqué, la note `source`
+  est supprimée), et renomme le marqueur `+Projet` de toutes les tâches
+  `Todo.md` concernées. Action **explicite** (menu contextuel), **jamais**
+  d'auto-fusion silencieuse — deux noms proches peuvent désigner deux projets
+  réellement distincts, c'est à l'utilisateur de trancher.
+
+## 4ter. Prévention à la source (extraction e-mail, spec/24)
+
+Le nommage de projet par l'extraction e-mail (spec/24 §4, `EMAIL_BATCH_SYSTEM`)
+reçoit désormais la **liste des projets déjà connus** (`list_projects`,
+récupérée une fois par synchronisation) et une consigne explicite :
+réutiliser EXACTEMENT un nom connu quand il correspond, ne pas en fabriquer
+une variante (sous-titre, casse, synonyme) ; et **distinguer projet et
+client** (un client peut porter plusieurs projets — ne pas les confondre dans
+un même nom au gré du sujet du mail). Corrige la cause racine des doublons
+observés (extraction sans aucun référent) ; la fusion manuelle (§4bis) reste
+le filet de rattrapage pour ce qui est déjà créé ou pour les cas ambigus que
+la prévention ne peut pas éliminer entièrement.
 
 ## 5. Dépendance — renommage de projet
 
-`project` n'est aujourd'hui qu'une valeur de frontmatter par note (pas
-d'entité), sans commande de renommage cascade. Pour que la note de contexte
-d'un projet **suive** un renommage, il faut d'abord construire cette
-fonctionnalité (tâche ROADMAP dédiée, Phase G — « Renommage de projet ») :
-renommer doit mettre à jour toutes les notes taguées **et**, une fois ce
-chantier fait, renommer/fusionner la note de contexte associée.
+`merge_projects` (§4bis) fait aussi office de renommage : `target` n'a pas
+besoin d'exister déjà comme groupe — retagger `source` vers un nom entièrement
+nouveau EST un renommage (la note de contexte suit, reconstruite si besoin).
+Ce qui reste hors scope ici : une UI dédiée « renommer » (distincte de
+« fusionner ») et la détection de collision/confirmation qu'un vrai outil de
+renommage grand public voudrait (spec/07, ROADMAP Phase G) — `merge_projects`
+est délibérément la même action des deux côtés (renommer = fusionner vers un
+nom qui n'a pas encore de contenu).
 
 ## 6. Hors scope (différé)
 
@@ -170,11 +227,12 @@ chantier fait, renommer/fusionner la note de contexte associée.
 
 | Commande | Rôle |
 |---|---|
-| `analyze_transcription` (modifiée) | schéma étendu : `projects_detected`, `context_additions[].scope`/`projects`, `vocab_terms` |
-| `finalize_ingestion` (modifiée) | routage des `context_addition` par `scope`/`projects` vers la bonne note ; écrit `vocab_terms` dans le vocabulaire global |
-| `get_or_create_project_context_note(project)` | lazy-create, comme `ensure_context_note` (spec/16) |
-| `build_project_context_retroactive(project)` | rescan des comptes-rendus tagués + 1er appel Claude de construction |
-| `list_recent_notes` (modifiée) | `exclude_paths` étendu à toutes les notes `type: context` (global + projets) |
+| `analyze_transcription` (modifiée) | schéma étendu : `projects_detected`, `context_additions[].scope`/`projects`/`section`, `vocab_terms` |
+| `finalize_ingestion` (modifiée) | routage des `context_addition` par `scope`/`projects`/`section` vers la bonne note/section ; écrit `vocab_terms` dans le vocabulaire global ; `confirmed_projects` devient le `project` du compte-rendu |
+| `open_project_context_note(project)` | lazy-create (+ reconstruction rétroactive si besoin) et ouvre la note — clic sur le nom du projet, vue Projets |
+| `merge_projects(source, target)` | fusionne/renomme un projet (retag notes + `Todo.md` + fusion des notes de contexte section par section) |
+| `list_recent_notes` (modifiée) | filtre sur `type: context` (global + projets), plus large que l'ancien filtre par chemin unique |
+| `extract_email_batch` (modifiée, spec/24) | reçoit `known_projects` (anti-doublon) ; schéma étendu avec `section` |
 
 ## Notes de suivi
 

@@ -68,9 +68,17 @@ export default {
     },
     contextAdds: {
       group: "À retenir sur votre contexte",
-      hint: "J'ajoute les faits cochés à « Appris automatiquement » dans votre note de contexte.",
+      hint: "J'ajoute les faits cochés à votre note de contexte (générale ou de projet).",
       scopeGlobal: "Contexte général",
       scopeProject: "Projet(s) : {projects}",
+      section: {
+        overview: "Aperçu",
+        people: "Personnes",
+        decisions: "Décisions",
+        events: "Événements",
+        tasks: "Tâches",
+        vocabulary: "Vocabulaire",
+      },
     },
     projects: {
       label: "Projets concernés",
@@ -145,9 +153,17 @@ export default {
     },
     contextAdds: {
       group: "Worth remembering about your context",
-      hint: "I'm adding the checked facts to \"Learned automatically\" in your context note.",
+      hint: "I'm adding the checked facts to your context note (general or project).",
       scopeGlobal: "General context",
       scopeProject: "Project(s): {projects}",
+      section: {
+        overview: "Overview",
+        people: "People",
+        decisions: "Decisions",
+        events: "Events",
+        tasks: "Tasks",
+        vocabulary: "Vocabulary",
+      },
     },
     projects: {
       label: "Projects concerned",

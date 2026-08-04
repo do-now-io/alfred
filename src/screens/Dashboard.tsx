@@ -361,11 +361,11 @@ function DemoContentBanner() {
 }
 
 // ─── Dashboard — fusion Alfred/Aujourd'hui, layout 2 colonnes (spec/10 cible) ──
-// Centre : carte d'enregistrement + brief quotidien (tant qu'aucune conversation
-// n'est en cours) au-dessus de la conversation Alfred (ChatPanel). Droite :
-// agenda du jour — et le brief, qui migre ici, AU-DESSUS de l'agenda, dès
-// qu'une conversation démarre (`messages.length > 0`) : la place qu'il
-// occupait au centre sert alors entièrement au fil de discussion.
+// Centre : brief quotidien (tant qu'aucune conversation n'est en cours)
+// au-dessus de la conversation Alfred (ChatPanel), qui prend toute la place
+// dès qu'un message est envoyé. Droite : carte d'enregistrement (fixe), puis
+// le brief — qui migre ici, AU-DESSUS de l'agenda, dès qu'une conversation
+// démarre (`messages.length > 0`) — puis l'agenda du jour.
 
 export default function Dashboard() {
   const hasMessages = useChatStore((s) => s.messages.length > 0);
@@ -378,16 +378,22 @@ export default function Dashboard() {
           flex: "1.3 1 0%", minWidth: 0, borderRight: "1px solid var(--border)",
           overflow: "hidden", display: "flex", flexDirection: "column",
         }}>
-          <div style={{ padding: "24px 24px 0", flexShrink: 0, display: "flex", flexDirection: "column", gap: 20 }}>
-            <HeroCard />
-            {!hasMessages && <BriefCard />}
-          </div>
-          <div style={{ flex: 1, minHeight: 0, marginTop: 20, borderTop: "1px solid var(--border)" }}>
+          {!hasMessages && (
+            <div style={{ padding: "24px 24px 0", flexShrink: 0 }}>
+              <BriefCard />
+            </div>
+          )}
+          <div style={{
+            flex: 1, minHeight: 0,
+            marginTop: hasMessages ? 0 : 20,
+            borderTop: hasMessages ? "none" : "1px solid var(--border)",
+          }}>
             <ChatPanel />
           </div>
         </div>
         <div style={{ flex: "1 1 0%", minWidth: 340, maxWidth: 480, overflowY: "auto" }}>
           <div style={{ padding: "24px 24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+            <HeroCard />
             {hasMessages && <BriefCard />}
             <AgendaCard />
           </div>

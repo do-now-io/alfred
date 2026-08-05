@@ -195,6 +195,30 @@ jobs:
             "src-tauri/target/release/bundle/msi/*.msi", `
             "src-tauri/target/release/bundle/nsis/*.exe"
 
+      # BUG corrigé (spec/27) : eSigner réécrit les octets du `.exe` (certificat
+      # Authenticode embarqué) — le `.sig` updater calculé pendant "Build Tauri"
+      # portait donc sur un fichier qui n'existe plus une fois signé, et
+      # `minisign-verify` rejetait la mise à jour côté client ("signature
+      # verification failed") même avec une clé/config parfaitement correctes.
+      # On régénère le `.sig` ICI, sur le binaire FINAL (post-eSigner), avec la
+      # même clé privée que "Build Tauri". No-op silencieux si les secrets
+      # updater sont absents (cohérent avec "Build Tauri" — pas de `.sig` du
+      # tout dans ce cas, `latest.json` omettra windows-x86_64).
+      - name: Régénérer le .sig updater Windows (post-signature eSigner)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "Secret TAURI_SIGNING_PRIVATE_KEY absent — pas de .sig a regenerer."
+            exit 0
+          fi
+          for f in src-tauri/target/release/bundle/nsis/*.exe; do
+            npm run tauri -- signer sign -k "$TAURI_SIGNING_PRIVATE_KEY" -p "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" "$f"
+          done
+
       # Retire le numéro de version du nom des binaires et uniformise la casse
       # (deb/rpm/AppImage sont générés en lowercase par le bundler) : noms
       # stables entre releases, utilisables via releases/latest/download/...

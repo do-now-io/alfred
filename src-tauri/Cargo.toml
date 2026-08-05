@@ -1,6 +1,6 @@
 [package]
 name = "alfred"
-version = "0.2.16"
+version = "0.2.17"
 description = "Alfred — personal assistant desktop app"
 authors = ["Tanguy"]
 license = "Apache-2.0"

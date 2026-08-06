@@ -46,6 +46,18 @@ export default {
       thenPrice: "Puis 20 €/mois (ou en annuel ci-dessous), sans engagement, annulable à tout moment.",
       trialThenYearly: "Essai gratuit puis annuel",
     },
+    email: {
+      title: "Connectez votre boîte mail",
+      text: "J'y détecte automatiquement les tâches et j'en retiens le contexte utile (facultatif, modifiable à tout moment dans les Réglages).",
+      connected: "Boîte mail connectée",
+      help: {
+        gmail: "Google bloque IMAP avec votre mot de passe habituel dès que la validation en deux étapes est activée : générez un mot de passe d'application dédié.",
+        outlook: "Microsoft demande un mot de passe d'application dédié pour la connexion IMAP, distinct de votre mot de passe habituel.",
+        yahoo: "Yahoo demande un mot de passe d'application dédié pour la connexion IMAP.",
+        icloud: "Apple demande un mot de passe spécifique à l'application, généré depuis la page de gestion de votre identifiant Apple.",
+      },
+      openHelpLink: "Générer un mot de passe d'application",
+    },
     mic: {
       title: "Autorisez le micro",
       text: "Un test rapide pour vérifier l'accès au microphone (macOS vous demandera l'autorisation la première fois).",
@@ -104,6 +116,18 @@ export default {
       awaitingPayment: "Waiting for payment…",
       thenPrice: "Then €20/month (or yearly below), no commitment, cancel anytime.",
       trialThenYearly: "Free trial then yearly",
+    },
+    email: {
+      title: "Connect your mailbox",
+      text: "I automatically detect tasks in it and remember useful context (optional, changeable at any time in Settings).",
+      connected: "Mailbox connected",
+      help: {
+        gmail: "Google blocks IMAP with your regular password once 2-Step Verification is on: generate a dedicated app password.",
+        outlook: "Microsoft requires a dedicated app password for IMAP, separate from your regular password.",
+        yahoo: "Yahoo requires a dedicated app password for IMAP.",
+        icloud: "Apple requires an app-specific password, generated from your Apple ID management page.",
+      },
+      openHelpLink: "Generate an app password",
     },
     mic: {
       title: "Allow the microphone",

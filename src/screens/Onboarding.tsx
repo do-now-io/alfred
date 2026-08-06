@@ -4,11 +4,14 @@ import { listen } from "@tauri-apps/api/event";
 import {
   MdMic, MdAutoAwesome, MdCheckCircle, MdFolderOpen, MdVpnKey,
   MdArrowBack, MdArrowForward, MdHourglassEmpty, MdWarning, MdDownload,
+  MdMail, MdSettingsEthernet, MdOpenInNew,
 } from "react-icons/md";
+import { SiGmail, SiIcloud } from "react-icons/si";
 import { useNotesStore } from "../store/notesStore";
 import AlfredAvatar from "../components/AlfredAvatar";
 import WhisperModelPicker from "../components/WhisperModelPicker";
 import { detectSystemLang, useI18nStore, useT } from "../i18n";
+import type { ImapStatus } from "../bindings/ImapStatus";
 
 // ─── Shared bits ────────────────────────────────────────────────────────────
 
@@ -57,6 +60,11 @@ const okRow: React.CSSProperties = {
 
 const errorRow: React.CSSProperties = {
   fontSize: 13, color: "var(--danger)", display: "flex", alignItems: "center", gap: 6,
+};
+
+const inputStyle: React.CSSProperties = {
+  border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px",
+  fontSize: 14, background: "var(--card-bg)", color: "var(--text-primary)",
 };
 
 // ─── Setup steps ──────────────────────────────────────────────────────────────
@@ -213,6 +221,167 @@ function AiAccessStep() {
           )}
           {error && <div style={errorRow}><MdWarning size={15} /> {error}</div>}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── E-mails (spec/24) — connexion IMAP guidée par fournisseur ────────────────
+// Sélection d'un fournisseur connu → pré-remplit host/port/SSL + affiche le
+// lien direct vers la page de génération du mot de passe d'application de ce
+// fournisseur (Gmail/Outlook/Yahoo/iCloud bloquent IMAP avec le mot de passe
+// du compte). « Autre » laisse le host en saisie libre (IMAP générique).
+
+type EmailProvider = {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  useSsl: boolean;
+  helpUrl: string | null;
+  icon: React.ReactNode;
+};
+
+const EMAIL_PROVIDERS: EmailProvider[] = [
+  { id: "gmail", label: "Gmail", host: "imap.gmail.com", port: 993, useSsl: true, helpUrl: "https://myaccount.google.com/apppasswords", icon: <SiGmail /> },
+  { id: "outlook", label: "Outlook / Microsoft 365", host: "outlook.office365.com", port: 993, useSsl: true, helpUrl: "https://account.live.com/proofs/AppPassword", icon: <MdMail /> },
+  { id: "yahoo", label: "Yahoo Mail", host: "imap.mail.yahoo.com", port: 993, useSsl: true, helpUrl: "https://login.yahoo.com/myaccount/security/app-passwords", icon: <MdMail /> },
+  { id: "icloud", label: "iCloud Mail", host: "imap.mail.me.com", port: 993, useSsl: true, helpUrl: "https://appleid.apple.com/account/manage", icon: <SiIcloud /> },
+  { id: "other", label: "IMAP générique", host: "", port: 993, useSsl: true, helpUrl: null, icon: <MdSettingsEthernet /> },
+];
+
+async function openExternal(url: string) {
+  try {
+    const { open } = await import("@tauri-apps/plugin-shell");
+    await open(url);
+  } catch {
+    /* best-effort — pas de note système sur un lien externe qui échoue */
+  }
+}
+
+function EmailStep() {
+  const t = useT();
+  const [status, setStatus] = useState<ImapStatus | null>(null);
+  const [providerId, setProviderId] = useState<string | null>(null);
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("993");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [useSsl, setUseSsl] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    invoke<ImapStatus>("get_imap_status").then(setStatus).catch(() => setStatus(null));
+  }, []);
+
+  const pickProvider = (p: EmailProvider) => {
+    setProviderId(p.id);
+    setHost(p.host);
+    setPort(String(p.port));
+    setUseSsl(p.useSsl);
+    setError(null);
+  };
+
+  const handleConnect = async () => {
+    setError(null);
+    setConnecting(true);
+    try {
+      await invoke("connect_imap_account", { host, port: Number(port) || 993, username, password, useSsl });
+      setPassword("");
+      setStatus({ connected: true, last_synced_at: null });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  if (status?.connected) {
+    return (
+      <div style={{ ...okRow, justifyContent: "center" }}>
+        <MdCheckCircle size={16} /> {t("onboarding.email.connected")}
+      </div>
+    );
+  }
+
+  const provider = EMAIL_PROVIDERS.find((p) => p.id === providerId) ?? null;
+  const canConnect = !connecting && host.trim() && username.trim() && password.trim();
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        {EMAIL_PROVIDERS.map((p) => (
+          <button key={p.id} onClick={() => pickProvider(p)} style={modeBtn(providerId === p.id)}>
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              {p.icon} {p.label}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {provider && (
+        <>
+          {provider.helpUrl && (
+            <div style={{
+              display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5,
+              color: "var(--text-secondary)", background: "var(--active-bg)",
+              borderRadius: 8, padding: "9px 12px", textAlign: "left",
+            }}>
+              <span>{t(`onboarding.email.help.${provider.id}`)}</span>
+              <button
+                onClick={() => openExternal(provider.helpUrl!)}
+                style={{
+                  alignSelf: "flex-start", background: "none", border: "1px solid var(--border)",
+                  borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12,
+                  color: ACCENT, display: "inline-flex", alignItems: "center", gap: 5,
+                }}
+              >
+                {t("onboarding.email.openHelpLink")} <MdOpenInNew size={13} />
+              </button>
+            </div>
+          )}
+
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder={t("settings.emailSection.username")}
+            style={inputStyle}
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={t("settings.emailSection.password")}
+            style={inputStyle}
+          />
+
+          {provider.id === "other" && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                placeholder={t("settings.emailSection.host")}
+                style={{ ...inputStyle, flex: 1 }}
+              />
+              <input
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                placeholder={t("settings.emailSection.port")}
+                style={{ ...inputStyle, width: 80 }}
+              />
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-primary)", flexShrink: 0 }}>
+                <input type="checkbox" checked={useSsl} onChange={(e) => setUseSsl(e.target.checked)} />
+                SSL
+              </label>
+            </div>
+          )}
+
+          <button onClick={handleConnect} disabled={!canConnect} style={primaryBtn(!canConnect)}>
+            {connecting ? <><MdHourglassEmpty size={18} /> {t("settings.emailSection.connecting")}</> : <><MdMail size={18} /> {t("settings.emailSection.connect")}</>}
+          </button>
+          {error && <div style={errorRow}><MdWarning size={15} /> {error}</div>}
+        </>
       )}
     </div>
   );
@@ -375,6 +544,19 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
           text={t("onboarding.aiAccess.text")}
         >
           <AiAccessStep />
+        </Panel>
+      ),
+    },
+    {
+      name: "email",
+      skippable: true,
+      node: (
+        <Panel
+          icon={<IconCircle><MdMail /></IconCircle>}
+          title={t("onboarding.email.title")}
+          text={t("onboarding.email.text")}
+        >
+          <EmailStep />
         </Panel>
       ),
     },

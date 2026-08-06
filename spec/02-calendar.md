@@ -107,6 +107,18 @@ Nouvel onglet de navigation (§4) : liste des événements du jour + de la
 semaine (titre, heure, participants, lieu). Lecture seule — pas de création/
 modification d'événement depuis Alfred.
 
+**Échéances des tâches (`Todo.md`, spec/06) affichées dans le même écran** —
+constat post-implémentation : un utilisateur qui pose une échéance (`📅`) sur
+une tâche ne la voyait nulle part dans l'Agenda, alors que c'est la même
+notion de "chose à ce moment-là" que les événements calendrier. Les tâches
+**en attente** (`get_todos` — non cochées, hors `Archivé`) avec une `echeance`
+tombant dans la période affichée (jour ou semaine) sont mêlées aux
+événements, visuellement distinguées (icône tâche vs événement) — sans
+horaire précis (juste une date), elles s'affichent en tête de journée plutôt
+qu'à une heure donnée. Clic → écran Tâches. Toujours lecture seule côté
+calendrier ; **aucune donnée n'est écrite dans `calendar_events`** — c'est un
+assemblage à l'affichage (front), pas une fusion de sources en base.
+
 ### b) Brief quotidien enrichi (spec/05)
 
 `generate_daily_brief` gagne une section **Agenda** : nombre de réunions du
